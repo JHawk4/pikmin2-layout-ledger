@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "srcom-videos"
+version = "0.1.0"
+description = "Fetch top runs from speedrun.com and download their videos small (low resolution, capped frame rate)."
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "yt-dlp>=2025.1.1",
+    "yt-dlp-ejs>=0.3",          # YouTube JS challenge solver scripts (run with Node)
+    "imageio-ffmpeg>=0.5",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+srcom-videos = "srcom_videos.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
