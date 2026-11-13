@@ -90,27 +90,39 @@ def calibrate(
     ex0, ex1, ey0, ey1 = ext
     text_w, text_h = ex1 - ex0 + 1, ey1 - ey0 + 1
 
-    results = []
-    for cave in caves or CAVES:
+    # Glyphs are a fixed fraction of the screen height (~0.99 * H/480), so the
+    # vertical scale is searched near that. The horizontal scale also absorbs the
+    # squeeze applied to long names; its guess comes from the text width, which
+    # background swirls can inflate, so it is searched widely. A coarse pass ranks
+    # every cave; only the two best get the fine grid.
+    sy0 = 0.99 * H / 480.0
+
+    def best_fit(cave: Cave, sys, sx_factors, extra_ratios) -> tuple | None:
+        base_w = compose(cave.name, 1.0, 1.0)[0].shape[1]
+        sx0 = min(sy0, text_w / max(1.0, base_w - 4))
         best = None
-        base_img, _ = compose(cave.name, 1.0, 1.0)
-        # Glyphs are a fixed fraction of the screen height (~0.99 * H/480), so the
-        # vertical scale is searched near that. The horizontal scale also absorbs the
-        # squeeze applied to long names; its guess comes from the text width, which
-        # background swirls can inflate, so it is searched widely.
-        sy0 = 0.99 * H / 480.0
-        sx0 = min(sy0, text_w / max(1.0, base_img.shape[1] - 4))
-        for sy in sy0 * np.linspace(0.92, 1.08, 9):
-            for sx in np.unique(np.r_[sx0 * np.linspace(0.85, 1.1, 11), sy * np.linspace(0.8, 1.0, 5)]):
+        for sy in sys:
+            for sx in np.unique(np.r_[sx0 * sx_factors, sy * extra_ratios]):
                 img, _ = compose(cave.name, sx, sy)
                 if img.shape[0] >= region.shape[0] or img.shape[1] >= region.shape[1]:
                     continue
-                res = templates.match(region, img)
-                _, score, _, loc = cv2.minMaxLoc(res)
+                _, score, _, loc = cv2.minMaxLoc(templates.match(region, img))
                 if best is None or score > best[0]:
                     best = (score, sx, sy, loc)
-        if best:
-            results.append((best, cave))
+        return best
+
+    coarse = []
+    for cave in caves or CAVES:
+        b = best_fit(cave, [sy0], np.linspace(0.85, 1.1, 6), np.array([0.8, 0.9, 1.0]))
+        if b:
+            coarse.append((b, cave))
+    coarse.sort(key=lambda r: -r[0][0])
+    results = []
+    for b, cave in coarse[:2]:
+        fine = best_fit(cave, sy0 * np.linspace(0.92, 1.08, 9), np.linspace(0.85, 1.1, 11), np.linspace(0.8, 1.0, 5))
+        results.append((max(b, fine, key=lambda x: x[0]) if fine else b, cave))
+    # the runner-up's score is only used for the margin; give the rest their coarse scores
+    results += coarse[2:]
     if not results:
         return None
     results.sort(key=lambda r: -r[0][0])

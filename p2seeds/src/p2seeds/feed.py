@@ -58,10 +58,25 @@ def find_feed(video: Video, samples: int = 240) -> Feed:
     if num <= 1:
         return Feed(0, 0, video.width, video.height)
     big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    ys, xs = np.nonzero(labels == big)
-    # trim ragged edges: keep rows/cols that are mostly active
-    rows = (labels == big).mean(axis=1)
-    cols = (labels == big).mean(axis=0)
-    y_on = np.nonzero(rows > 0.5 * rows.max())[0]
-    x_on = np.nonzero(cols > 0.5 * cols.max())[0]
-    return Feed(int(x_on[0]), int(y_on[0]), int(x_on[-1]) + 1, int(y_on[-1]) + 1)
+    mask = labels == big
+    # A split timer next to the game can join the same component. The game is the
+    # solid rectangle: alternately keep the longest run of columns, then rows, that
+    # are mostly active within the current bounds.
+    y0, y1, x0, x1 = 0, mask.shape[0], 0, mask.shape[1]
+    for _ in range(3):
+        x0, x1 = _longest_run(mask[y0:y1, :].mean(axis=0) > 0.7, offset=0)
+        y0, y1 = _longest_run(mask[:, x0:x1].mean(axis=1) > 0.7, offset=0)
+    return Feed(int(x0), int(y0), int(x1), int(y1))
+
+
+def _longest_run(flags: np.ndarray, offset: int) -> tuple[int, int]:
+    best, start = (0, len(flags)), None
+    best_len = -1
+    for i, f in enumerate(np.r_[flags, False]):
+        if f and start is None:
+            start = i
+        elif not f and start is not None:
+            if i - start > best_len:
+                best, best_len = (start, i), i - start
+            start = None
+    return best[0] + offset, best[1] + offset

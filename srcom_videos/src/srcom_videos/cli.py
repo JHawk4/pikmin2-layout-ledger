@@ -75,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
             manifest.update(r, status="no_video")
             print(f"[skip] #{r.place} {r.player_names}: no video")
             continue
+        prev = manifest.entries.get(r.id, {})
+        if prev.get("status") == "ok" and Path(prev.get("download", {}).get("path", "")).exists():
+            manifest.update(r)   # refresh run metadata, keep the download record
+            print(f"[have] #{r.place} {r.player_names}: {prev['download']['path']}")
+            continue
         print(f"[get ] #{r.place} {r.player_names}: {video.canonical_url}")
         try:
             res = download_video(video.canonical_url, out, r.slug(), opts)

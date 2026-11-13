@@ -14,7 +14,7 @@ from pathlib import Path
 
 import cv2
 
-from . import cavegen, digits, report, sublevels
+from . import cavegen, report, sublevels
 from .analyze import analyze_event
 from .events import detect
 from .feed import Feed, find_feed
@@ -36,13 +36,12 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
 
     results = []
     for e in events:
-        r = analyze_event(video, feed, e)
-        if r.cave_id:
-            r.digit_value, r.digit_score = digits.read(r.digit_crop)
-        seed = f"0x{r.layout_seed:08X}" if r.layout_seed is not None else "-"
-        log(f"  {r.settled_frame or e.first:>7} {r.cave_id or '-':<4} {r.confidence:<6} {seed} {r.note}")
-        if r.cave_id:
-            results.append(r)
+        for r in analyze_event(video, feed, e):
+            seed = f"0x{r.layout_seed:08X}" if r.layout_seed is not None else "-"
+            sub = r.digit_value if r.digit_value is not None else "?"
+            log(f"  {r.settled_frame or e.first:>7} {r.cave_id or '-':<4} {sub!s:<2} {r.confidence:<6} {seed} {r.note}")
+            if r.cave_id:
+                results.append(r)
 
     # one entry can yield two events (before/after a stutter); keep the first of identical seeds
     dedup = []

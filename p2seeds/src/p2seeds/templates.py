@@ -26,10 +26,11 @@ def match(image: np.ndarray, template: np.ndarray) -> np.ndarray:
     normalization divide by zero, which OpenCV reports as ~1.0 or inf.
     """
     res = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
-    ones = np.ones_like(template)
-    s1 = cv2.matchTemplate(image, ones, cv2.TM_CCORR)
-    s2 = cv2.matchTemplate(image * image, ones, cv2.TM_CCORR)
-    var = s2 / ones.size - (s1 / ones.size) ** 2
+    th, tw = template.shape
+    k = (tw, th)
+    m1 = cv2.boxFilter(image, -1, k, anchor=(0, 0), normalize=True, borderType=cv2.BORDER_CONSTANT)
+    m2 = cv2.boxFilter(image * image, -1, k, anchor=(0, 0), normalize=True, borderType=cv2.BORDER_CONSTANT)
+    var = (m2 - m1 * m1)[: res.shape[0], : res.shape[1]]
     res[~np.isfinite(res) | (var < 1e-4)] = 0.0
     return res
 
