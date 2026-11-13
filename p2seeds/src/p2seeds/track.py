@@ -1,0 +1,65 @@
+"""Track each falling letter's height, frame by frame, with sub-pixel precision.
+
+Each letter only moves vertically inside its own column, so its scaled glyph is
+matched against a narrow strip of every frame (padded above the top edge so a
+letter half off-screen still matches). The correlation peak is refined with a
+parabola fit for sub-pixel accuracy.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import cv2
+import numpy as np
+
+from . import templates
+from .calibrate import Calibration, LetterBox
+
+
+@dataclass
+class Track:
+    index: int
+    ch: str
+    rest_y: float             # glyph top when settled (px)
+    frames: np.ndarray        # frame numbers (relative to the clip)
+    y: np.ndarray             # matched glyph top (px), may be negative (above the screen)
+    score: np.ndarray         # match quality per frame
+
+
+def _subpixel(vals: np.ndarray, k: int) -> float:
+    if 0 < k < len(vals) - 1:
+        a, b, c = vals[k - 1], vals[k], vals[k + 1]
+        den = a - 2 * b + c
+        if den < 0:
+            return k + 0.5 * (a - c) / den
+    return float(k)
+
+
+def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min_score: float = 0.5) -> Track:
+    t = box.template
+    h, w = t.shape
+    x0 = max(0, int(round(box.x)) - x_slack)
+    x1 = int(round(box.x)) + w + x_slack
+    y_bot = int(round(box.y)) + h + 2      # nothing of interest below the settled glyph
+    pad = h                                # allow the glyph to hang above the top edge
+    fr, ys, sc = [], [], []
+    for k, gray in enumerate(frames):
+        strip = templates.prep(gray[0:y_bot, x0:x1])
+        strip = np.vstack([np.zeros((pad, strip.shape[1]), np.float32), strip])
+        if strip.std() < 1e-3:
+            continue
+        res = cv2.matchTemplate(strip, t, cv2.TM_CCOEFF_NORMED)
+        col = int(np.argmax(res.max(axis=0)))
+        column = res[:, col]
+        row = int(np.argmax(column))
+        if column[row] < min_score:
+            continue
+        fr.append(k)
+        ys.append(_subpixel(column, row) - pad)
+        sc.append(float(column[row]))
+    return Track(box.index, box.ch, float(box.y), np.array(fr), np.array(ys), np.array(sc))
+
+
+def track_all(frames: list[np.ndarray], cal: Calibration, **kw) -> list[Track]:
+    return [track_letter(frames, box, **kw) for box in cal.letters]
