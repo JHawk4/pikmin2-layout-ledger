@@ -80,9 +80,8 @@ def calibrate(
     p = templates.prep(settled_gray)
     H, W = p.shape
     if band is None:
-        band = _find_name_band(p)
-        if band is None:
-            return None
+        # the name line always sits in the same part of the screen
+        band = (int(0.14 * H), int(0.48 * H))
     y0, y1 = band
     region = p[y0:y1]
     ext = _bright_extent(region)
@@ -95,15 +94,18 @@ def calibrate(
     for cave in caves or CAVES:
         best = None
         base_img, _ = compose(cave.name, 1.0, 1.0)
-        # first guesses from the text's bright extent; refine around them
-        sy0 = text_h / 34.0
-        sx0 = text_w / max(1.0, base_img.shape[1] - 4)
-        for sy in sy0 * np.linspace(0.85, 1.15, 13):
-            for sx in sx0 * np.linspace(0.9, 1.1, 11):
+        # Glyphs are a fixed fraction of the screen height (~0.99 * H/480), so the
+        # vertical scale is searched near that. The horizontal scale also absorbs the
+        # squeeze applied to long names; its guess comes from the text width, which
+        # background swirls can inflate, so it is searched widely.
+        sy0 = 0.99 * H / 480.0
+        sx0 = min(sy0, text_w / max(1.0, base_img.shape[1] - 4))
+        for sy in sy0 * np.linspace(0.92, 1.08, 9):
+            for sx in np.unique(np.r_[sx0 * np.linspace(0.85, 1.1, 11), sy * np.linspace(0.8, 1.0, 5)]):
                 img, _ = compose(cave.name, sx, sy)
                 if img.shape[0] >= region.shape[0] or img.shape[1] >= region.shape[1]:
                     continue
-                res = cv2.matchTemplate(region, img, cv2.TM_CCOEFF_NORMED)
+                res = templates.match(region, img)
                 _, score, _, loc = cv2.minMaxLoc(res)
                 if best is None or score > best[0]:
                     best = (score, sx, sy, loc)
@@ -119,23 +121,3 @@ def calibrate(
     if len(results) > 1:
         cal.runner_up = (results[1][1].name, float(results[1][0][0]))
     return cal
-
-
-def _find_name_band(p: np.ndarray) -> tuple[int, int] | None:
-    """Rows of the upper text line on an entry screen (name above 'Sublevel N')."""
-    rows = (p > 0.5).mean(axis=1)
-    on = rows > 0.01
-    runs, y = [], 0
-    while y < len(on):
-        if on[y]:
-            s = y
-            while y < len(on) and on[y]:
-                y += 1
-            if y - s >= 4:
-                runs.append((s, y))
-        y += 1
-    if not runs:
-        return None
-    s, e = runs[0]
-    pad = max(6, (e - s) // 2)
-    return max(0, s - pad), min(len(p), e + pad)

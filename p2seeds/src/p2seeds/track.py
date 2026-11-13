@@ -49,7 +49,7 @@ def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min
         strip = np.vstack([np.zeros((pad, strip.shape[1]), np.float32), strip])
         if strip.std() < 1e-3:
             continue
-        res = cv2.matchTemplate(strip, t, cv2.TM_CCOEFF_NORMED)
+        res = templates.match(strip, t)
         col = int(np.argmax(res.max(axis=0)))
         column = res[:, col]
         row = int(np.argmax(column))

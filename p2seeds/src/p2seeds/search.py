@@ -44,7 +44,7 @@ def search(
     sigma: np.ndarray,
     n_prune: int = 6,
     k_prune: float = 4.0,
-    max_bias: float = 0.25,
+    max_bias: float = 0.5,
     cap: float = 16.0,
     chunk: int = 1 << 23,
     top: int = 5,

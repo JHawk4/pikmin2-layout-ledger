@@ -22,3 +22,6 @@ p2seeds = "p2seeds.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+p2seeds = ["data/digits/*.png"]

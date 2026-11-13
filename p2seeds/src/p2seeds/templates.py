@@ -19,18 +19,39 @@ APOSTROPHE_MULT = 0.6875
 DEFAULT_DIR = Path(__file__).resolve().parents[3] / "vendor" / "CaveGen" / "files" / "templates" / "letters"
 
 
+def match(image: np.ndarray, template: np.ndarray) -> np.ndarray:
+    """cv2 TM_CCOEFF_NORMED, with the meaningless scores on flat patches zeroed.
+
+    Prepped frames are mostly exactly 0; a patch with no variance makes the
+    normalization divide by zero, which OpenCV reports as ~1.0 or inf.
+    """
+    res = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
+    ones = np.ones_like(template)
+    s1 = cv2.matchTemplate(image, ones, cv2.TM_CCORR)
+    s2 = cv2.matchTemplate(image * image, ones, cv2.TM_CCORR)
+    var = s2 / ones.size - (s1 / ones.size) ** 2
+    res[~np.isfinite(res) | (var < 1e-4)] = 0.0
+    return res
+
+
 def prep(gray: np.ndarray) -> np.ndarray:
     """Map to [0,1] emphasizing the bright glyph outlines over the grey background smoke."""
     return np.clip((gray.astype(np.float32) - 90.0) / 120.0, 0.0, 1.0)
 
 
 @lru_cache(maxsize=None)
-def glyph(ch: str, directory: str = str(DEFAULT_DIR)) -> np.ndarray:
+def raw_glyph(ch: str, directory: str = str(DEFAULT_DIR)) -> np.ndarray:
+    """The template as stored (grayscale 0-255)."""
     name = ch + ch if ch.isupper() else ch
     img = cv2.imread(str(Path(directory) / f"{name}.png"), cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise FileNotFoundError(f"no glyph template for {ch!r} in {directory}")
-    return prep(img)
+    return img
+
+
+@lru_cache(maxsize=None)
+def glyph(ch: str, directory: str = str(DEFAULT_DIR)) -> np.ndarray:
+    return prep(raw_glyph(ch, directory))
 
 
 def advance_width(ch: str) -> float:
