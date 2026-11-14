@@ -2,6 +2,7 @@
 
   p2seeds analyze VIDEO [--url URL] [--out DIR]       one video file
   p2seeds run [--manifest data/videos/manifest.json]   every downloaded run in a manifest
+  p2seeds judge OUT_DIR [--kind pod]                   judge a processed run's layouts with CaveGen
 """
 
 from __future__ import annotations
@@ -98,7 +99,19 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--out", default="data/output")
     r.add_argument("--only", default=None, help="run id or slug substring")
     r.add_argument("--no-render", action="store_true")
+    j = sub.add_parser("judge", help="score each recovered layout with CaveGen's judge and write judge.html")
+    j.add_argument("out_dir", help="a processed run folder (contains seeds.json and img/)")
+    j.add_argument("--kind", default="pod", help="CaveGen judge type: pod, at, key, cmat, score, attk")
     args = ap.parse_args(argv)
+
+    if args.cmd == "judge":
+        from . import judge_report
+        out = Path(args.out_dir)
+        judge_report.judge_run(out, args.kind, progress=lambda i, n, r: log(
+            f"  {i:>3}/{n} {r['cave']} {r['sublevel']} {r['layout_seed']} -> "
+            + (f"{r['judge_score']:.2f} s ({r['judge_rank']:.1f}%)" if "judge_score" in r else "no judge")))
+        log(f"report: {judge_report.write_page(out)}")
+        return 0
 
     if args.cmd == "analyze":
         out = Path(args.out or f"data/output/{Path(args.video).stem}")

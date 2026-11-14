@@ -40,7 +40,13 @@ Node is used by yt-dlp to download from YouTube.
 
 # or one file
 .venv/Scripts/python -m p2seeds analyze data/videos/some_run.mp4 --url https://www.youtube.com/watch?v=...
+
+# score each recovered layout with CaveGen's judge -> data/output/<run>/judge.html, judge.json
+.venv/Scripts/python -m p2seeds judge data/output/01_JackDraz_mewq470m --kind pod
 ```
+
+`judge.html` embeds every layout render. For each sublevel it shows CaveGen's estimated clear time
+and how that compares with 1000 random layouts. Fixed floors, where every seed scores the same, are marked.
 
 ## Tests
 
