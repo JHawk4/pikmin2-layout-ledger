@@ -30,6 +30,13 @@ STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "
 STEP_LIMIT = 50_000_000      # consecutive seeds further apart than this count as a break
 
 
+def _run_label(run: dict, fallback: str) -> str:
+    """A run is a player and a time: 'JackDraz 1:30:25'."""
+    name = ", ".join(p["name"] for p in run.get("players", [])) or fallback
+    t = run.get("time_seconds")
+    return f"{name} {_fmt_time(t)}" if t else name
+
+
 def _load(root: Path) -> list[dict]:
     runs = []
     for d in sorted(p.parent for p in root.glob("*/judge.json")):
@@ -38,8 +45,9 @@ def _load(root: Path) -> list[dict]:
         run = meta.get("run", {})
         runs.append({"dir": d, "slug": d.name, "meta": meta, "run": run, "kind": data.get("kind", "pod"),
                      "entries": data["entries"], "fps": meta.get("fps", 30.0),
-                     "runner": ", ".join(p["name"] for p in run.get("players", [])) or d.name})
-    runs.sort(key=lambda r: (r["run"].get("place") or 99, r["slug"]))
+                     "player": ", ".join(p["name"] for p in run.get("players", [])) or d.name,
+                     "runner": _run_label(run, d.name)})
+    runs.sort(key=lambda r: (r["run"].get("time_seconds") or 1e9, r["slug"]))     # fastest first
     return runs
 
 
@@ -413,8 +421,9 @@ def build(root: str | Path = "data/output") -> Path:
         run_total = sum(v["net"] for v in act.values()) if act else None
         high = sum(1 for x in e if x.get("confidence") == "high")
         link = r["run"].get("weblink")
-        trs.append(f'<tr><td>{r["run"].get("place", "")}</td><td><a href="{html.escape(r["slug"])}/judge.html">'
-                   f'{html.escape(r["runner"])}</a></td><td>{_fmt_time(r["run"].get("time_seconds"))}</td>'
+        tag = "former WR" if r["run"].get("series") == "wr" else str(r["run"].get("place", ""))
+        trs.append(f'<tr><td>{tag}</td><td><a href="{html.escape(r["slug"])}/judge.html">'
+                   f'{html.escape(r["player"])}</a></td><td>{_fmt_time(r["run"].get("time_seconds"))}</td>'
                    f'<td>{html.escape(r["run"].get("date", ""))}</td><td>{html.escape(r["run"].get("platform", ""))}</td>'
                    f'<td class="num">{len(e)}</td><td class="num">{high}</td><td class="num">{judge_report._num(judge_total)}</td><td class="num">{judge_report._num(run_total)}</td>'
                    f'<td><a href="{html.escape(r["slug"])}/report.html">detection</a>'
@@ -456,7 +465,7 @@ code {{ font:13px ui-monospace,Consolas,monospace; }}
 Open a run for its layouts and per-sublevel luck.</p>
 
 <div class="tablewrap"><table>
-<thead><tr><th>#</th><th>Runner</th><th>Time</th><th>Date</th><th>Platform</th><th class="num">Sublevels</th>
+<thead><tr><th>Board</th><th>Runner</th><th>Time</th><th>Date</th><th>Platform</th><th class="num">Sublevels</th>
 <th class="num">High conf.</th><th class="num">Judge (layouts)</th><th class="num">Run (net)</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
 

@@ -5,6 +5,7 @@
   p2seeds judge OUT_DIR [--kind pod]                   judge a processed run's layouts with CaveGen
   p2seeds render OUT_DIR                               render layouts missing from img/ (after --no-render)
   p2seeds site [--root data/output]                    landing page + one page per judged run
+  p2seeds batch [--manifest ...] [--jobs 4]            run + judge + treasures for every new run, then site
   p2seeds treasures OUT_DIR                            count treasure panels per sublevel (for calibration)
 """
 
@@ -119,6 +120,11 @@ def main(argv: list[str] | None = None) -> int:
     tr = sub.add_parser("treasures", help="count treasures collected per sublevel from the treasure panel")
     tr.add_argument("out_dir")
     tr.add_argument("--rescan", action="store_true", help="scan the video for panels again")
+    bt = sub.add_parser("batch", help="process every downloaded run not done yet (run, judge, treasures), then the site")
+    bt.add_argument("--manifest", default="data/videos/manifest.json")
+    bt.add_argument("--out", default="data/output")
+    bt.add_argument("--jobs", type=int, default=4, help="runs processed at the same time")
+    bt.add_argument("--kind", default="pod", help="judge type for new runs")
     st = sub.add_parser("site", help="write index.html over every judged run, and refresh each run's page")
     st.add_argument("--root", default="data/output")
     args = ap.parse_args(argv)
@@ -133,6 +139,9 @@ def main(argv: list[str] | None = None) -> int:
         treasures.read_values(out, progress=lambda i, n, v: log(
             f"  {v['cave']} {v['sublevel']}: {v['pokos']} pokos from {[c[0] if c else '?' for c in v['collected']]}"))
         return 0
+
+    if args.cmd == "batch":
+        return _batch(args)
 
     if args.cmd == "site":
         from . import site
@@ -182,6 +191,47 @@ def main(argv: list[str] | None = None) -> int:
         run_video(entry["download"]["path"], Path(args.out) / slug, entry.get("video"), title,
                   meta={"run": run}, render=not args.no_render)
     return 0
+
+
+def _batch(args) -> int:
+    """One subprocess per run (isolated, parallel): detect seeds, judge, count treasures."""
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor
+
+    manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))["runs"]
+    todo = []
+    for run_id, entry in manifest.items():
+        if entry.get("status") != "ok":
+            continue
+        out = Path(args.out) / Path(entry["download"]["path"]).stem
+        if not (out / "seeds.json").exists() or not (out / "judge.json").exists() or not (out / "treasures.json").exists():
+            todo.append((run_id, out))
+    log(f"{len(todo)} run(s) to process with {args.jobs} job(s)")
+    py = [sys.executable, "-m", "p2seeds"]
+
+    def one(item):
+        run_id, out = item
+        logf = out.parent / f"{out.name}.log"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        steps = []
+        if not (out / "seeds.json").exists():
+            steps.append(py + ["run", "--manifest", args.manifest, "--out", args.out, "--only", run_id])
+        steps.append(py + ["judge", str(out), "--kind", args.kind])
+        steps.append(py + ["treasures", str(out)])
+        with open(logf, "a", encoding="utf-8") as fh:
+            for cmd in steps:
+                if subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode != 0:
+                    return run_id, f"failed at `{' '.join(cmd[2:4])}` (see {logf})"
+        return run_id, "ok"
+
+    failed = 0
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        for run_id, status in pool.map(one, todo):
+            log(f"  {run_id}: {status}")
+            failed += status != "ok"
+    from . import site
+    log(f"site: {site.build(args.out)}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

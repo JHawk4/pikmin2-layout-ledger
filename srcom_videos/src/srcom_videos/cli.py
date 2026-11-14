@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .api import SrcomClient
 from .download import DownloadOptions, download_video
-from .leaderboard import top_runs
+from .leaderboard import top_runs, wr_history
 from .manifest import Manifest
 
 
@@ -43,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--category", required=True)
         p.add_argument("--var", action="append", default=[], help="NAME=VALUE, repeatable")
         p.add_argument("--top", type=int, default=5)
+        p.add_argument("--wr-history", action="store_true",
+                       help="every run that was the world record when set, instead of the leaderboard")
+        p.add_argument("--skip", type=int, default=0, help="leave out the first N leaderboard places")
+        p.add_argument("--region", default=None, help="keep runs whose region contains this text, e.g. USA")
+        p.add_argument("--since", default=None, help="keep runs on or after this date (YYYY-MM-DD)")
         p.add_argument("--cache", default="data/cache/srcom")
     d = sub.choices["download"]
     d.add_argument("--out", default="data/videos")
@@ -54,12 +59,20 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     client = SrcomClient(cache_dir=args.cache)
-    runs = top_runs(client, args.game, args.category, _parse_vars(args.var), args.top)
+    if args.wr_history:
+        runs = wr_history(client, args.game, args.category, _parse_vars(args.var))
+    else:
+        runs = top_runs(client, args.game, args.category, _parse_vars(args.var), args.top)[args.skip:]
+    if args.region:
+        runs = [r for r in runs if args.region.lower() in (r.region or "").lower()]
+    if args.since:
+        runs = [r for r in runs if (r.date or "") >= args.since]
 
     if args.cmd == "list":
         for r in runs:
             links = " ".join(v.canonical_url for v in r.videos) or "(no video)"
-            print(f"{r.place:>3}  {r.player_names:<20} {_fmt_time(r.time_seconds):>9}  {r.date}  {r.platform}/{r.region}  {links}")
+            tag = f"{r.series or ''}{r.place}"
+            print(f"{tag:>5}  {r.player_names:<20} {_fmt_time(r.time_seconds):>9}  {r.date}  {r.platform}/{r.region}  {links}")
         return 0
 
     out = Path(args.out)

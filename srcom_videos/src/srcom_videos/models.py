@@ -33,6 +33,7 @@ class Run:
     emulated: bool = False
     videos: list[VideoLink] = field(default_factory=list)
     values: dict[str, str] = field(default_factory=dict)
+    series: str | None = None   # None: a leaderboard place; "wr": position in the world-record history
 
     @property
     def player_names(self) -> str:
@@ -41,7 +42,8 @@ class Run:
     def slug(self) -> str:
         """Filesystem-safe name, stable across runs: `03_playername_runid`."""
         name = re.sub(r"[^A-Za-z0-9_-]+", "-", self.player_names).strip("-") or "unknown"
-        return f"{self.place:02d}_{name}_{self.id}"
+        prefix = f"{self.series}{self.place:02d}" if self.series else f"{self.place:02d}"
+        return f"{prefix}_{name}_{self.id}"
 
     def to_dict(self) -> dict:
         return asdict(self)
