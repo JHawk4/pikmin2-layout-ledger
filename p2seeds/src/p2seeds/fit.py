@@ -59,13 +59,14 @@ def free_fall(track: Track, min_score: float = 0.55) -> tuple[np.ndarray, np.nda
     return np.array(keep_f, float), np.array(keep_y, float)
 
 
-def fit(tracks: list[Track], num_chars: int, s_guess: float, min_points: int = 4) -> FitResult:
+def fit(tracks: list[Track], num_chars: int, s_guess: float, min_points: int = 4,
+        min_score: float = 0.55, min_letters: int = 3) -> FitResult:
     data = []
     for t in tracks:
-        f, y = free_fall(t)
+        f, y = free_fall(t, min_score=min_score)
         if len(f) >= min_points:
             data.append((t.index, f - letters_model.delay_frames(t.index, num_chars), y))
-    if len(data) < 3:
+    if len(data) < min_letters:
         raise ValueError("too few letters with a usable fall")
     idx = [d[0] for d in data]
     floor0 = max(t.rest_y for t in tracks)

@@ -38,14 +38,22 @@ class Calibration:
     y: int
     letters: list[LetterBox] = field(default_factory=list)
     runner_up: tuple[str, float] | None = None
+    gsx: float | None = None   # horizontal glyph scale when it differs from the pitch scale sx (Japanese)
 
     @property
     def glyph_height(self) -> float:
         return 40 * self.sy
 
 
-def compose(name: str, sx: float, sy: float) -> tuple[np.ndarray, list[tuple[int, str, int, np.ndarray]]]:
-    """Render `name` at scale (sx, sy). Returns the image and (index, ch, x, glyph) per drawn letter."""
+def compose(name: str, sx: float, sy: float, gsx: float | None = None
+            ) -> tuple[np.ndarray, list[tuple[int, str, int, np.ndarray]]]:
+    """Render `name` at scale (sx, sy). Returns the image and (index, ch, x, glyph) per drawn letter.
+
+    `sx` scales the advance from one character to the next; glyphs are drawn
+    `gsx` wide (default sx). English names are squeezed as a whole, so both are
+    equal; Japanese characters keep their shape while the pitch varies.
+    """
+    gsx = sx if gsx is None else gsx
     h = max(1, int(round(40 * sy)))
     pieces = []
     x = 0.0
@@ -53,11 +61,15 @@ def compose(name: str, sx: float, sy: float) -> tuple[np.ndarray, list[tuple[int
         w_adv = templates.advance_width(ch) * sx
         if templates.has_glyph(ch):
             g = templates.glyph(ch)
-            gw = max(1, int(round(g.shape[1] * sx)))
+            gw = max(1, int(round(g.shape[1] * gsx)))
             gs = cv2.resize(g, (gw, max(1, int(round(g.shape[0] * sy)))), interpolation=cv2.INTER_AREA)
-            pieces.append((i, ch, int(round(x)), gs[:h]))
+            pieces.append((i, ch, int(round(x + ((w_adv - gw) / 2 if gsx != sx else 0))), gs[:h]))
         x += w_adv
-    img = np.zeros((h, int(round(x)) + 2), np.float32)
+    shift = -min((px for _, _, px, _ in pieces), default=0)
+    if shift > 0:
+        pieces = [(i, ch, px + shift, g) for i, ch, px, g in pieces]
+    right = max((px + g.shape[1] for _, _, px, g in pieces), default=0)
+    img = np.zeros((h, int(round(max(x, right))) + 2), np.float32)
     for _, _, px, gs in pieces:
         img[: gs.shape[0], px: px + gs.shape[1]] = np.maximum(img[: gs.shape[0], px: px + gs.shape[1]], gs)
     return img, pieces
@@ -96,11 +108,24 @@ def calibrate(
     # background swirls can inflate, so it is searched widely. A coarse pass ranks
     # every cave; only the two best get the fine grid.
     sy0 = 0.99 * H / 480.0
+    # A 16:9 picture (Wii) spreads the characters by 4/3 but draws each glyph unstretched.
+    wide = (W / H) / (4 / 3) if W / H > 1.55 else 1.0
 
     def best_fit(cave: Cave, sys, sx_factors, extra_ratios) -> tuple | None:
+        best = None
+        if cave.lang == "ja":
+            # glyphs at their natural size, character pitch free
+            for sy in sys:
+                for pitch in wide * np.linspace(0.95, 1.3, 2 * len(sx_factors) - 1):
+                    img, _ = compose(cave.name, sy * pitch, sy, gsx=sy)
+                    if img.shape[0] >= region.shape[0] or img.shape[1] >= region.shape[1]:
+                        continue
+                    _, score, _, loc = cv2.minMaxLoc(templates.match(region, img))
+                    if best is None or score > best[0]:
+                        best = (score, sy * pitch, sy, loc)
+            return best
         base_w = compose(cave.name, 1.0, 1.0)[0].shape[1]
         sx0 = min(sy0, text_w / max(1.0, base_w - 4))
-        best = None
         for sy in sys:
             for sx in np.unique(np.r_[sx0 * sx_factors, sy * extra_ratios]):
                 img, _ = compose(cave.name, sx, sy)
@@ -127,9 +152,13 @@ def calibrate(
         return None
     results.sort(key=lambda r: -r[0][0])
     (score, sx, sy, (lx, ly)), cave = results[0]
-    _, pieces = compose(cave.name, sx, sy)
-    cal = Calibration(cave, float(score), float(sx), float(sy), lx, y0 + ly)
+    gsx = sy if cave.lang == "ja" else None
+    _, pieces = compose(cave.name, sx, sy, gsx=gsx)
+    cal = Calibration(cave, float(score), float(sx), float(sy), lx, y0 + ly, gsx=gsx)
     cal.letters = [LetterBox(i, ch, lx + px, y0 + ly, g) for i, ch, px, g in pieces]
-    if len(results) > 1:
-        cal.runner_up = (results[1][1].name, float(results[1][0][0]))
+    # the runner-up decides the margin; a cave whose name is part of the winner's
+    # (夢の穴 inside けだものの穴) matches that part and says nothing against it
+    rivals = [(b, c) for b, c in results[1:] if c.cavegen != cave.cavegen and c.name not in cave.name]
+    if rivals:
+        cal.runner_up = (rivals[0][1].name, float(rivals[0][0][0]))
     return cal

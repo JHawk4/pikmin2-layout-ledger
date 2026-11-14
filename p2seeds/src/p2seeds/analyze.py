@@ -17,6 +17,7 @@ from .video import Video
 
 MIN_CAVE_SCORE = 0.38      # name-match score below this means "not an entry screen"
 MIN_CAVE_MARGIN = 0.12     # and the best cave must beat the second best by this much
+MIN_CAVE_SCORE_JA = 0.48   # short Japanese names match random text up to ~0.40; true ones score ~0.6
 FALL_LEAD = 110            # frames before a settled run starts that may contain the fall
 FALL_TAIL = 40             # and after (late bounces)
 MAX_FIT_RMS_PX = 0.6       # good fits are ~0.05-0.15 px
@@ -41,6 +42,8 @@ class EventResult:
     digit_votes: dict = field(default_factory=dict)
     sublevel: int | None = None
     sublevel_source: str = ""
+    lang: str = "en"
+    num_chars: int = 0
 
 
 def entry_runs(frames: list[np.ndarray], min_len: int = 6) -> list[tuple[int, int]]:
@@ -64,8 +67,12 @@ def entry_runs(frames: list[np.ndarray], min_len: int = 6) -> list[tuple[int, in
     return runs
 
 
-def digit_crop(feed_gray: np.ndarray) -> np.ndarray | None:
-    """The rightmost glyph on the 'Sublevel N' line (the number), prepped."""
+def digit_crop(feed_gray: np.ndarray, lang: str = "en") -> np.ndarray | None:
+    """The number at the end of the 'Sublevel N' line (or Japanese '地下 N'), prepped.
+
+    One or two digits: the rightmost group of glyphs, trimmed to its own rows. In
+    Japanese a leading "1" (10-15) sits further from the next digit than the
+    grouping gap, so a narrow glyph just left of the number joins it."""
     H = feed_gray.shape[0]
     y0, y1 = int(0.46 * H), int(0.70 * H)
     p = templates.prep(feed_gray[y0:y1])
@@ -74,7 +81,7 @@ def digit_crop(feed_gray: np.ndarray) -> np.ndarray | None:
     cols = np.nonzero(on.any(axis=0))[0]
     if len(rows) == 0 or len(cols) == 0:
         return None
-    # glyph groups separated by gaps of >= 6% of the line height
+    # glyph groups separated by gaps of >= 25% of the line height
     gap = max(3, int(0.25 * (rows[-1] - rows[0] + 1)))
     groups, start = [], cols[0]
     for a, b in zip(cols[:-1], cols[1:]):
@@ -83,10 +90,44 @@ def digit_crop(feed_gray: np.ndarray) -> np.ndarray | None:
             start = b
     groups.append((start, cols[-1]))
     x0, x1 = groups[-1]
-    glyph_rows = np.nonzero(on[:, x0: x1 + 1].any(axis=1))[0]   # the digit's own height
+    h = rows[-1] - rows[0] + 1
+    if lang == "ja" and len(groups) > 1:
+        a, b = groups[-2]
+        if b - a + 1 < 0.45 * h and x0 - b <= 0.8 * h:
+            x0 = a
+    glyph_rows = np.nonzero(on[:, x0: x1 + 1].any(axis=1))[0]   # the number's own height
     if len(glyph_rows) == 0:
         return None
     return p[glyph_rows[0]: glyph_rows[-1] + 1, x0: x1 + 1]
+
+
+def split_digits(crop: np.ndarray | None) -> list[np.ndarray]:
+    """Cut a number into its digits at empty columns; each digit is trimmed to its rows."""
+    if crop is None or crop.size == 0:
+        return []
+    on = crop > 0.5
+    filled = on.any(axis=0)
+    h = crop.shape[0]
+    parts, start = [], None
+    for x, f in enumerate(np.r_[filled, False]):
+        if f and start is None:
+            start = x
+        elif not f and start is not None:
+            parts.append((start, x))
+            start = None
+    # merge slivers (a broken stroke) into their neighbor
+    merged: list[list[int]] = []
+    for a, b in parts:
+        if merged and (b - a < 0.12 * h or merged[-1][1] - merged[-1][0] < 0.12 * h) and a - merged[-1][1] <= 2:
+            merged[-1][1] = b
+        else:
+            merged.append([a, b])
+    out = []
+    for a, b in merged:
+        rows = np.nonzero(on[:, a:b].any(axis=1))[0]
+        if len(rows) and rows[-1] - rows[0] + 1 >= 0.6 * h:     # a digit spans the line height
+            out.append(crop[rows[0]: rows[-1] + 1, a:b])
+    return out
 
 
 def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None = None) -> list[EventResult]:
@@ -110,7 +151,8 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
         k = max(a, b - 3)             # late in the run: bubbles have faded, before the fade-out
         cal = calibrate(frames[k])
         margin = cal.score - (cal.runner_up[1] if cal.runner_up else 0.0) if cal else 0.0
-        if cal is None or cal.score < MIN_CAVE_SCORE or margin < MIN_CAVE_MARGIN:
+        min_score = MIN_CAVE_SCORE_JA if cal is not None and cal.cave.lang == "ja" else MIN_CAVE_SCORE
+        if cal is None or cal.score < min_score or margin < MIN_CAVE_MARGIN:
             if cal and (best_reject is None or cal.score > best_reject[0].score):
                 best_reject = (cal, margin)
             continue
@@ -132,9 +174,11 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
 def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=None) -> EventResult:
     r = EventResult(event)
     r.settled_frame = start + k
-    r.cave, r.cave_id, r.cave_score, r.runner_up = cal.cave.name, cal.cave.cavegen, cal.score, cal.runner_up
-    r.digit_crop = digit_crop(frames[k])
-    r.digit_value, r.digit_votes = _read_sublevel(frames, a, b)
+    r.cave, r.cave_id, r.cave_score, r.runner_up = cal.cave.label, cal.cave.cavegen, cal.score, cal.runner_up
+    r.lang = cal.cave.lang
+    r.num_chars = cal.cave.num_chars
+    r.digit_crop = digit_crop(frames[k], r.lang)
+    r.digit_value, r.digit_votes = _read_sublevel(frames, a, b, lang=r.lang)
 
     # the fall ends shortly after the run starts (bounces settle inside it)
     if a < FALL_LEAD:
@@ -144,16 +188,21 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
     fall, times = game_times(frames[a - FALL_LEAD: min(len(frames), a + FALL_TAIL)])
     tracks = [replace(t, frames=times[t.frames.astype(int)]) for t in track_all(fall, cal)]
     try:
-        r.fit = fit(tracks, cal.cave.num_chars, s_guess=feed.height / 480.0)
+        # Japanese glyphs match less sharply and short names lose 1-2 characters to the fade-in
+        ja = cal.cave.lang == "ja"
+        fit_kw = dict(min_score=0.5, min_letters=2) if ja else {}
+        r.fit = fit(tracks, cal.cave.num_chars, s_guess=feed.height / 480.0, **fit_kw)
     except ValueError as exc:
         r.note = f"fit failed: {exc}"
         return r
-    if np.sum(np.isfinite(r.fit.v)) < 6:
-        r.note = "too few letters measured"
+    n_meas = int(np.sum(np.isfinite(r.fit.v)))
+    if n_meas < 4:
+        r.note = "too few letters measured"   # chain.link may still find it near a neighbor
+        r.confidence = "none"
         return r
     if r.fit.rms_px <= MAX_FIT_RMS_PX:
         r.candidates, r.confidence = _search(r.fit, search_kw)
-    if r.confidence != "high":
+    if r.confidence != "high" and n_meas >= 7:
         # the capture may have skipped or repeated one game frame mid-fall
         for f2, d, k in _fit_with_step(tracks, cal.cave.num_chars, feed.height / 480.0, r.fit):
             c2, conf2 = _search(f2, search_kw)
@@ -269,11 +318,17 @@ def drop_repeats(frames: list[np.ndarray], **kw) -> list[np.ndarray]:
     return game_times(frames, **kw)[0]
 
 
-def _read_sublevel(frames: list[np.ndarray], a: int, b: int, n: int = 7) -> tuple[int | None, dict]:
+def _read_sublevel(frames: list[np.ndarray], a: int, b: int, n: int = 7, lang: str = "en") -> tuple[int | None, dict]:
     """Read the sublevel digit on several frames of the settled run; majority of clear reads."""
     votes: dict[int, int] = {}
     for j in np.linspace(a, b, n).astype(int):
-        value, _ = digits.read(digit_crop(frames[j]))
+        crop = digit_crop(frames[j], lang)
+        # two digits when the crop splits into two readable ones; else one digit
+        # (some Japanese digits are drawn in separate strokes and split apart)
+        parts = split_digits(crop)
+        value = digits.read_number(parts) if len(parts) == 2 else None
+        if value is None and crop is not None:
+            value = digits.read(crop)[0]
         if value is not None:
             votes[value] = votes.get(value, 0) + 1
     if not votes:

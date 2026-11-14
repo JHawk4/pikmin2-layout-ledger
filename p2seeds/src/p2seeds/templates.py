@@ -1,7 +1,8 @@
 """Letter glyphs for the entry-screen font, taken from CaveGen's templates.
 
 CaveGen stores them as files/templates/letters/<c>.png for lowercase and
-<cc>.png for uppercase (case-insensitive filesystems). Spaces and apostrophes
+<cc>.png for uppercase (case-insensitive filesystems), and Japanese characters
+as u<code point>.png. Spaces and apostrophes
 have no glyph; like continuous.py they take a fraction of the width of 'l'.
 """
 
@@ -43,7 +44,10 @@ def prep(gray: np.ndarray) -> np.ndarray:
 @lru_cache(maxsize=None)
 def raw_glyph(ch: str, directory: str = str(DEFAULT_DIR)) -> np.ndarray:
     """The template as stored (grayscale 0-255)."""
-    name = ch + ch if ch.isupper() else ch
+    if not ch.isascii():
+        name = f"u{ord(ch):04x}"          # Japanese: CaveGen names these by code point
+    else:
+        name = ch + ch if ch.isupper() else ch
     img = cv2.imread(str(Path(directory) / f"{name}.png"), cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise FileNotFoundError(f"no glyph template for {ch!r} in {directory}")

@@ -1,6 +1,6 @@
 """Read the sublevel number from the "Sublevel N" line.
 
-Reference digits (1-9, plus 1x for two-digit numbers) live in data/digits as
+Reference digits (0-9) live in data/digits as
 prepped grayscale PNGs cropped from real entry screens. A crop is compared to
 each reference after resizing both to a common size.
 """
@@ -24,6 +24,8 @@ def references() -> dict[int, list[np.ndarray]]:
     refs: dict[int, list[np.ndarray]] = {}
     for p in sorted(DATA.glob("*.png")):
         value = int(p.stem.split("_")[0])
+        if not 0 <= value <= 9:
+            continue
         img = cv2.imread(str(p), cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0
         refs.setdefault(value, []).append(_norm(img))
     return refs
@@ -54,3 +56,14 @@ def save_reference(value: int, crop: np.ndarray, tag: str) -> Path:
     path = DATA / f"{value}_{tag}.png"
     cv2.imwrite(str(path), np.clip(crop * 255, 0, 255).astype(np.uint8))
     return path
+
+
+def read_number(parts: list[np.ndarray]) -> int | None:
+    """A one- or two-digit number from its digit crops (see analyze.split_digits)."""
+    if not 1 <= len(parts) <= 2:
+        return None
+    values = [read(p)[0] for p in parts]
+    if any(v is None for v in values):
+        return None
+    number = int("".join(str(v) for v in values))
+    return number if number >= 1 else None

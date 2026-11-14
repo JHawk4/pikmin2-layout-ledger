@@ -38,8 +38,8 @@ def is_entry_screen(feed_gray: np.ndarray, dark_max: float = 60.0) -> bool:
     rows = p.mean(axis=1)
     n0, n1 = int(NAME_BAND[0] * H), int(NAME_BAND[1] * H)
     s0, s1 = int(SUB_BAND[0] * H), int(SUB_BAND[1] * H)
-    name = rows[n0:n1].max() > 0.03
-    sub = rows[s0:s1].max() > 0.03
+    name = rows[n0:n1].max() > 0.015      # a short Japanese name covers ~2.5% of a row
+    sub = rows[s0:s1].max() > 0.015
     outside = np.r_[rows[: int(0.12 * H)], rows[int(0.80 * H):]].max() if H else 1
     return bool(name and sub and outside < 0.005)
 

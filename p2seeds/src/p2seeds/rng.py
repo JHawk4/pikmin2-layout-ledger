@@ -74,3 +74,33 @@ def advance(states: np.ndarray, n: int) -> np.ndarray:
     """Advance a uint64 array of 32-bit states by n (may be negative)."""
     a, c = jump(n)
     return (states * np.uint64(a) + np.uint64(c)) & np.uint64(MASK32)
+
+
+def forward_states(s0: int, n: int) -> np.ndarray:
+    """States s0 advanced 1, 2, ..., n times (mod 2^32), as uint64. Built by doubling."""
+    a = np.empty(n, np.uint64)
+    c = np.empty(n, np.uint64)
+    a[0], c[0] = A, C
+    done = 1
+    while done < n:
+        m = min(done, n - done)
+        ja, jc = jump(done)
+        a[done:done + m] = (a[:m] * np.uint64(ja)) & np.uint64(MASK32)
+        c[done:done + m] = (c[:m] * np.uint64(ja) + np.uint64(jc)) & np.uint64(MASK32)
+        done += m
+    return (a * np.uint64(s0 & MASK32) + c) & np.uint64(MASK32)
+
+
+def distance(s0: int, target: int, limit: int = 1 << 24, block: int = 1 << 22) -> int | None:
+    """Smallest n >= 1 with next_seed(s0, n) == target (both mod 2^31), if n <= limit."""
+    t = np.uint64(target & MASK31)
+    done, s = 0, s0
+    while done < limit:
+        b = min(block, limit - done)
+        st = forward_states(s, b) & np.uint64(MASK31)
+        hit = np.nonzero(st == t)[0]
+        if len(hit):
+            return done + int(hit[0]) + 1
+        s = int(st[-1])
+        done += b
+    return None

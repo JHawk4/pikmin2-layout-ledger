@@ -37,6 +37,7 @@ class Candidate:
     score: float            # robust chi-square over measured characters, after removing the bias
     bias: float             # fitted constant (v_seed - v_measured)
     residuals: np.ndarray   # (v_seed - v_measured - bias) per character (nan where unmeasured)
+    distance: int | None = None  # for search_near: RNG steps from the anchor state
 
 
 def search(
@@ -114,3 +115,49 @@ def _score(states, v, sigma, measured, jumps, pivot, cap, max_bias):
         r[m] = res[k]
         out.append(Candidate(seed, float(total[k]), float(bias[k]), r))
     return out
+
+
+def search_near(
+    v: np.ndarray,
+    sigma: np.ndarray,
+    anchor: int,
+    max_dist: int,
+    max_bias: float = 0.5,
+    cap: float = 16.0,
+    top: int = 5,
+    block: int = 1 << 21,
+) -> list[Candidate]:
+    """Like `search`, but only letter seeds reached from `anchor` within `max_dist` steps.
+
+    Between two sublevel entries the game advances the RNG a bounded amount
+    (well under a million steps in practice), so once one sublevel's layout seed
+    is known the next letter seed lies just after it. Every candidate in that
+    window is scored, which works with as few as 2-3 measured characters.
+    """
+    v = np.asarray(v, dtype=np.float64)
+    sigma = np.asarray(sigma, dtype=np.float64)
+    m = np.array([i for i in range(len(v)) if np.isfinite(v[i]) and np.isfinite(sigma[i])])
+    if len(m) < 2:
+        raise ValueError("need at least 2 measured characters")
+    w = 1.0 / sigma[m] ** 2
+    n = len(v)
+    best: list[Candidate] = []
+    s, done = anchor, 0
+    while done < max_dist:
+        b = min(block, max_dist - done)
+        st = rng.forward_states(s, b + n)          # st[j] = s advanced j+1
+        r = rng.rand_of_state(st).astype(np.float64) * V_PER_RAND
+        # letter seed = s advanced d+1 (d = 0..b-1); its character i reads st[d+1+i]
+        dm = np.stack([r[1 + i: 1 + i + b] - v[i] for i in m], axis=1)
+        bias = np.clip(np.median(dm, axis=1), -max_bias, max_bias)
+        res = dm - bias[:, None]
+        total = np.minimum(res ** 2 * w, cap).sum(axis=1)
+        for k in np.argsort(total)[:top]:
+            rr = np.full(n, np.nan)
+            rr[m] = res[k]
+            best.append(Candidate(int(st[k]) & rng.MASK31, float(total[k]), float(bias[k]), rr, done + int(k) + 1))
+        best.sort(key=lambda c: c.score)
+        del best[top:]
+        s = int(st[b - 1])
+        done += b
+    return best
