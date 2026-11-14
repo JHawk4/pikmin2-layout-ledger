@@ -4,6 +4,8 @@
   p2seeds run [--manifest data/videos/manifest.json]   every downloaded run in a manifest
   p2seeds judge OUT_DIR [--kind pod]                   judge a processed run's layouts with CaveGen
   p2seeds render OUT_DIR                               render layouts missing from img/ (after --no-render)
+  p2seeds site [--root data/output]                    landing page + one page per judged run
+  p2seeds treasures OUT_DIR                            count treasure panels per sublevel (for calibration)
 """
 
 from __future__ import annotations
@@ -114,7 +116,28 @@ def main(argv: list[str] | None = None) -> int:
     j.add_argument("--kind", default="pod", help="CaveGen judge type: pod, at, key, cmat, score, attk")
     rd = sub.add_parser("render", help="render every seeded layout missing from OUT_DIR/img")
     rd.add_argument("out_dir")
+    tr = sub.add_parser("treasures", help="count treasures collected per sublevel from the treasure panel")
+    tr.add_argument("out_dir")
+    tr.add_argument("--rescan", action="store_true", help="scan the video for panels again")
+    st = sub.add_parser("site", help="write index.html over every judged run, and refresh each run's page")
+    st.add_argument("--root", default="data/output")
     args = ap.parse_args(argv)
+
+    if args.cmd == "treasures":
+        from . import treasures
+        out = Path(args.out_dir)
+        have = treasures.load(out)
+        if args.rescan or not have or any("panels" not in v for v in have.values()):
+            treasures.count_run(out, progress=lambda i, n, e, c: log(
+                f"  {i:>3}/{n} {e['cave']} {e['sublevel']}: {c} treasure panel(s)"))
+        treasures.read_values(out, progress=lambda i, n, v: log(
+            f"  {v['cave']} {v['sublevel']}: {v['pokos']} pokos from {[c[0] if c else '?' for c in v['collected']]}"))
+        return 0
+
+    if args.cmd == "site":
+        from . import site
+        log(f"site: {site.build(args.root)}")
+        return 0
 
     if args.cmd == "render":
         out = Path(args.out_dir)

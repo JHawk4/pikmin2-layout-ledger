@@ -50,6 +50,8 @@ def rows(results, fps: float, video_url: str | None) -> list[dict]:
             "runner_up_score": round(r.candidates[1].score, 2) if len(r.candidates) > 1 else None,
             "cave_match": round(r.cave_score, 3),
             "note": r.note,
+            "chain_dist": getattr(r, "chain_dist", None),
+            "lang": getattr(r, "lang", "en"),
         })
     return out
 

@@ -45,6 +45,19 @@ Node is used by yt-dlp to download from YouTube.
 .venv/Scripts/python -m p2seeds judge data/output/01_JackDraz_mewq470m --kind pod
 ```
 
+```bash
+# treasures and pokos per sublevel, from the treasure panel in the video (run before `site`)
+.venv/Scripts/python -m p2seeds treasures data/output/01_JackDraz_mewq470m
+```
+
+```bash
+# landing page over every judged run -> data/output/index.html (and refreshes each run's judge.html)
+.venv/Scripts/python -m p2seeds site
+```
+
+The landing page also shows where each seed falls in the RNG sequence (it should rise steadily through a
+run) and checks the judge against real sublevel times measured from the videos.
+
 `judge.html` embeds every layout render. For each sublevel it shows CaveGen's estimated clear time
 and how that compares with 1000 random layouts. Fixed floors, where every seed scores the same, are marked.
 
