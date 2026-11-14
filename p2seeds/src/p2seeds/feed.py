@@ -66,7 +66,33 @@ def find_feed(video: Video, samples: int = 240) -> Feed:
     for _ in range(3):
         x0, x1 = _longest_run(mask[y0:y1, :].mean(axis=0) > 0.7, offset=0)
         y0, y1 = _longest_run(mask[:, x0:x1].mean(axis=1) > 0.7, offset=0)
+    x0, x1, y0, y1 = _tighten(std, x0, x1, y0, y1)
     return Feed(int(x0), int(y0), int(x1), int(y1))
+
+
+def _tighten(std: np.ndarray, x0: int, x1: int, y0: int, y1: int, frac: float = 0.08, level: float = 0.75):
+    """Pull each edge inward to where the game picture really starts.
+
+    Busy overlays (a splits column with a running timer) vary enough to pass the
+    activity threshold, so the box can include a strip of them. Inside the game
+    the variation is uniformly high; move each edge inward, at most `frac` of the
+    size, past columns/rows whose mean variation is clearly below the interior's.
+    """
+    def edge(profile: np.ndarray, forward: bool) -> int:
+        ref = np.median(profile)
+        lim = max(1, int(frac * len(profile)))
+        order = range(lim) if forward else range(len(profile) - 1, len(profile) - 1 - lim, -1)
+        for i in order:
+            if profile[i] >= level * ref:
+                return i
+        return 0 if forward else len(profile) - 1
+
+    for _ in range(2):
+        cols = std[y0:y1, x0:x1].mean(axis=0)
+        x0, x1 = x0 + edge(cols, True), x0 + edge(cols, False) + 1
+        rows = std[y0:y1, x0:x1].mean(axis=1)
+        y0, y1 = y0 + edge(rows, True), y0 + edge(rows, False) + 1
+    return x0, x1, y0, y1
 
 
 def _longest_run(flags: np.ndarray, offset: int) -> tuple[int, int]:

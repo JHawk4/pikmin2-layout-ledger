@@ -42,6 +42,8 @@ def free_fall(track: Track, min_score: float = 0.55) -> tuple[np.ndarray, np.nda
     for f, yy in zip(fr, y):
         if keep_f:
             gap = f - keep_f[-1]
+            if gap <= 0:
+                continue
             dy = (yy - keep_y[-1]) / gap
             if dy <= 0.5:                      # stopped or bouncing
                 break
