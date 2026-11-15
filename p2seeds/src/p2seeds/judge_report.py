@@ -88,7 +88,9 @@ def _pokos(t: dict | None) -> str:
         return ""
     picks = [c for c in t.get("collected", []) if c]
     names = ", ".join(f"{n.replace('_', ' ')} ({p})" for n, p in picks)
-    return f"{t['pokos']} pokos" + (f": {names}" if names else " (no treasure)")
+    bug = t.get("bug_pokos")
+    extra = f" + {bug:g} from creatures" if bug else ""
+    return f"{t['pokos']} pokos" + (f": {names}" if names else " (no treasure)") + extra
 
 
 def chart_points(rows: list[dict], kind: str, tre: dict | None = None, actual: dict | None = None) -> list[dict]:

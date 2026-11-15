@@ -67,21 +67,71 @@ def merge(hits: list[int]) -> list[int]:
     return panels
 
 
+SALVAGED = Path(__file__).parent / "data" / "panel" / "salvaged.png"   # "Treasures Salvaged" header
+SALVAGED_THRESHOLD = 0.6
+
+
+def scan(video: Video, feed: Feed, progress=None) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+    """One pass over the whole video: (treasure panel spans, cave-complete screen spans).
+
+    The cave-complete screen ("Treasures Salvaged", listing the cave's treasures and its
+    pokos from creatures) marks leaving a cave: what follows until the next cave is surface."""
+    tpl = _template()
+    sal = cv2.imread(str(SALVAGED), cv2.IMREAD_GRAYSCALE)
+    p_hits, s_hits = [], []
+    for i, gray in video.sample(STEP):
+        score, g = panel_score(feed.crop(gray), tpl)
+        if score >= THRESHOLD:
+            p_hits.append(i)
+        elif float(cv2.matchTemplate(g[0:90, 0:360], sal, cv2.TM_CCOEFF_NORMED).max()) >= SALVAGED_THRESHOLD:
+            s_hits.append(i)
+        if progress and i % (STEP * 5000) == 0:
+            progress(i, video.frame_count)
+    exits: list[list[int]] = []
+    for i in s_hits:                               # the "Cave complete!" overlay can split one screen
+        if exits and i - exits[-1][1] <= 300:
+            exits[-1][1] = i
+        else:
+            exits.append([i, i])
+    return spans(p_hits), [(a, b) for a, b in exits]
+
+
 def count_run(out_dir: Path, progress=None) -> dict:
-    """Count panels between consecutive entries of one cave; saves treasures.json."""
+    """Find every treasure panel and assign it to a sublevel or to the surface; saves treasures.json.
+
+    A sublevel runs from its entry screen to the next sublevel's; a cave's last sublevel runs
+    to the cave-complete screen (its "exit"), and from there to the next cave is surface.
+    Surface panels are kept under "surface:<frame>" keys (cave "surface"): their pokos count
+    in the run's total but belong to no sublevel."""
     data = json.loads((out_dir / "seeds.json").read_text(encoding="utf-8"))
-    meta, entries = data.get("meta", {}), [e for e in data["entries"] if e.get("cave")]
+    meta, entries = data.get("meta", {}), [e for e in data["entries"] if e.get("cave") and e.get("sublevel")]
     video = Video(meta["video"])
     feed = Feed(*meta["feed"])
+    panels, exits = scan(video, feed, progress)
+    windows = []                                   # (start, end, key, entry or None, exit span)
+    for k, e in enumerate(entries):
+        nxt = entries[k + 1] if k + 1 < len(entries) else None
+        if nxt and nxt["cave"] == e["cave"] and nxt["sublevel"] == e["sublevel"] + 1:
+            windows.append((e["frame"], nxt["frame"], str(e["frame"]), e, None))
+        else:                                      # last sublevel of the cave: until it is left
+            stop = nxt["frame"] if nxt else video.frame_count
+            ex = next((x for x in exits if e["frame"] < x[0] < stop), None)
+            windows.append((e["frame"], ex[0] if ex else stop, str(e["frame"]), e, ex))
     counts = {}
-    pairs = [(a, b) for a, b in zip(entries, entries[1:])
-             if a["cave"] == b["cave"] and a.get("sublevel") and b.get("sublevel") == a["sublevel"] + 1]
-    for k, (a, b) in enumerate(pairs):
-        found = find_panels(video, feed, a["frame"], b["frame"])
-        counts[str(a["frame"])] = {"cave": a["cave"], "sublevel": a["sublevel"], "treasures": len(found),
-                                   "panel_frames": [f for f, _ in found], "panels": [list(p) for p in found]}
-        if progress:
-            progress(k + 1, len(pairs), a, len(found))
+    for w0, w1, key, e, ex in windows:
+        counts[key] = {"cave": e["cave"], "sublevel": e["sublevel"], "panels": [], "last": ex is not None or None,
+                       "window": [w0, w1]}
+        if ex:
+            counts[key]["exit"] = list(ex)
+    for a, b in panels:
+        w = next((w for w in windows if w[0] <= a < w[1]), None)
+        if w is None:
+            counts[f"surface:{a}"] = {"cave": "surface", "sublevel": None, "panels": [[a, b]]}
+        else:
+            counts[w[2]]["panels"].append([a, b])
+    for v in counts.values():
+        v["panel_frames"] = [a for a, _ in v["panels"]]
+        v["treasures"] = len(v["panels"])
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
 
@@ -110,6 +160,7 @@ DIGITS_DIR = Path(__file__).parent / "data" / "panel"
 HELPER_SRC = Path(__file__).resolve().parents[2] / "java" / "SublevelItems.java"
 VALUE_ROWS = (258, 283)      # at 480x360
 LAST_DIGIT_X, DIGIT_PITCH, DIGIT_W = 326.0, 25.0, 24
+VALUE_BLANK = 40.0           # Value slot blankness: empty <= ~33, digit >= ~43
 
 
 def _digit_templates() -> dict[str, np.ndarray]:
@@ -144,10 +195,177 @@ def value_score(g480: np.ndarray, value: int, templates) -> float:
         for k, d in enumerate(digits):
             s += float(_norm(_slot(g480, k, dx)) @ templates[d])
         s /= len(digits)
-        if len(digits) < 3 and _blankness(_slot(g480, len(digits), dx)) > 30:
-            s -= 0.3                                    # a digit where the candidate has none
+        # the number's length is clear from whether the next slot is empty: an empty slot scores
+        # at most ~33 on blankness, a digit at least ~43 (measured on 60 hand-read panels)
+        nxt = _blankness(_slot(g480, len(digits), dx))
+        if len(digits) < 3 and nxt > VALUE_BLANK:
+            s -= 1.0                                    # a digit where the candidate has none
+        if len(digits) >= 2 and _blankness(_slot(g480, len(digits) - 1, dx)) < VALUE_BLANK:
+            s -= 1.0                                    # the candidate's leading digit is not there
         best = max(best, s)
     return best
+
+
+# The panel's second line, "Total ... 0x [ 1112 ] / 10000", is the run's poko total after this
+# treasure. A total that rose by more than the treasure's value means pokos from enemies
+# ("bug pokos") came in since the previous panel. Same font as the Value; fitted on known totals.
+TOTAL_ROW, TOTAL_LAST_X, TOTAL_PITCH = 287, 325.0, 24.0
+TOTAL_BLANK = 55.0           # blankness below this: no digit in the slot (digits score 60+, empty box ~30)
+
+
+def _total_slot(g480: np.ndarray, k: int, dx: float = 0.0) -> np.ndarray:
+    cx = TOTAL_LAST_X - TOTAL_PITCH * k + dx
+    crop = g480[TOTAL_ROW:TOTAL_ROW + 25, int(round(cx - 12)): int(round(cx + 12))]
+    return cv2.resize(crop, (22, 25), interpolation=cv2.INTER_AREA)
+
+
+MAX_BUG = 2000              # most pokos from enemies between two treasure panels we consider
+BUG_PENALTY = 0.0001       # score per bug poko (digit scores are summed, ~0.5-0.9 per matching digit)
+
+
+def _total_templates() -> dict[str, np.ndarray]:
+    """Digit templates for the Total line (trained on hand-read totals, train_totals in the repo history)."""
+    return {p.stem[-1]: np.load(p).reshape(-1) for p in DIGITS_DIR.glob("total_digit_*.npy")}
+
+
+def _total_slots(g480s: list[np.ndarray], templates) -> tuple[np.ndarray, np.ndarray]:
+    """Per slot (right to left, 4 slots): mean digit scores (4 x 10) and mean blankness."""
+    sc = np.zeros((4, 10))
+    bl = np.zeros(4)
+    for g in g480s:
+        for k in range(4):
+            sl = _total_slot(g, k)
+            bl[k] += _blankness(sl)
+            v = _norm(sl)
+            sc[k] += [float(v @ templates[str(d)]) for d in range(10)]
+    return sc / max(1, len(g480s)), bl / max(1, len(g480s))
+
+
+def total_score(sc: np.ndarray, bl: np.ndarray, total: int) -> float:
+    """How well the slot scores show `total` (higher is better)."""
+    digits = str(total)[::-1]
+    if len(digits) > 4:
+        return -9.0
+    s = sum(sc[k, int(d)] for k, d in enumerate(digits)) / len(digits)
+    for k in range(len(digits), 4):                 # slots that should be empty
+        if bl[k] > TOTAL_BLANK and k < 3:
+            s -= 0.3
+    return s
+
+
+_ALL = np.arange(10000)
+_DIG = np.stack([(_ALL // 10 ** k) % 10 for k in range(4)])          # digit k (right to left) of each total
+_LEN = np.where(_ALL >= 1000, 4, np.where(_ALL >= 100, 3, np.where(_ALL >= 10, 2, 1)))
+
+
+def _total_scores(sc: np.ndarray, bl: np.ndarray) -> np.ndarray:
+    """total_score for every total 0..9999 at once."""
+    s = np.zeros(10000)
+    for k in range(4):
+        used = _LEN > k
+        s += np.where(used, sc[k][_DIG[k]], 0.0)
+        s -= np.where(~used & (bl[k] > TOTAL_BLANK) & (k < 3), 0.3 * _LEN, 0.0)   # (mean below is over _LEN)
+    return s                      # summed: each digit is evidence (a 4-digit total outweighs a 3-digit value)
+
+
+def read_totals(out_dir: Path, progress=None) -> dict:
+    """Read every panel's Value and Total, then the bug pokos between panels.
+
+    The Total after a panel is the previous Total + this panel's Value + whatever came from
+    enemies since (never negative). All panels are decoded together (dynamic programming over
+    the total, 0..9999): each panel scores its Value among the treasures CaveGen placed on the
+    sublevel and its Total digit by digit, and each unexplained poko costs BUG_PENALTY, so the
+    whole sequence that fits the digits best wins. Adds to each treasures.json entry, per panel:
+    "values", "totals" and "bug_before" (pokos since the previous panel beyond its treasure)."""
+    data = json.loads((out_dir / "seeds.json").read_text(encoding="utf-8"))
+    meta = data.get("meta", {})
+    counts = load(out_dir)
+    video, feed = Video(meta["video"]), Feed(*meta["feed"])
+    templates = _digit_templates()
+    ttemplates = _total_templates()
+    panels = sorted((a, b, key, i) for key, t in counts.items() for i, (a, b) in enumerate(t.get("panels", [])))
+    steps = []                                   # per panel: (values, value scores, total scores)
+    for n, (a, b, key, i) in enumerate(panels):
+        gs = []
+        for f in range(a + 8, max(a + 9, b - 8), 12):
+            g = video.frame_at(f)
+            if g is not None:
+                gs.append(cv2.resize(feed.crop(g), (480, 360), interpolation=cv2.INTER_CUBIC))
+        # the treasures CaveGen placed on the sublevel; on the surface (or without a seed) any value
+        options = sorted({int(x[1]) for x in counts[key].get("items") or []}) or list(range(1, 1000))
+        vs = np.array([np.mean([value_score(g, val, templates) for g in gs]) if gs else 0.0 for val in options])
+        ts = _total_scores(*_total_slots(gs, ttemplates)) if gs else np.zeros(10000)
+        steps.append((options, vs, ts))
+        if progress:
+            progress(n + 1, len(panels), key, None)
+    # Viterbi over the total. best[T] = best score of a sequence ending at total T.
+    # T_k = T_{k-1} + v_k + bug, bug >= 0, costing BUG_PENALTY per poko.
+    prev = np.full(10000, -np.inf)
+    prev[0] = 0.0
+    back = []
+    for options, vs, ts in steps:
+        # g[x] = max over T' <= x of prev[T'] + pen*T'   (so prev[T'] - pen*(x - T') = g[x] - pen*x)
+        run_max = np.maximum.accumulate(prev + BUG_PENALTY * _ALL)
+        arg = np.zeros(10000, int)
+        cur = np.full(10000, -np.inf)
+        choice = np.zeros(10000, int)
+        best_prev = np.zeros(10000, int)
+        idx = np.maximum.accumulate(np.where(prev + BUG_PENALTY * _ALL == run_max, _ALL, 0))  # argmax so far
+        for j, val in enumerate(options):
+            x = _ALL - val                        # the total before this treasure and its bugs
+            ok = x >= 0
+            cand = np.where(ok, run_max[np.clip(x, 0, 9999)] - BUG_PENALTY * np.clip(x, 0, 9999), -np.inf) + vs[j] + ts
+            better = cand > cur
+            cur = np.where(better, cand, cur)
+            choice = np.where(better, j, choice)
+            best_prev = np.where(better, idx[np.clip(x, 0, 9999)], best_prev)
+        back.append((choice, best_prev))
+        prev = cur
+    T = int(np.argmax(prev))
+    path = []
+    for (choice, best_prev), (options, _, _) in zip(reversed(back), reversed(steps)):
+        path.append((T, options[choice[T]]))
+        T = int(best_prev[T])
+    path.reverse()
+    last = 0
+    for (a, b, key, i), (tot, val) in zip(panels, path):
+        t = counts[key]
+        for name in ("totals", "values", "bug_before"):
+            t.setdefault(name, [None] * len(t.get("panels", [])))
+        t["totals"][i], t["values"][i], t["bug_before"][i] = int(tot), int(val), int(tot - last - val)
+        last = tot
+    allocate_bugs(counts, panels)
+    (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
+    return counts
+
+
+def allocate_bugs(counts: dict, panels: list) -> None:
+    """Give each sublevel its pokos from creatures ("bug_pokos").
+
+    The pokos a panel's Total shows beyond its treasure came in since the previous panel.
+    Creatures only give pokos in caves, so they belong to the cave sublevels between the two
+    panels (never the surface); when that is more than one sublevel they are shared by the
+    time spent in each (the poko counter's timing can refine this)."""
+    windows = {k: v["window"] for k, v in counts.items() if v.get("window")}
+    for v in counts.values():
+        if v.get("window"):
+            v["bug_pokos"] = 0.0
+    prev_end = 0
+    for a, b, key, i in panels:
+        bug = counts[key]["bug_before"][i] or 0
+        if bug > 0:
+            share = {k: max(0, min(w[1], a) - max(w[0], prev_end)) for k, w in windows.items()}
+            share = {k: x for k, x in share.items() if x > 0}
+            tot = sum(share.values())
+            for k, x in share.items():
+                counts[k]["bug_pokos"] += bug * x / tot
+        prev_end = b
+    for v in counts.values():
+        if "bug_pokos" in v:
+            v["bug_pokos"] = round(v["bug_pokos"], 1)
+            # the sublevel's pokos: its treasures (each panel's Value) and its creatures
+            v["treasure_pokos"] = sum(x for x in v.get("values") or [] if x)
+            v["pokos"] = int(round(v["treasure_pokos"] + v["bug_pokos"]))
 
 
 def ensure_helper() -> Path:

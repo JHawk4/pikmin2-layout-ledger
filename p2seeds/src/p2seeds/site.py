@@ -405,12 +405,14 @@ def pokos_section(runs: list[dict]) -> str:
     hidden = (f" {same} other sublevel{'s' if same != 1 else ''}, where every run got the median, "
               f"{'are' if same != 1 else 'is'} left out.") if same else ""
     return f'''<h2>Pokos by sublevel</h2>
-<p>Pokos from treasures collected on each sublevel (Pay Off Debt runs), against the median run on the same sublevel,
+<p>Pokos collected on each sublevel (Pay Off Debt runs), from treasures and from creatures, against the median run on the same sublevel,
 the expected baseline. Each row is a run, each column a sublevel where at least one run differs from the median (the
 median is under the name). Green cells collected more than usual, red cells fewer; a darker cell is a bigger
 difference, and a dot means the sublevel was not read.{hidden} Each treasure collected shows a panel with its value;
-the panels are counted in the video and matched to the treasures CaveGen places on that layout. Pokos from enemies
-are not included. Hover a cell for the treasures; click the number to open the video.</p>
+the panels are counted in the video and matched to the treasures CaveGen places on that layout. Each panel also shows
+the run's running Total, so pokos from creatures are whatever the Total rose by beyond the treasure; they are shared
+among the cave sublevels between the two panels by time spent in each (never the surface, and treasures picked up on
+the surface count toward no sublevel). Hover a cell for the treasures; click the number to open the video.</p>
 <div class="tablewrap viz-root"><table class="heatgrid">
 <thead><tr><th>Run</th><th class='num'>Total vs median</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody>
 </table></div>'''

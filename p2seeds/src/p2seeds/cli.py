@@ -144,11 +144,16 @@ def main(argv: list[str] | None = None) -> int:
         from . import treasures
         out = Path(args.out_dir)
         have = treasures.load(out)
-        if args.rescan or not have or any("panels" not in v for v in have.values()):
-            treasures.count_run(out, progress=lambda i, n, e, c: log(
-                f"  {i:>3}/{n} {e['cave']} {e['sublevel']}: {c} treasure panel(s)"))
+        # older scans only looked between sublevels of one cave (no final floors, no surface)
+        if args.rescan or not have or any("window" not in v and v.get("cave") != "surface" for v in have.values()):
+            treasures.count_run(out, progress=lambda i, n: log(f"  scanning {100 * i / max(n, 1):4.1f}%"))
         treasures.read_values(out, progress=lambda i, n, v: log(
-            f"  {v['cave']} {v['sublevel']}: {v['pokos']} pokos from {[c[0] if c else '?' for c in v['collected']]}"))
+            f"  {v['cave']} {v['sublevel']}: treasures {[c[0] if c else '?' for c in v['collected']]}"))
+        counts = treasures.read_totals(out)
+        for v in counts.values():
+            if v.get("window"):
+                log(f"  {v['cave']} {v['sublevel']}: {v.get('pokos')} pokos "
+                    f"({v.get('treasure_pokos')} treasure + {v.get('bug_pokos')} creature)")
         return 0
 
     if args.cmd == "batch":
