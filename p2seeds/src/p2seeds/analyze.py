@@ -20,6 +20,7 @@ MIN_CAVE_MARGIN = 0.12     # and the best cave must beat the second best by this
 MIN_CAVE_SCORE_JA = 0.48   # short Japanese names match random text up to ~0.40; true ones score ~0.6
 FALL_LEAD = 110            # frames before a settled run starts that may contain the fall
 FALL_TAIL = 40             # and after (late bounces)
+LOW_MATCH = 0.4            # fallback template-match threshold for falling letters
 MAX_FIT_RMS_PX = 0.6       # good fits are ~0.05-0.15 px
 
 
@@ -185,37 +186,55 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
         extra = [feed.crop(g) for g in video.frames(max(0, start - FALL_LEAD), start)]
         frames = extra + frames
         a, k = a + len(extra), k + len(extra)
-    fall, times = game_times(frames[a - FALL_LEAD: min(len(frames), a + FALL_TAIL)])
-    tracks = [replace(t, frames=times[t.frames.astype(int)]) for t in track_all(fall, cal)]
-    try:
-        # Japanese glyphs match less sharply and short names lose 1-2 characters to the fade-in
-        ja = cal.cave.lang == "ja"
-        fit_kw = dict(min_score=0.5, min_letters=2) if ja else {}
-        r.fit = fit(tracks, cal.cave.num_chars, s_guess=feed.height / 480.0, **fit_kw)
-    except ValueError as exc:
-        r.note = f"fit failed: {exc}"
-        return r
-    n_meas = int(np.sum(np.isfinite(r.fit.v)))
-    if n_meas < 4:
-        r.note = "too few letters measured"   # chain.link may still find it near a neighbor
-        r.confidence = "none"
-        return r
-    # the lattice search costs milliseconds whatever the tolerances, so poor fits are tried too
-    r.candidates, r.confidence = _search(r.fit, search_kw)
-    if r.confidence != "high" and n_meas >= 5:
-        # the capture may have skipped or repeated one game frame mid-fall: every letter is
-        # then a frame further along (or behind) from that point on
-        for f2, d, k in _fit_with_step(tracks, cal.cave.num_chars, feed.height / 480.0, r.fit):
-            c2, conf2 = _search(f2, search_kw, retries=False)
-            if _RANK[conf2] > _RANK[r.confidence] or (
-                    conf2 == r.confidence and c2 and r.candidates and c2[0].score < r.candidates[0].score):
-                r.fit, r.candidates, r.confidence = f2, c2, conf2
-                r.note = f"timing step of {d:+d} frame at fall frame {k}"
-    if r.fit.rms_px > MAX_FIT_RMS_PX and not r.candidates:
-        r.note = f"letter fit too poor ({r.fit.rms_px:.2f} px)"
+    clip = frames[a - FALL_LEAD: min(len(frames), a + FALL_TAIL)]
+    # Japanese glyphs match less sharply and short names lose 1-2 characters to the fade-in
+    ja = cal.cave.lang == "ja"
+    fit_kw = dict(min_score=0.5, min_letters=2) if ja else {}
+    s_guess = feed.height / 480.0
+
+    # Variants, cheapest and most reliable first; stop at the first high-confidence seed.
+    #  - match: falling letters match less sharply than settled ones (motion, the fade-in,
+    #    bubbles), so a second pass accepts weaker matches; a spurious match cannot produce
+    #    a confident seed, the fit and the search decide.
+    #  - clock: repeated frames are usually game lag (the game paused), but a capture that
+    #    shows the game unevenly repeats frames the game ran through; then the video's own
+    #    clock is right.
+    first_failure = None
+    for weak, wall_clock in ((False, False), (False, True), (True, False), (True, True)):
+        if r.confidence == "high":
+            break
+        fall, times = game_times(clip, wall=wall_clock)
+        raw = track_all(fall, cal, min_score=LOW_MATCH) if weak else track_all(fall, cal)
+        tracks = [replace(t, frames=times[t.frames.astype(int)]) for t in raw]
+        kw = {**fit_kw, "min_score": min(fit_kw.get("min_score", 0.55), LOW_MATCH)} if weak else fit_kw
+        try:
+            f = fit(tracks, cal.cave.num_chars, s_guess=s_guess, **kw)
+        except ValueError as exc:
+            first_failure = first_failure or f"fit failed: {exc}"
+            continue
+        n_meas = int(np.sum(np.isfinite(f.v)))
+        if n_meas < 4:
+            first_failure = first_failure or "too few letters measured"   # chain.link may still find it
+            continue
+        how = ", ".join(x for x in ("weaker letter matches allowed" if weak else "",
+                                     "timed by the video clock" if wall_clock else "") if x)
+        cands, conf = _search(f, search_kw)
+        if r.fit is None or _RANK[conf] > _RANK[r.confidence]:
+            r.fit, r.candidates, r.confidence, r.note = f, cands, conf, how
+        if conf != "high" and n_meas >= 5:
+            # the capture may have skipped or repeated one game frame mid-fall: every letter
+            # is then a frame further along (or behind) from that point on
+            for f2, d, k in _fit_with_step(tracks, cal.cave.num_chars, s_guess, f):
+                c2, conf2 = _search(f2, search_kw, retries=False)
+                if _RANK[conf2] > _RANK[r.confidence]:
+                    r.fit, r.candidates, r.confidence = f2, c2, conf2
+                    r.note = ", ".join(x for x in (how, f"timing step of {d:+d} frame at fall frame {k}") if x)
+    if r.fit is None:
+        r.note = first_failure or "fit failed"
         return r
     if not r.candidates:
-        r.note = "no seed matches"
+        r.note = (f"letter fit too poor ({r.fit.rms_px:.2f} px)" if r.fit.rms_px > MAX_FIT_RMS_PX
+                  else "no seed matches")
         return r
     best = r.candidates[0]
     r.letter_seed = best.letter_seed
@@ -297,7 +316,7 @@ def _fit_with_step(tracks, num_chars: int, s_guess: float, base: FitResult,
 
 
 def game_times(frames: list[np.ndarray], thr: float = 0.1, rel: float = 0.25,
-               jump: float = 1.35) -> tuple[list[np.ndarray], np.ndarray]:
+               jump: float = 1.35, wall: bool = False) -> tuple[list[np.ndarray], np.ndarray]:
     """Drop repeated frames and give each kept frame its game-frame time.
 
     A repeated frame means the game did not advance (a lag frame, e.g. right
@@ -310,6 +329,10 @@ def game_times(frames: list[np.ndarray], thr: float = 0.1, rel: float = 0.25,
     the next. The skip is a change about 1.5x the usual right next to a repeat;
     such a frame advances the game time by 2. A lone skip is left to the
     timing-step fallback.
+
+    `wall=True` keeps the same frames but times each by its index in the clip: right when
+    the repeats come from the capture showing the game unevenly (e.g. every third frame
+    a duplicate), so the game advanced through them. The caller tries both.
     """
     if not frames:
         return [], np.zeros(0)
@@ -326,6 +349,8 @@ def game_times(frames: list[np.ndarray], thr: float = 0.1, rel: float = 0.25,
             inc[j] = 2
     t = np.r_[0, np.cumsum(inc)]
     keep = np.r_[True, ~repeat]
+    if wall:
+        t = np.arange(len(frames), dtype=float)
     return [f for f, k in zip(frames, keep) if k], t[keep].astype(float)
 
 

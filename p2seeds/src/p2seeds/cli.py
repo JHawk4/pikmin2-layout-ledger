@@ -127,7 +127,18 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--kind", default="pod", help="judge type for new runs")
     st = sub.add_parser("site", help="write index.html over every judged run, and refresh each run's page")
     st.add_argument("--root", default="data/output")
+    dg = sub.add_parser("debug", help="debug image of the letter tracking and fall fit for one entry screen")
+    dg.add_argument("video")
+    dg.add_argument("--frame", type=int, required=True, help="a frame inside the entry screen (seeds.json 'frame')")
+    dg.add_argument("--feed", default=None, help="x0,y0,x1,y1 (default: detect)")
+    dg.add_argument("--out", default=None)
     args = ap.parse_args(argv)
+
+    if args.cmd == "debug":
+        from . import debug
+        feed = Feed(*map(int, args.feed.split(","))) if args.feed else None
+        log(f"debug: {debug.render(args.video, args.frame, feed, args.out)}")
+        return 0
 
     if args.cmd == "treasures":
         from . import treasures
