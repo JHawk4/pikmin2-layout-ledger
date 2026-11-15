@@ -120,6 +120,8 @@ def main(argv: list[str] | None = None) -> int:
     tr = sub.add_parser("treasures", help="count treasures collected per sublevel from the treasure panel")
     tr.add_argument("out_dir")
     tr.add_argument("--rescan", action="store_true", help="scan the video for panels again")
+    tr.add_argument("--bugs-only", action="store_true",
+                    help="only recompute creature caps and the split of creature pokos (no video)")
     bt = sub.add_parser("batch", help="process every downloaded run not done yet (run, judge, treasures), then the site")
     bt.add_argument("--manifest", default="data/videos/manifest.json")
     bt.add_argument("--out", default="data/output")
@@ -143,6 +145,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "treasures":
         from . import treasures
         out = Path(args.out_dir)
+        if args.bugs_only:
+            counts = treasures.refresh_bugs(out)
+            clipped = sum(v.get("bug_clipped") or 0 for v in counts.values())
+            log(f"  creature pokos {sum(v.get('bug_pokos') or 0 for v in counts.values()):.0f}, clipped {clipped}")
+            return 0
         have = treasures.load(out)
         # older scans only looked between sublevels of one cave (no final floors, no surface)
         if args.rescan or not have or any("window" not in v and v.get("cave") != "surface" for v in have.values()):

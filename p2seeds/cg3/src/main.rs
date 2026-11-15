@@ -8,10 +8,30 @@
 //!
 //! An error answers {"error": "..."} for that line only.
 
+use std::collections::HashMap;
 use std::io::{BufRead, Write};
+use std::sync::OnceLock;
 
 use cavegen3::{GameData, Layout, SpawnObject, jhawk_judge::{JhawkJudge, JudgeType}};
 use serde_json::{Value, json};
+
+/// Pokos each creature is worth when carried back (name,minCarry,maxCarry,seeds,seedsMin,pokos,...),
+/// the table CaveGen's judges use.
+fn teki_pokos(name: &str) -> i64 {
+    static T: OnceLock<HashMap<String, i64>> = OnceLock::new();
+    T.get_or_init(|| {
+        include_str!("../../../../cavegen3/data/resources/jhawk_judge/treasure_teki_config.csv")
+            .lines()
+            .filter_map(|l| {
+                let f: Vec<&str> = l.trim().split(',').collect();
+                Some((f.first()?.to_ascii_lowercase(), f.get(5)?.parse().ok()?))
+            })
+            .collect()
+    })
+    .get(&name.to_ascii_lowercase())
+    .copied()
+    .unwrap_or(0)
+}
 
 fn answer(data: &GameData, req: &Value) -> Result<Value, String> {
     let sub = req["sub"].as_str().ok_or("missing \"sub\"")?;
@@ -34,10 +54,15 @@ fn answer(data: &GameData, req: &Value) -> Result<Value, String> {
     let game = &ci.cave_cfg.game;
     let value = |name: &str| data.treasure(game, name).map(|t| t.value);
     let mut items = Vec::new();
+    let mut teki: HashMap<String, i64> = HashMap::new();
     for (obj, _) in layout.spawn_objects() {
         match obj {
+            SpawnObject::CapTeki(c, n) => {
+                *teki.entry(c.internal_name.clone()).or_default() += *n as i64;
+            }
             SpawnObject::Item(it) => items.push(json!({ "name": it.internal_name, "value": value(&it.internal_name), "carried_by": null })),
             SpawnObject::Teki(t, _) => {
+                *teki.entry(t.internal_name.clone()).or_default() += 1;
                 if let Some(c) = &t.carrying {
                     items.push(json!({ "name": c, "value": value(c), "carried_by": t.internal_name }));
                 }
@@ -45,7 +70,10 @@ fn answer(data: &GameData, req: &Value) -> Result<Value, String> {
             _ => {}
         }
     }
-    Ok(json!({ "score": judge.judge(&layout), "items": items }))
+    // every creature on the layout and what it is worth: the most pokos creatures can give here
+    let creature_pokos: i64 = teki.iter().map(|(n, c)| teki_pokos(n) * c).sum();
+    let teki: Vec<Value> = teki.iter().map(|(n, c)| json!({ "name": n, "count": c, "pokos": teki_pokos(n) })).collect();
+    Ok(json!({ "score": judge.judge(&layout), "items": items, "teki": teki, "creature_pokos": creature_pokos }))
 }
 
 fn main() {

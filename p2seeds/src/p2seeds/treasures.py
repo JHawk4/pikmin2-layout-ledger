@@ -334,31 +334,63 @@ def read_totals(out_dir: Path, progress=None) -> dict:
             t.setdefault(name, [None] * len(t.get("panels", [])))
         t["totals"][i], t["values"][i], t["bug_before"][i] = int(tot), int(val), int(tot - last - val)
         last = tot
-    allocate_bugs(counts, panels)
+    allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
 
 
-def allocate_bugs(counts: dict, panels: list) -> None:
+def creature_cap(cave: str, sublevel: int, seed: int) -> int | None:
+    """Most pokos creatures can give on this layout (None if CaveGen3 can't tell)."""
+    from . import cavegen, cg3
+    if not cg3.available() or cavegen.REGION != "us":
+        return None
+    try:
+        return cg3.layout(cave, sublevel, seed).get("creature_pokos")
+    except ValueError:
+        return None
+
+
+def allocate_bugs(counts: dict) -> None:
     """Give each sublevel its pokos from creatures ("bug_pokos").
 
     The pokos a panel's Total shows beyond its treasure came in since the previous panel.
     Creatures only give pokos in caves, so they belong to the cave sublevels between the two
-    panels (never the surface); when that is more than one sublevel they are shared by the
-    time spent in each (the poko counter's timing can refine this)."""
+    panels (never the surface). A sublevel can give no more than its creatures are worth
+    ("creature_cap": every creature CaveGen places on the layout, at the judges' poko values),
+    so the pokos are shared by time spent in each sublevel among those with room left, up to
+    their caps. Pokos beyond what every sublevel in between could hold are a misread or a
+    missed treasure: they are clipped and recorded as "bug_clipped" on the panel's sublevel."""
+    panels = sorted((a, b, key, i) for key, t in counts.items() for i, (a, b) in enumerate(t.get("panels", [])))
     windows = {k: v["window"] for k, v in counts.items() if v.get("window")}
     for v in counts.values():
         if v.get("window"):
-            v["bug_pokos"] = 0.0
+            v["bug_pokos"], v["bug_clipped"] = 0.0, 0
     prev_end = 0
     for a, b, key, i in panels:
-        bug = counts[key]["bug_before"][i] or 0
+        bug = float((counts[key].get("bug_before") or [0] * (i + 1))[i] or 0)
         if bug > 0:
-            share = {k: max(0, min(w[1], a) - max(w[0], prev_end)) for k, w in windows.items()}
-            share = {k: x for k, x in share.items() if x > 0}
-            tot = sum(share.values())
-            for k, x in share.items():
-                counts[k]["bug_pokos"] += bug * x / tot
+            time = {k: max(0, min(w[1], a) - max(w[0], prev_end)) for k, w in windows.items()}
+            room = {k: (counts[k].get("creature_cap") if counts[k].get("creature_cap") is not None else float("inf"))
+                       - counts[k]["bug_pokos"] for k, x in time.items() if x > 0}
+            left = bug
+            while left > 1e-6:
+                open_ = {k: time[k] for k, r in room.items() if r > 1e-6}
+                if not open_:
+                    break
+                tot = sum(open_.values())
+                given = 0.0
+                for k, x in open_.items():
+                    g = min(room[k], left * x / tot)
+                    counts[k]["bug_pokos"] += g
+                    room[k] -= g
+                    given += g
+                left -= given
+                if given < 1e-6:
+                    break
+            if left > 0.5:
+                owner = key if counts[key].get("window") else max(time, key=time.get, default=None)
+                if owner and owner in counts:
+                    counts[owner]["bug_clipped"] += int(round(left))
         prev_end = b
     for v in counts.values():
         if "bug_pokos" in v:
@@ -366,6 +398,21 @@ def allocate_bugs(counts: dict, panels: list) -> None:
             # the sublevel's pokos: its treasures (each panel's Value) and its creatures
             v["treasure_pokos"] = sum(x for x in v.get("values") or [] if x)
             v["pokos"] = int(round(v["treasure_pokos"] + v["bug_pokos"]))
+
+
+def refresh_bugs(out_dir: Path) -> dict:
+    """Recompute creature caps and the split of creature pokos from saved readings (no video)."""
+    data = json.loads((out_dir / "seeds.json").read_text(encoding="utf-8"))
+    from . import cavegen
+    cavegen.set_region_for(data["entries"])
+    seeds = {str(e["frame"]): e for e in data["entries"] if e.get("layout_seed")}
+    counts = load(out_dir)
+    for k, v in counts.items():
+        if v.get("window") and k in seeds:
+            v["creature_cap"] = creature_cap(v["cave"], v["sublevel"], int(seeds[k]["layout_seed"], 16))
+    allocate_bugs(counts)
+    (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
+    return counts
 
 
 def ensure_helper() -> Path:
@@ -450,6 +497,7 @@ def read_values(out_dir: Path, progress=None) -> dict:
         v = counts[k]
         avail = list(items.get(t, []))
         v["items"] = [list(x) for x in avail]
+        v["creature_cap"] = creature_cap(*t)
         panels = v.get("panels", [])
         v["collected"], v["value_margin"] = choose(video, feed, panels, avail, templates)
         v["pokos"] = sum(p[1] for p in v["collected"] if p)
