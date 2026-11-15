@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cavegen, charts, judge_report, rng, treasures
+from . import cavegen, charts, judge2, judge_report, rng, treasures
 
 STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "SC", "CoC", "HoH", "DD"]
 
@@ -134,14 +134,18 @@ def _treasure_names(t) -> str:
     return ", ".join(f"{n.replace('_', ' ')} ({p})" for n, p in picks)
 
 
-def calibration(runs: list[dict]) -> dict:
+def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -> dict:
     """Judge estimate vs measured sublevel outcome, with sublevel and runner fixed effects.
 
     For Pay Off Debt the outcome is net time: seconds taken minus pokos collected / 2, so a
     runner who stops for an extra treasure is credited for its pokos. For other categories
     it is plain time, and plays that took a different number of treasures than most runs
-    of the sublevel are left out instead."""
+    of the sublevel are left out instead.
+
+    `key`: "judge" (CaveGen's) or "judge2" (judge2/, the refit PoD judge). `drop`: (run index,
+    sublevel) plays to leave out, e.g. outliers where the runner made a big mistake."""
     order = {c: k for k, c in enumerate(STORY_ORDER)}
+    drop = drop or set()
     rows = []
     for i, r in enumerate(runs):
         tre = treasures.load(r["dir"])
@@ -149,7 +153,8 @@ def calibration(runs: list[dict]) -> dict:
         net = r["kind"] == "pod"
         for a, b in zip(e, e[1:]):
             if (a["cave"] == b["cave"] and a.get("sublevel") and b.get("sublevel") == a["sublevel"] + 1
-                    and "judge_score" in a and not a.get("judge_fixed") and judge_report.trusted(a)):
+                    and a.get(f"{key}_score") is not None and not a.get(f"{key}_fixed") and judge_report.trusted(a)
+                    and (i, f'{a["cave"]} {a["sublevel"]}') not in drop):
                 ref = cavegen.reference_scores(a["cave"], a["sublevel"], r["kind"])
                 t = tre.get(str(a["frame"]))
                 took = (b["frame"] - a["frame"]) / r["fps"]
@@ -157,13 +162,14 @@ def calibration(runs: list[dict]) -> dict:
                 rows.append({
                     "run": i, "runner": r["runner"], "sub": f'{a["cave"]} {a["sublevel"]}',
                     "order": order.get(a["cave"], 99) * 100 + a["sublevel"],
-                    "judge": a["judge_score"], "actual": took,
+                    "judge": a[f"{key}_score"], "actual": took,
                     "cost": took - pokos / POKOS_PER_SECOND if net and pokos is not None else took,
                     "net": net and pokos is not None, "pokos": pokos, "names": _treasure_names(t),
                     "seed": a.get("layout_seed"), "link": a.get("link"), "time": a.get("time", ""),
                     "img": _layout_url(r, a),
-                    "median": a.get("judge_median"),
-                    "spread": float(np.percentile(ref, 95) - np.percentile(ref, 5)) if ref is not None else 0.0,
+                    "median": a.get(f"{key}_median"),
+                    "spread": (a["judge2_hi"] - a["judge2_lo"] if key == "judge2"
+                               else float(np.percentile(ref, 95) - np.percentile(ref, 5)) if ref is not None else 0.0),
                     "treasures": t["treasures"] if t else None,
                 })
     # plain-time plays that followed another route (a different number of treasures) are left out
@@ -224,8 +230,33 @@ def calibration(runs: list[dict]) -> dict:
         return "\n".join(lines)
 
     pts = [(row["x"], row["y"], tip(row), row["link"], row["img"]) for row in rows]
+    e = yr - xr                                  # what a perfectly calibrated judge leaves unexplained
+    r2 = float(1 - (e @ e) / (yr @ yr)) if yr @ yr > 0 else 0.0
+    for row, ek in zip(rows, e):
+        row["e"] = float(ek)
     return {"n": len(rows), "sublevels": len(subs), "slope": slope, "se": se, "corr": corr, "points": pts,
-            "rows": rows, "excluded": excluded, "tip": tip, "net": any_net, "time_only": time_only}
+            "rows": rows, "excluded": excluded, "tip": tip, "net": any_net, "time_only": time_only, "r2": r2,
+            "key": key}
+
+
+OUTLIER_Z = 4.0          # robust z-score (median absolute deviation) of the unexplained seconds
+
+
+def outliers(cals: list[dict]) -> dict:
+    """(run, sublevel) -> row for plays far off under every judge: more than OUTLIER_Z robust
+    standard deviations from what each judge predicts. A big mistake (a death, a lost treasure,
+    a misplay) is not something any layout judge can explain, and one such play can pull
+    the slope; a play only one judge misses is kept."""
+    flagged = None
+    for cal in cals:
+        rows = cal.get("rows") or []
+        if not rows:
+            continue
+        e = np.array([row["e"] for row in rows])
+        scale = 1.4826 * float(np.median(np.abs(e - np.median(e)))) or 1.0
+        far = {(row["run"], row["sub"]): row for row in rows if abs(row["e"] - np.median(e)) > OUTLIER_Z * scale}
+        flagged = far if flagged is None else {k: v for k, v in far.items() if k in flagged}
+    return flagged or {}
 
 
 SORTS = [
@@ -393,6 +424,10 @@ def _fmt_time(t):
 
 def build(root: str | Path = "data/output") -> Path:
     root = Path(root)
+    if judge2.available():
+        for d in sorted(root.iterdir()):
+            if (d / "judge.json").exists():
+                judge2.add_to_run(d)          # only fills what is missing
     runs = _load(root)
     acts = actuals(runs)
     for r, a in zip(runs, acts):
@@ -415,25 +450,53 @@ def build(root: str | Path = "data/output") -> Path:
     order_chart = charts.line_chart(series, "RNG position of each detected seed", "minutes into the video",
                                     "million RNG steps after the run's first seed")
 
-    cal = calibration(runs)
+    keys = ["judge"] + (["judge2"] if any(x.get("judge2_score") is not None for r in runs for x in r["entries"]) else [])
+    first = [calibration(runs, k) for k in keys]
+    out = outliers(first)
+    # compare the judges on the same plays (they disagree on a few fixed floors)
+    seen = [{(row["run"], row["sub"]) for row in c.get("rows") or []} for c in first]
+    not_shared = set().union(*seen) - set.intersection(*seen) if seen else set()
+    cals = {k: calibration(runs, k, drop=set(out) | not_shared) for k in keys}
+    cal = cals["judge"]
+    names = {"judge": "CaveGen judge", "judge2": "judge2 (refit)"}
     if cal.get("points"):
         outcome = ("run: net seconds vs other runs (time − pokos ÷ 2; negative = faster)" if cal["net"]
                    else "run: seconds vs other runs (negative = faster)")
-        cal_chart = charts.scatter_chart(cal["points"], "Judge prediction vs actual sublevel outcome",
-                                         "judge: seconds vs the other runs' layouts (negative = faster layout)",
-                                         outcome, slope=cal["slope"],
-                                         quadrants=(("judge: bad layout\nrun: slower", "bad"),
-                                                    ("judge: bad layout\nrun: faster", None),
-                                                    ("judge: good layout\nrun: slower", None),
-                                                    ("judge: good layout\nrun: faster", "good")))
-        lo, hi = cal["slope"] - 1.96 * cal["se"], cal["slope"] + 1.96 * cal["se"]
+        charts_html = []
+        for k, c in cals.items():
+            if not c.get("points"):
+                continue
+            charts_html.append(charts.scatter_chart(
+                c["points"], f"{names[k]}: prediction vs actual sublevel outcome",
+                f"{names[k]}: seconds vs the other runs' layouts (negative = faster layout)",
+                outcome, slope=c["slope"],
+                quadrants=(("judge: bad layout\nrun: slower", "bad"),
+                           ("judge: bad layout\nrun: faster", None),
+                           ("judge: good layout\nrun: slower", None),
+                           ("judge: good layout\nrun: faster", "good"))))
+        cal_chart = "".join(charts_html)
+        cmp_rows = "".join(
+            f"<tr><td>{names[k]}</td><td class='num'>{c['n']}</td>"
+            f"<td class='num'><b>{c['slope']:.2f}</b> ({c['slope'] - 1.96 * c['se']:.2f}–{c['slope'] + 1.96 * c['se']:.2f})</td>"
+            f"<td class='num'>{c['corr']:.2f}</td><td class='num'>{c['r2']:.2f}</td></tr>"
+            for k, c in cals.items() if c.get("points"))
+        out_rows = "".join(
+            f"<tr><td>{html.escape(row['sub'])}</td><td>{html.escape(row['runner'])}</td>"
+            f"<td>{_link(row['link'], row['time'] or 'video')}</td><td class='num'>{row['y']:+.1f} s</td></tr>"
+            for row in sorted(out.values(), key=lambda r: -abs(r["y"])))
         cal_text = (f"<p>Over <b>{cal['n']}</b> sublevel plays ({cal['sublevels']} sublevels seen in at least two runs), "
-                    f"each second the judge predicts is worth <b>{cal['slope']:.2f} s</b>{' of net time' if cal['net'] else ' of real time'} "
-                    f"(95% interval {lo:.2f}–{hi:.2f}; correlation {cal['corr']:.2f}). "
-                    f"A slope of 1 would be perfectly calibrated; below 1 means the judge overstates differences between layouts.</p>"
-                    + (f"<p>The outcome is <b>net time saved</b>: real seconds saved plus extra pokos ÷ 2, so a runner who "
-                       f"stops for an extra treasure is credited for it. On plain time the slope would be "
-                       f"{cal['time_only'][0]:.2f} (correlation {cal['time_only'][2]:.2f}).</p>" if cal["net"] else ""))
+                    f"each second a judge predicts should be worth one second of {'net' if cal['net'] else 'real'} time. "
+                    f"The slope is what it is actually worth (1 = calibrated, below 1 = the judge overstates differences "
+                    f"between layouts); R² is the share of the runs' differences a judge explains taking its seconds at face value.</p>"
+                    f"<div class='tablewrap'><table><thead><tr><th>Judge</th><th class='num'>Plays</th><th class='num'>Slope (95%)</th>"
+                    f"<th class='num'>Correlation</th><th class='num'>R² (slope 1)</th></tr></thead><tbody>{cmp_rows}</tbody></table></div>"
+                    + (f"<p>The outcome is <b>net time</b>: seconds minus pokos ÷ 2. The CaveGen judge on plain time would have slope "
+                       f"{cal['time_only'][0]:.2f} (correlation {cal['time_only'][2]:.2f}).</p>" if cal["net"] else "")
+                    + (f"<details><summary>{len(out)} play{'s' if len(out) != 1 else ''} left out as likely mistakes</summary>"
+                       f"<p class='muted small'>More than {OUTLIER_Z:g} robust standard deviations off under every judge, so no layout "
+                       f"judge explains them (a death, a lost treasure, a misplay). Check them in the video.</p>"
+                       f"<div class='tablewrap'><table><thead><tr><th>Sublevel</th><th>Runner</th><th>Video</th>"
+                       f"<th class='num'>Run vs others</th></tr></thead><tbody>{out_rows}</tbody></table></div></details>" if out else ""))
     else:
         cal_chart, cal_text = "", "<p class='muted'>Not enough runs share sublevels to check calibration.</p>"
 
@@ -445,6 +508,8 @@ def build(root: str | Path = "data/output") -> Path:
         e = [x for x in r["entries"] if x.get("cave")]
         judged = [x for x in e if "judge_score" in x and not x.get("judge_fixed") and judge_report.trusted(x)]
         judge_total = sum(x.get("judge_vs_median") or 0 for x in judged)
+        j2 = [x for x in judged if x.get("judge2_score") is not None]
+        judge2_total = sum(x["judge2_vs_median"] for x in j2) if j2 else None
         act = acts[runs.index(r)]
         run_total = sum(v["net"] for v in act.values()) if act else None
         high = sum(1 for x in e if x.get("confidence") == "high")
@@ -453,7 +518,7 @@ def build(root: str | Path = "data/output") -> Path:
         trs.append(f'<tr><td>{tag}</td><td><a href="{html.escape(r["slug"])}/judge.html">'
                    f'{html.escape(r["player"])}</a></td><td>{_fmt_time(r["run"].get("time_seconds"))}</td>'
                    f'<td>{html.escape(r["run"].get("date", ""))}</td><td>{html.escape(r["run"].get("platform", ""))}</td>'
-                   f'<td class="num">{len(e)}</td><td class="num">{high}</td><td class="num">{judge_report._num(judge_total)}</td><td class="num">{judge_report._num(run_total)}</td>'
+                   f'<td class="num">{len(e)}</td><td class="num">{high}</td><td class="num">{judge_report._num(judge_total)}</td><td class="num">{judge_report._num(judge2_total)}</td><td class="num">{judge_report._num(run_total)}</td>'
                    f'<td><a href="{html.escape(r["slug"])}/report.html">detection</a>'
                    f'{f" · <a href={chr(34)}{html.escape(link)}{chr(34)} target=_blank rel=noopener>speedrun.com</a>" if link else ""}</td></tr>')
 
@@ -498,7 +563,7 @@ Open a run for its layouts and per-sublevel luck.</p>
 
 <div class="tablewrap"><table>
 <thead><tr><th>Board</th><th>Runner</th><th>Time</th><th>Date</th><th>Platform</th><th class="num">Sublevels</th>
-<th class="num">High conf.</th><th class="num">Judge (layouts)</th><th class="num">Run (net)</th><th>Pages</th></tr></thead>
+<th class="num">High conf.</th><th class="num">Judge (layouts)</th><th class="num">judge2</th><th class="num">Run (net)</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
 
 <h2>Seed order</h2>

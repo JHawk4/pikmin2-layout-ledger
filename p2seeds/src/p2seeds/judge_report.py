@@ -143,6 +143,8 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
 
     actual = actual or {}
     total_judge = sum(_delta(r) for r in judged)
+    j2 = [r for r in judged if r.get("judge2_score") is not None]
+    total_judge2 = sum(r["judge2_vs_median"] for r in j2) if j2 else None
     measured = [actual[str(r["frame"])] for r in rows if str(r.get("frame")) in actual]
     total_actual = sum(a["net"] for a in measured) if measured else None
     avg_faster = sum(_faster_than(r) for r in judged) / max(1, len(judged))
@@ -184,6 +186,13 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
                            f'<dt>Faster than</dt><dd>{f:.0f}% of layouts</dd></dl>')
             else:
                 verdict = '<p class="muted">CaveGen has no judge for this sublevel.</p>'
+            if r.get("judge2_score") is not None and not r.get("judge_fixed"):
+                d2 = r["judge2_vs_median"]
+                skip = r.get("judge2_skip") or []
+                verdict += (f'<div class="verdict {_tone(d2)}"><span class="lbl">Judge2</span>'
+                            f'<span class="big">{d2:+.1f} s</span><span>layout vs median</span></div>'
+                            + (f'<p class="muted small">judge2 expects the runner to skip: {html.escape(", ".join(skip))}</p>'
+                               if skip else ""))
             verdict += _actual_html(actual.get(str(r.get("frame"))))
             pk = _pokos(tre.get(str(r.get("frame"))))
             body = img + verdict + (f'<p class="small">{html.escape(pk)}</p>' if pk else "")
@@ -266,6 +275,7 @@ an estimate of how long the layout takes to clear, compared with 1000 random lay
 <div class="stats">
   <div class="stat"><b>{len(judged)}</b><span>high-confidence random-layout sublevels{f" (+{n_fixed} fixed floors)" if n_fixed else ""}</span></div>
   <div class="stat"><b>{_num(total_judge)}</b><span>judge: layouts vs median layouts</span></div>
+  {f'<div class="stat"><b>{_num(total_judge2)}</b><span>judge2 (refit): layouts vs median layouts</span></div>' if j2 else ""}
   {f'<div class="stat"><b>{_num(total_actual)}</b><span>run: net vs median run ({len(measured)} sublevels)</span></div>' if measured else ""}
   <div class="stat"><b>{avg_faster:.0f}%</b><span>average share of layouts beaten</span></div>
   {f'<div class="stat"><b>{html.escape(label(best))}</b><span>luckiest: faster than {_faster_than(best):.0f}%</span></div>' if best else ""}
