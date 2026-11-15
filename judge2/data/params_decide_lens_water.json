@@ -1,0 +1,14 @@
+{
+ "w_walk": 1,
+ "w_carry": 1,
+ "w_haz": 1,
+ "w_gate": 1,
+ "w_opt": 1,
+ "w_bug": 1,
+ "w_adj": 1,
+ "cut": 10,
+ "decide": true,
+ "lens_water": 100,
+ "scale": 1.0,
+ "shrink": null
+}

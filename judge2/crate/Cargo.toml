@@ -1,0 +1,17 @@
+[package]
+name = "judge2"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "judge2: a recalibrated Pay Off Debt layout judge (a copy of CaveGen3's JHawk judge plus pod2)"
+
+# its own workspace, so it never joins a parent one
+[workspace]
+
+[dependencies]
+# generation and game data only; the judge itself is copied into src/old_judge.rs
+cavegen3 = { path = "../../../cavegen3/crates/cavegen3" }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
