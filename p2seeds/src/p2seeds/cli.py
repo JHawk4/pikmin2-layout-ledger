@@ -189,7 +189,10 @@ def main(argv: list[str] | None = None) -> int:
         title = f"#{run['place']} {players} — {run['weblink']}"
         log(f"== {title}")
         run_video(entry["download"]["path"], Path(args.out) / slug, entry.get("video"), title,
-                  meta={"run": run}, render=not args.no_render)
+                  meta={"run": run}, render=not args.no_render,
+                  # a manifest entry may pin the game area ("feed": [x0, y0, x1, y1]) when
+                  # detection gets it wrong, e.g. a wide splits panel next to a 4:3 game
+                  feed=Feed(*entry["feed"]) if entry.get("feed") else None)
     return 0
 
 

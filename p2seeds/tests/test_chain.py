@@ -125,3 +125,42 @@ def test_cavegen_region_follows_the_run_language():
     assert cavegen._region_args() == ["-region", "jpn"]
     cavegen.set_region_for([{"lang": "en"}])
     assert cavegen._region_args() == []
+
+
+def test_linked_seed_out_of_order_is_dropped():
+    """A seed linking filled in must sit between its settled neighbors in the RNG sequence."""
+    from types import SimpleNamespace
+    from p2seeds import chain, rng
+
+    a = 0x1234567
+    b = rng.next_seed(a, 100_000)
+    good = rng.next_seed(a, 40_000)          # between a and b: kept
+    bad = rng.next_seed(b, 50_000)           # past b: dropped
+
+    def entry(seed, conf):
+        return SimpleNamespace(letter_seed=seed, layout_seed=seed, confidence=conf, note="", candidates=[])
+
+    for linked, kept in ((good, True), (bad, False)):
+        rs = [entry(a, "high"), entry(None, "none"), entry(b, "high")]
+        before = [(r.letter_seed, r.layout_seed, r.confidence, r.note, r.candidates) for r in rs]
+        rs[1].letter_seed = rs[1].layout_seed = linked
+        rs[1].confidence = "high"
+        chain._check_order(rs, before, [0, 2])
+        assert (rs[1].letter_seed == linked) is kept
+        assert rs[1].confidence == ("high" if kept else "none")
+
+
+def test_index_matches_stepping():
+    """rng.index (CaveGen's nth_inv) gives exact distances; brute force agrees."""
+    import random
+    from p2seeds import rng
+    rnd = random.Random(7)
+    for _ in range(100):
+        s, n = rnd.getrandbits(32), rnd.randrange(1, 5_000_000)
+        assert rng.distance(s, rng.next_seed(s, n), limit=1 << 31) == n
+        assert rng.index(rng.next_seed(0, n)) == n
+    for _ in range(5):
+        s, t = rnd.getrandbits(32), rnd.getrandbits(32)
+        assert rng.distance(s, t, limit=1 << 21) == rng.distance_brute(s, t, limit=1 << 21)
+    s = rnd.getrandbits(32)
+    assert rng.distance(s, rng.next_seed(s, 1000), limit=999) is None

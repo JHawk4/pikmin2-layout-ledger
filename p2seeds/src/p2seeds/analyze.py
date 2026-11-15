@@ -6,7 +6,7 @@ from dataclasses import dataclass, field, replace
 
 import numpy as np
 
-from . import digits, letters_model, templates
+from . import digits, lattice, letters_model, templates
 from .calibrate import Calibration, calibrate
 from .events import Event, is_entry_screen
 from .feed import Feed
@@ -200,17 +200,18 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
         r.note = "too few letters measured"   # chain.link may still find it near a neighbor
         r.confidence = "none"
         return r
-    if r.fit.rms_px <= MAX_FIT_RMS_PX:
-        r.candidates, r.confidence = _search(r.fit, search_kw)
-    if r.confidence != "high" and n_meas >= 7:
-        # the capture may have skipped or repeated one game frame mid-fall
+    # the lattice search costs milliseconds whatever the tolerances, so poor fits are tried too
+    r.candidates, r.confidence = _search(r.fit, search_kw)
+    if r.confidence != "high" and n_meas >= 5:
+        # the capture may have skipped or repeated one game frame mid-fall: every letter is
+        # then a frame further along (or behind) from that point on
         for f2, d, k in _fit_with_step(tracks, cal.cave.num_chars, feed.height / 480.0, r.fit):
-            c2, conf2 = _search(f2, search_kw)
-            if _RANK[conf2] > _RANK[r.confidence]:
+            c2, conf2 = _search(f2, search_kw, retries=False)
+            if _RANK[conf2] > _RANK[r.confidence] or (
+                    conf2 == r.confidence and c2 and r.candidates and c2[0].score < r.candidates[0].score):
                 r.fit, r.candidates, r.confidence = f2, c2, conf2
                 r.note = f"timing step of {d:+d} frame at fall frame {k}"
     if r.fit.rms_px > MAX_FIT_RMS_PX and not r.candidates:
-        # a poor fit means wide tolerances, which makes the search enumerate huge sets
         r.note = f"letter fit too poor ({r.fit.rms_px:.2f} px)"
         return r
     if not r.candidates:
@@ -225,21 +226,38 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
 _RANK = {"none": 0, "low": 1, "medium": 2, "high": 3}
 
 
-def _search(f: FitResult, search_kw: dict | None) -> tuple[list[Candidate], str]:
-    # a narrow bias window is ~3x faster; widen only if it finds nothing convincing
-    cands, conf = [], "none"
-    for max_bias in (0.15, 0.5):
-        cands = search(f.v, f.sigma, max_bias=max_bias, **(search_kw or {}))
-        conf = _confidence(cands)
-        if conf in ("high", "medium"):
+def _search(f: FitResult, search_kw: dict | None = None, retries: bool = True) -> tuple[list[Candidate], str]:
+    """Lattice search over the measured letters (milliseconds). When that is not conclusive
+    and there are letters to spare, retry leaving out one letter, then two: a single
+    mistracked letter otherwise rules out the true seed."""
+    kw = {k: v for k, v in (search_kw or {}).items() if k in ("k_tol", "max_bias", "cap", "top")}
+    measured = [i for i in range(len(f.v)) if np.isfinite(f.v[i]) and np.isfinite(f.sigma[i])]
+
+    def attempt(leave_out=()):
+        try:
+            # retries get a smaller budget: a box that big is ambiguous anyway
+            c = lattice.search(f.v, f.sigma, leave_out=leave_out,
+                               max_nodes=100_000 if leave_out else 500_000, **kw)
+        except ValueError:
+            return [], "none"
+        return c, _confidence(c)
+
+    best = attempt()
+    for k in ((1, 2) if retries else ()):
+        if best[1] == "high" or len(measured) - k < 6 or f.rms_px > MAX_FIT_RMS_PX:
             break
-    return cands, conf
+        import itertools
+        for out in itertools.combinations(measured, k):
+            c = attempt(out)
+            if (_RANK[c[1]], -(c[0][0].score if c[0] else 1e9)) > (_RANK[best[1]], -(best[0][0].score if best[0] else 1e9)):
+                best = c
+    return best
 
 
 def _fit_with_step(tracks, num_chars: int, s_guess: float, base: FitResult,
-                   min_gain: float = 0.8) -> list[tuple[FitResult, int, int]]:
+                   min_gain: float = 0.8, max_picks: int = 40) -> list[tuple[FitResult, int, int]]:
     """Refits assuming the video skipped (+1) or repeated (-1) one game frame at
-    clip frame k. Returns the few most plausible (fit, d, k), best first.
+    clip frame k. Returns the plausible (fit, d, k), most letters first.
 
     game_times removes repeated frames, but a dropped frame leaves no trace in
     the pixels: every letter position after it is simply one game frame further on.
@@ -272,13 +290,10 @@ def _fit_with_step(tracks, num_chars: int, s_guess: float, base: FitResult,
 
     better = {dk: f for dk, f in tried.items()
               if n_let(f) > n_old or (n_let(f) == n_old and f.rms_px <= min_gain * base.rms_px)}
-    picks = []
-    by_letters = sorted(better.items(), key=lambda kv: (-n_let(kv[1]), -int(kv[1].n_points.sum()), kv[1].rms_px))
-    by_rms = sorted(((dk, f) for dk, f in better.items() if n_let(f) >= n_old), key=lambda kv: kv[1].rms_px)
-    for dk, f in by_letters[:1] + by_rms[:1]:
-        if dk not in [p[1:] for p in picks]:
-            picks.append((f, *dk))
-    return picks
+    # every plausible shift is returned (the lattice search is cheap enough to try them all);
+    # the caller keeps the one whose seed is most convincing
+    ranked = sorted(better.items(), key=lambda kv: (-n_let(kv[1]), kv[1].rms_px))
+    return [(f, *dk) for dk, f in ranked[:max_picks]]
 
 
 def game_times(frames: list[np.ndarray], thr: float = 0.1, rel: float = 0.25,

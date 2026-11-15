@@ -27,7 +27,7 @@ from . import cavegen, charts, judge_report, rng, treasures
 
 STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "SC", "CoC", "HoH", "DD"]
 
-STEP_LIMIT = 50_000_000      # consecutive seeds further apart than this count as a break
+STEP_LIMIT = 5_000_000       # gap allowed between two plotted seeds (a sublevel is ~10k-500k steps)
 
 
 def _run_label(run: dict, fallback: str) -> str:
@@ -52,28 +52,30 @@ def _load(root: Path) -> list[dict]:
 
 
 def seed_steps(entries: list[dict]) -> list[int | None]:
-    """RNG steps from the run's first letter seed to each entry's letter seed.
+    """RNG steps from the run's first confirmed letter seed to each entry's letter seed.
 
-    Each seed is located from the last one placed. A seed that is not found
-    within STEP_LIMIT steps after it (out of order, or wrong) gets None and is
-    skipped, so one bad seed does not break the rest of the line."""
-    out: list[int | None] = []
-    prev, total = None, 0
-    for e in entries:
-        s = int(e["letter_seed"], 16) if e.get("letter_seed") else None
-        if s is None:
-            out.append(None)
-        elif prev is None:
-            prev, total = s, 0
-            out.append(0)
-        else:
-            d = rng.distance(prev, s, limit=STEP_LIMIT)
-            if d is None:
-                out.append(None)
-            else:
-                total += d
-                prev = s
-                out.append(total)
+    Only high-confidence seeds are placed. The line starts at the first one that the next
+    high-confidence seed follows within STEP_LIMIT steps (so a misread first seed cannot anchor
+    it); each later seed is placed from the last one placed, and one that is not found within
+    STEP_LIMIT steps (out of order, or wrong) gets None, so one bad seed does not break the rest."""
+    seeds = [int(e["letter_seed"], 16) if e.get("letter_seed") and e.get("confidence") == "high" else None
+             for e in entries]
+    idx = [i for i, sd in enumerate(seeds) if sd is not None]
+    out: list[int | None] = [None] * len(entries)
+    anchor = next((i for i, j in zip(idx, idx[1:])
+                   if rng.distance(seeds[i], seeds[j], limit=STEP_LIMIT) is not None), None)
+    if anchor is None:
+        return out
+    prev, total = seeds[anchor], 0
+    out[anchor] = 0
+    for i in idx:
+        if i <= anchor:
+            continue
+        d = rng.distance(prev, seeds[i], limit=STEP_LIMIT)
+        if d is not None:
+            total += d
+            prev = seeds[i]
+            out[i] = total
     return out
 
 
@@ -100,6 +102,8 @@ def actuals(runs: list[dict]) -> list[dict]:
         e = r["entries"]
         for a, b in zip(e, e[1:]):
             if a["cave"] == b["cave"] and a.get("sublevel") and b.get("sublevel") == a["sublevel"] + 1:
+                if r["kind"] == "pod" and not judge_report.trusted(a):
+                    continue      # pokos are read against the seed's treasures: no trusted seed, no net time
                 t = tre.get(str(a["frame"]))
                 plays.setdefault(f'{a["cave"]} {a["sublevel"]}', []).append(
                     (i, str(a["frame"]), (b["frame"] - a["frame"]) / r["fps"], t.get("pokos") if t else None))
@@ -145,7 +149,7 @@ def calibration(runs: list[dict]) -> dict:
         net = r["kind"] == "pod"
         for a, b in zip(e, e[1:]):
             if (a["cave"] == b["cave"] and a.get("sublevel") and b.get("sublevel") == a["sublevel"] + 1
-                    and "judge_score" in a and not a.get("judge_fixed")):
+                    and "judge_score" in a and not a.get("judge_fixed") and judge_report.trusted(a)):
                 ref = cavegen.reference_scores(a["cave"], a["sublevel"], r["kind"])
                 t = tre.get(str(a["frame"]))
                 took = (b["frame"] - a["frame"]) / r["fps"]
@@ -319,6 +323,8 @@ def pokos_section(runs: list[dict]) -> str:
             if t.get("pokos") is None:
                 continue
             e = entries.get(k, {})
+            if not judge_report.trusted(e):
+                continue          # the treasure values come from the seed's layout
             sub = f'{t["cave"]} {t["sublevel"]}'
             names = _treasure_names(t)
             vals[sub] = (t["pokos"], f"{t['pokos']} pokos\n{sub} · {r['runner']} · {e.get('time', '')}"
@@ -337,24 +343,46 @@ def pokos_section(runs: list[dict]) -> str:
         rel = {c: (p - median[c], f"{p - median[c]:+g} pokos vs the median ({p} vs {median[c]:g})\n{tip.split(chr(10), 1)[1]}", href)
                for c, (p, tip, href) in v.items()}
         series.append({"name": runs[i]["runner"], "slot": i, "values": rel})
-    chart = charts.dot_chart(cats, series, "Pokos collected per sublevel, vs the median run", "pokos vs median")
-    head = "".join(f"<th class='num'>{html.escape(runs[i]['runner'])}</th>" for i in per_run)
-    body = "".join(
-        f"<tr><td>{html.escape(c)}</td><td class='num'>{median[c]:g}</td>" + "".join(
-            f"<td class='num'>{per_run[i][c][0] if c in per_run[i] else ''}</td>" for i in per_run) + "</tr>"
-        for c in cats)
-    totals = "".join(f"<td class='num'><b>{sum(v[0] for v in per_run[i].values())}</b></td>" for i in per_run)
+    # a grid: one row per run, one column per sublevel where somebody differs from the median
+    diff_cats = [c for c in cats if any(c in v and v[c][0] != median[c] for v in per_run.values())]
+    same = len(cats) - len(diff_cats)
+    big = max((abs(v[c][0] - median[c]) for v in per_run.values() for c in diff_cats if c in v), default=1) or 1
+    head = "".join(f"<th class='num'>{html.escape(c)}<br><span class='muted'>{median[c]:g}</span></th>" for c in diff_cats)
+    rows = []
+    for i, v in per_run.items():
+        cells = []
+        for c in diff_cats:
+            if c not in v:
+                cells.append("<td class='num muted'>·</td>")
+                continue
+            p, tip, href = v[c]
+            d = p - median[c]
+            if d == 0:
+                cells.append(f"<td class='num muted' data-tip='{html.escape(chr(10).join([f'{p} pokos (the median)', tip.split(chr(10), 1)[1]]))}'>0</td>")
+                continue
+            mark = "--good-mark" if d > 0 else "--bad-mark"
+            pct = 18 + 52 * min(1.0, abs(d) / big)
+            text = f"{d:+g}"
+            if href:
+                text = f"<a href='{html.escape(href)}' target='_blank' rel='noopener'>{text}</a>"
+            tipx = f"{d:+g} pokos vs the median ({p} vs {median[c]:g})" + chr(10) + tip.split(chr(10), 1)[1]
+            cells.append(f"<td class='num heat' tabindex='0' style='background:color-mix(in srgb, var({mark}) {pct:.0f}%, transparent)' "
+                         f"data-tip='{html.escape(tipx)}'>{text}</td>")
+        tot = sum(v[c][0] - median[c] for c in v)
+        tone = "good" if tot > 0 else "bad" if tot < 0 else "mid"
+        rows.append(f"<tr><td>{html.escape(runs[i]['runner'])}</td><td class='num {tone}-text'><b>{tot:+g}</b></td>{''.join(cells)}</tr>")
+    hidden = (f" {same} other sublevel{'s' if same != 1 else ''}, where every run got the median, "
+              f"{'are' if same != 1 else 'is'} left out.") if same else ""
     return f'''<h2>Pokos by sublevel</h2>
-<p>Pokos from treasures collected on each sublevel (Pay Off Debt runs), relative to the median run on the same
-sublevel, the expected baseline. A dot above zero collected more than usual. Each treasure collected shows a panel
-with its value; the panels are counted in the video and matched to the treasures CaveGen places on that layout. Pokos
-from enemies are not included, and a cave's last sublevel is left out (no next entry screen to end it). Hover a dot for
-the treasures; click it to open the video.</p>
-{chart}
-<details><summary>Show as a table</summary><div class="tablewrap"><table>
-<thead><tr><th>Sublevel</th><th class='num'>Median</th>{head}</tr></thead><tbody>{body}
-<tr><td><b>Total</b></td><td class='num'><b>{sum(median.values()):g}</b></td>{totals}</tr></tbody>
-</table></div></details>'''
+<p>Pokos from treasures collected on each sublevel (Pay Off Debt runs), against the median run on the same sublevel,
+the expected baseline. Each row is a run, each column a sublevel where at least one run differs from the median (the
+median is under the name). Green cells collected more than usual, red cells fewer; a darker cell is a bigger
+difference, and a dot means the sublevel was not read.{hidden} Each treasure collected shows a panel with its value;
+the panels are counted in the video and matched to the treasures CaveGen places on that layout. Pokos from enemies
+are not included. Hover a cell for the treasures; click the number to open the video.</p>
+<div class="tablewrap viz-root"><table class="heatgrid">
+<thead><tr><th>Run</th><th class='num'>Total vs median</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody>
+</table></div>'''
 
 
 def _fmt_time(t):
@@ -415,7 +443,7 @@ def build(root: str | Path = "data/output") -> Path:
     trs = []
     for r in runs:
         e = [x for x in r["entries"] if x.get("cave")]
-        judged = [x for x in e if "judge_score" in x and not x.get("judge_fixed")]
+        judged = [x for x in e if "judge_score" in x and not x.get("judge_fixed") and judge_report.trusted(x)]
         judge_total = sum(x.get("judge_vs_median") or 0 for x in judged)
         act = acts[runs.index(r)]
         run_total = sum(v["net"] for v in act.values()) if act else None
@@ -448,6 +476,10 @@ main {{ max-width:1080px; margin:0 auto; }}
 h1 {{ font-size:26px; margin:0 0 4px; }} h2 {{ font-size:19px; margin:36px 0 8px; }}
 a {{ color:inherit; }} .muted {{ color:var(--muted); }} p {{ max-width:780px; }}
 .tablewrap {{ overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; }}
+.heatgrid {{ font-size:12px; }} .heatgrid th, .heatgrid td {{ padding:4px 7px; white-space:nowrap; }}
+.heatgrid th:first-child, .heatgrid td:first-child {{ position:sticky; left:0; background:var(--card); z-index:1; }}
+.heatgrid td.heat a {{ color:var(--fg); text-decoration:none; font-weight:600; }}
+.heatgrid td.heat {{ outline:none; }} .heatgrid td.heat:hover, .heatgrid td.heat:focus {{ box-shadow:inset 0 0 0 2px var(--fg); }}
 table {{ border-collapse:collapse; width:100%; font-size:14px; }}
 th, td {{ text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }}
 th {{ color:var(--muted); font-weight:500; }} tr:last-child td {{ border-bottom:none; }}
@@ -484,7 +516,8 @@ forward, so every line should climb steadily; a point off its line, or a break, 
 (so each cave's last sublevel is left out). Both the judge's estimate and the real time are compared within the same
 sublevel across runs, after removing each runner's overall pace. For Pay Off Debt the outcome counts pokos too, at
 two pokos per second; for other categories, plays where the runner collected a different number of treasures than
-most runs of that sublevel are left out. Hover a point for its seed and pokos; click it to open the video there.</p>
+most runs of that sublevel are left out. Only seeds read at high confidence are used: a misread seed is a wrong
+layout, so its judge score would be noise. Hover a point for its seed and pokos; click it to open the video there.</p>
 {cal_text}
 {cal_chart}
 {ex_table}

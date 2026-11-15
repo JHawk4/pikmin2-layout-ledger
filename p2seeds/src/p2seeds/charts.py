@@ -32,6 +32,7 @@ CSS = """
 .chart .zero { stroke:var(--ink-3); stroke-width:1; }
 .chart .range { stroke:var(--range); stroke-width:6; stroke-linecap:round; }
 .chart .hit { fill:transparent; cursor:default; outline:none; }
+.chart svg text, .chart .dot { pointer-events:none; }
 .chart .hit:hover + .dot, .chart .hit:focus + .dot { stroke:var(--ink-1); stroke-width:2; }
 .chart .runline { opacity:.35; } .chart .runline:hover, .chart .runline:focus-within { opacity:1; }
 .chart .runline:hover path { stroke-width:2.5; }
@@ -40,31 +41,47 @@ CSS = """
 .legend i.dotkey { width:8px; height:8px; border-radius:50%; }
 #viz-tip { position:fixed; pointer-events:none; z-index:10; background:var(--surface-1); color:var(--ink-2);
   border:1px solid var(--grid); border-radius:8px; padding:6px 9px; font:12px/1.4 system-ui,sans-serif;
-  box-shadow:0 4px 14px rgba(0,0,0,.18); display:none; max-width:260px; }
+  box-shadow:0 4px 14px rgba(0,0,0,.25); display:none; box-sizing:border-box; max-width:min(260px, calc(100vw - 16px)); }
 #viz-tip b { color:var(--ink-1); display:block; font-size:13px; }
-#viz-tip img { display:block; width:240px; height:200px; object-fit:contain; max-width:100%; margin-top:6px;
+#viz-tip img { display:block; width:240px; height:min(200px, 45vh); object-fit:contain; max-width:100%; margin-top:6px;
   border-radius:4px; background:#000; }
 """
 
 TOOLTIP_JS = """
 (() => {
-  const tip = document.createElement('div'); tip.id = 'viz-tip'; document.body.appendChild(tip);
+  const tip = document.createElement('div'); tip.id = 'viz-tip'; tip.className = 'viz-root';
+  document.body.appendChild(tip);
+  let at = null;
+  const place = () => {
+    if (!at) return;
+    const [x, y] = at, w = tip.offsetWidth, h = tip.offsetHeight, gap = 14;
+    // right of the pointer if it fits, else left; vertically centred on it, kept inside the window
+    let left = x + gap + w <= innerWidth - 8 ? x + gap : x - gap - w;
+    left = Math.max(8, Math.min(left, innerWidth - w - 8));
+    const top = Math.max(8, Math.min(y - h / 2, innerHeight - h - 8));
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  };
+  let cur = null;
+  const hide = () => { tip.style.display = 'none'; cur = null; };
   const show = (el, x, y) => {
+    if (cur === el) { at = [x, y]; place(); return; }  // same mark: just follow the pointer
+    cur = el;
     tip.replaceChildren();
     const [head, ...rest] = el.dataset.tip.split('\\n');
     const b = document.createElement('b'); b.textContent = head; tip.appendChild(b);
     rest.forEach(line => { const d = document.createElement('div'); d.textContent = line; tip.appendChild(d); });
-    if (el.dataset.img) { const im = document.createElement('img'); im.src = el.dataset.img; im.alt = ''; tip.appendChild(im); }
+    if (el.dataset.img) {
+      const im = document.createElement('img'); im.alt = ''; im.addEventListener('load', place);
+      im.src = el.dataset.img; tip.appendChild(im);
+    }
     tip.style.display = 'block';
-    const w = tip.offsetWidth, h = tip.offsetHeight;
-    tip.style.left = Math.min(innerWidth - w - 8, x + 14) + 'px';
-    tip.style.top = Math.max(8, y - h - 10) + 'px';
+    at = [x, y]; place();
   };
   document.querySelectorAll('[data-tip]').forEach(el => {
     el.addEventListener('pointermove', e => show(el, e.clientX, e.clientY));
-    el.addEventListener('pointerleave', () => tip.style.display = 'none');
+    el.addEventListener('pointerleave', hide);
     el.addEventListener('focus', () => { const r = el.getBoundingClientRect(); show(el, r.right, r.top); });
-    el.addEventListener('blur', () => tip.style.display = 'none');
+    el.addEventListener('blur', hide);
   });
 })();
 """

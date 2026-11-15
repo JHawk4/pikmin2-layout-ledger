@@ -70,6 +70,18 @@ def _num(delta: float | None, unit: str = "s") -> str:
     return f'<span class="{_tone(delta)}-text">{delta:+.1f} {unit}</span>' if unit else f'<span class="{_tone(delta)}-text">{delta:+g}</span>'
 
 
+def cg3_url(r: dict) -> str:
+    """This layout on the CaveGen3 web page (zoomable, with treasures, teki and judges)."""
+    seed = r["layout_seed"][2:] if r["layout_seed"].lower().startswith("0x") else r["layout_seed"]
+    return f"https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:{r['cave']}-{r['sublevel']}&seed={seed}"
+
+
+def trusted(r: dict) -> bool:
+    """Only high-confidence seeds feed totals, charts and the calibration; the rest are shown
+    on request, marked, since a wrong seed means a wrong layout, judge score and treasure list."""
+    return r.get("confidence") == "high"
+
+
 def _pokos(t: dict | None) -> str:
     """'280 pokos: dia a red (180), tape yellow (100)' for a sublevel's treasure record."""
     if not t or t.get("pokos") is None:
@@ -120,8 +132,9 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
     runner = ", ".join(p["name"] for p in run.get("players", [])) or out_dir.name
     t = run.get("time_seconds")
     run_time = f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}" if t else ""
-    judged = [r for r in rows if "judge_score" in r and not r.get("judge_fixed")]
+    judged = [r for r in rows if "judge_score" in r and not r.get("judge_fixed") and trusted(r)]
     n_fixed = sum(1 for r in rows if r.get("judge_fixed"))
+    n_low = sum(1 for r in rows if not trusted(r))
 
     layouts = {p.name: p for p in (out_dir / "img").glob("layout_*.png")}
 
@@ -140,7 +153,8 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
         return f"{r['cave']} {r['sublevel']}"
 
     tre = treasures.load(out_dir)
-    chart = charts.timesave_chart(chart_points(rows, kind, tre, actual),
+    shown = [r if trusted(r) else {k: x for k, x in r.items() if not k.startswith("judge_")} for r in rows]
+    chart = charts.timesave_chart(chart_points(shown, kind, tre, actual),
                                   "Judge estimate and actual result per sublevel")
 
     sections = []
@@ -148,7 +162,7 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
         rs = [r for r in rows if r["cave"] == cave]
         if not rs:
             continue
-        sub_judge = sum(_delta(r) for r in rs if "judge_score" in r and not r.get("judge_fixed"))
+        sub_judge = sum(_delta(r) for r in rs if "judge_score" in r and not r.get("judge_fixed") and trusted(r))
         sub_act = [actual[str(r["frame"])]["net"] for r in rs if str(r.get("frame")) in actual]
         cards = []
         for r in rs:
@@ -171,15 +185,19 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
             else:
                 verdict = '<p class="muted">CaveGen has no judge for this sublevel.</p>'
             verdict += _actual_html(actual.get(str(r.get("frame"))))
-            conf = "" if r["confidence"] == "high" else f' <span class="tag">{html.escape(r["confidence"])}</span>'
+            pk = _pokos(tre.get(str(r.get("frame"))))
+            body = img + verdict + (f'<p class="small">{html.escape(pk)}</p>' if pk else "")
+            conf = "" if trusted(r) else f' <span class="tag">{html.escape(r["confidence"])}</span>'
+            if not trusted(r):
+                body = (f'<p class="muted small hide-low">The seed was read at {html.escape(r["confidence"])} confidence, so its '
+                        f'layout, judge and pokos are left out. Tick "show lower-confidence reads" above to see them.</p>'
+                        f'<div class="low-only">{body}</div>')
             link = (f'<a href="{html.escape(r["link"])}" target="_blank" rel="noopener">{html.escape(r["time"])}</a>'
                     if r.get("link") else html.escape(r.get("time", "")))
-            cards.append(f'''<article class="card" id="{r["cave"]}-{r["sublevel"]}">
+            cards.append(f'''<article class="card{"" if trusted(r) else " low"}" id="{r["cave"]}-{r["sublevel"]}">
   <header><h3>{html.escape(label(r))}</h3><code>{html.escape(r["layout_seed"])}</code>{conf}</header>
-  {img}
-  {verdict}
-  {f'<p class="small">{html.escape(_pokos(tre.get(str(r.get("frame")))))}</p>' if _pokos(tre.get(str(r.get("frame")))) else ""}
-  <p class="muted small">Entered at {link}</p>
+  {body}
+  <p class="muted small">Entered at {link} · <a href="{cg3_url(r)}" target="_blank" rel="noopener">open in CaveGen3</a></p>
 </article>''')
         sections.append(f'''<section>
   <h2>{html.escape(CAVE_NAMES.get(cave, cave))} <span class="muted">· {len(rs)} sublevels · judge {_num(sub_judge)}{f" · run {_num(sum(sub_act))} net" if sub_act else ""}</span></h2>
@@ -227,6 +245,9 @@ code {{ font:13px ui-monospace,Consolas,monospace; color:var(--muted); }}
 dl {{ display:grid; grid-template-columns:auto 1fr; gap:2px 12px; margin:0; font-size:13px; }}
 dt {{ color:var(--muted); }} dd {{ margin:0; text-align:right; font-variant-numeric:tabular-nums; }}
 .card p {{ margin:0; }}
+.low-only {{ display:none; }} body.show-low .low-only {{ display:contents; }} body.show-low .hide-low {{ display:none; }}
+.card.low {{ border-style:dashed; }}
+.toggle {{ font-size:14px; margin:6px 0 0; display:flex; gap:6px; align-items:center; }}
 dialog {{ border:none; padding:0; background:transparent; max-width:96vw; max-height:96vh; }}
 dialog::backdrop {{ background:rgba(0,0,0,.8); }}
 dialog img {{ max-width:96vw; max-height:92vh; display:block; border-radius:6px; }}
@@ -240,8 +261,10 @@ dialog img {{ max-width:96vw; max-height:92vh; display:block; border-radius:6px;
 Every sublevel's layout was rebuilt from the seed read off the video, then scored by CaveGen's <b>{html.escape(kind)}</b> judge:
 an estimate of how long the layout takes to clear, compared with 1000 random layouts of the same sublevel.</p>
 
+{f'''<label class="toggle"><input type="checkbox" id="show-low"> Show lower-confidence reads ({n_low} sublevel{"s" if n_low != 1 else ""};
+  never counted in the totals or the chart)</label>''' if n_low else ""}
 <div class="stats">
-  <div class="stat"><b>{len(judged)}</b><span>random-layout sublevels{f" (+{n_fixed} fixed floors)" if n_fixed else ""}</span></div>
+  <div class="stat"><b>{len(judged)}</b><span>high-confidence random-layout sublevels{f" (+{n_fixed} fixed floors)" if n_fixed else ""}</span></div>
   <div class="stat"><b>{_num(total_judge)}</b><span>judge: layouts vs median layouts</span></div>
   {f'<div class="stat"><b>{_num(total_actual)}</b><span>run: net vs median run ({len(measured)} sublevels)</span></div>' if measured else ""}
   <div class="stat"><b>{avg_faster:.0f}%</b><span>average share of layouts beaten</span></div>
@@ -258,10 +281,18 @@ layouts, so a dot near or past the end of its bar is a big swing. Hover for deta
 <p class="note">The judge is CaveGen's heuristic (walking, carrying and fighting estimates for the PoD route), not a
 measured time, so treat the seconds as relative luck rather than exact savings. As on splits, negative means faster
 than the median: green is good, red is bad. "Run" is what the runner actually did on the sublevel, measured from one
-entry screen to the next, against the median of the runs on this site, counting two pokos as one second. Seeds marked medium had slightly weaker evidence from the video than the rest.</p>
+entry screen to the next, against the median of the runs on this site, counting two pokos as one second. Only seeds read at high confidence count anywhere on this page; lower-confidence reads (dashed cards) are
+hidden unless you ask for them, and are never added to the totals.</p>
 </main>
 <dialog id="zoom"><img alt=""></dialog>
 <script>
+const low = document.getElementById('show-low');
+if (low) {{
+  try {{ low.checked = localStorage.getItem('p2seeds-show-low') === '1'; }} catch (e) {{}}
+  const apply = () => document.body.classList.toggle('show-low', low.checked);
+  low.addEventListener('change', () => {{ apply(); try {{ localStorage.setItem('p2seeds-show-low', low.checked ? '1' : '0'); }} catch (e) {{}} }});
+  apply();
+}}
 const dlg = document.getElementById('zoom'), big = dlg.querySelector('img');
 document.querySelectorAll('button.shot').forEach(b => b.addEventListener('click', () => {{
   big.src = b.querySelector('img').src; big.alt = b.getAttribute('aria-label'); dlg.showModal();

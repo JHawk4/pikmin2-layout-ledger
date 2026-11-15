@@ -1,0 +1,17 @@
+[package]
+name = "p2seeds-cg3"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Judge scores and treasure lists for p2seeds, from CaveGen3"
+
+# its own workspace, so it never joins a parent one
+[workspace]
+
+[dependencies]
+# CaveGen3 lives next to this project (Desktop/Claude/cavegen3); set CAVEGEN3_DATA to move its data
+cavegen3 = { path = "../../../cavegen3/crates/cavegen3" }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

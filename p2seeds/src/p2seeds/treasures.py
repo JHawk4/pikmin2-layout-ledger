@@ -161,9 +161,13 @@ def ensure_helper() -> Path:
 
 
 def sublevel_items(triples: list[tuple[str, int, int]]) -> dict[tuple[str, int, int], list[tuple[str, int]]]:
-    """(cave, sublevel, layout seed) -> [(treasure, pokos)] placed on that layout."""
+    """(cave, sublevel, layout seed) -> [(treasure, pokos)] placed on that layout, including
+    treasures carried by teki. From CaveGen3 when its bridge is built (US runs), else Java."""
     import subprocess
-    from . import cavegen
+    from . import cavegen, cg3
+    if cg3.available() and cavegen.REGION == "us":
+        return {(c, s, seed): [(i["name"].lower(), int(i["value"] or 0)) for i in cg3.layout(c, s, seed)["items"]]
+                for c, s, seed in triples}
     build = ensure_helper()
     args = [x for c, s, seed in triples for x in (c, str(s), f"0x{seed & 0xFFFFFFFF:08X}")]
     out = subprocess.run(["java", "-cp", str(build), "SublevelItems", *args], cwd=cavegen.CAVEGEN,
