@@ -129,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--kind", default="pod", help="judge type for new runs")
     st = sub.add_parser("site", help="write index.html over every judged run, and refresh each run's page")
     st.add_argument("--root", default="data/output")
+    dt = sub.add_parser("details", help="rebuild a run's detection page with tracking pictures, the comedown and the layout outline")
+    dt.add_argument("out_dir")
+    dt.add_argument("--force", action="store_true", help="redo pictures that already exist")
     pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
     pb.add_argument("--root", default="data/output")
     pb.add_argument("--out", default="data/pages")
@@ -139,6 +142,15 @@ def main(argv: list[str] | None = None) -> int:
     dg.add_argument("--feed", default=None, help="x0,y0,x1,y1 (default: detect)")
     dg.add_argument("--out", default=None)
     args = ap.parse_args(argv)
+
+    if args.cmd == "details":
+        from . import details
+        out = Path(args.out_dir)
+        cavegen.set_region_for(json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"])
+        page = details.write(out, force=args.force,
+                             progress=lambda i, n, r: log(f"  {i}/{n} {r['cave']} {r.get('sublevel')}"))
+        log(f"details: {page}")
+        return 0
 
     if args.cmd == "publish":
         from . import site

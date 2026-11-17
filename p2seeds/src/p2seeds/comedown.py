@@ -1,0 +1,64 @@
+"""The comedown: the floor the camera shows when the captain lands, drawn on a layout render.
+
+Port of CaveGen3's web page (web/app.js, comedownShape / comedownCorners): the landing
+camera sits `dist` units back and `angle` degrees down with a vertical field of view of `fov`
+degrees, aimed `lift` units above a target `lookAhead` units ahead of the pod, looking the way
+the pod faces. On the floor that is a trapezoid ahead of the pod. GameCube runs are 4:3.
+
+Java CaveGen's renders are 80 px per map cell and a cell is 170 game units, from the map's corner.
+"""
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+CAMERA = {"dist": 900.0, "angle": 25.0, "fov": 26.0, "lift": 40.0, "lookAhead": -55.0}
+PX_PER_UNIT = 80.0 / 170.0
+
+
+def shape(aspect: float = 4 / 3) -> dict:
+    rad = math.pi / 180
+    height = CAMERA["dist"] * math.sin(CAMERA["angle"] * rad) + CAMERA["lift"]
+    back = CAMERA["dist"] * math.cos(CAMERA["angle"] * rad) - CAMERA["lookAhead"]
+    half = CAMERA["fov"] / 2 * rad
+    tan_side = math.tan(half) * aspect
+
+    def edge(pitch):
+        ground = height / math.tan(pitch)
+        depth = math.hypot(ground, height) * math.cos(half)
+        return ground - back, depth * tan_side
+
+    near, near_half = edge(CAMERA["angle"] * rad + half)
+    far, far_half = edge(CAMERA["angle"] * rad - half)
+    return {"near": near, "far": far, "nearHalf": near_half, "farHalf": far_half}
+
+
+def corners(x: float, z: float, degrees: float, s: dict | None = None) -> list[tuple[float, float]]:
+    s = s or shape()
+    a = math.radians(degrees)
+    f = (math.sin(a), math.cos(a))
+    r = (-f[1], f[0])
+
+    def at(ahead, side):
+        return (x + f[0] * ahead + r[0] * side, z + f[1] * ahead + r[1] * side)
+    return [at(s["near"], -s["nearHalf"]), at(s["near"], s["nearHalf"]), at(s["far"], s["farHalf"]), at(s["far"], -s["farHalf"])]
+
+
+def draw(render: Path, ship: dict, out: Path, aspect: float = 4 / 3) -> Path:
+    """Copy `render` (a Java CaveGen layout PNG) to `out` with the comedown outline drawn on it."""
+    img = cv2.imread(str(render))
+    pts = np.array([[x * PX_PER_UNIT, z * PX_PER_UNIT] for x, z in corners(ship["x"], ship["z"], ship["angle"], shape(aspect))],
+                   np.int32)
+    overlay = img.copy()
+    cv2.fillPoly(overlay, [pts], (60, 200, 255))
+    img = cv2.addWeighted(overlay, 0.18, img, 0.82, 0)
+    cv2.polylines(img, [pts], True, (40, 180, 255), 4, cv2.LINE_AA)
+    cx, cz = ship["x"] * PX_PER_UNIT, ship["z"] * PX_PER_UNIT
+    cv2.circle(img, (int(cx), int(cz)), 10, (40, 180, 255), 3, cv2.LINE_AA)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(out), img)
+    return out

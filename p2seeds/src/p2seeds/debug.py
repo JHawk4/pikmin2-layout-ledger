@@ -36,8 +36,12 @@ def _model_y(fr, i, v, n, F0, s, y_floor):
     return y_floor - s * letters_model.pos(v, f)
 
 
-def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Path | None = None) -> Path:
-    video = Video(video_path)
+def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Path | None = None,
+           weak: bool = False, wall: bool = False, compact: bool = False, video: Video | None = None) -> Path:
+    """`weak` / `wall`: the variants the detector may have used (weaker letter matches allowed;
+    timing by the video clock), so the picture shows what the detector actually saw.
+    `compact`: a smaller picture for the detection page (4 frames of the fall, shorter plots)."""
+    video = video or Video(video_path)
     feed = feed or find_feed(video)
     ev = Event(frame, frame, 1)
     start = max(0, frame - 150 - analyze.FALL_LEAD)
@@ -53,11 +57,11 @@ def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Pat
         raise ValueError("cave name not recognized")
     n = cal.cave.num_chars
     clip = frames[max(0, a - analyze.FALL_LEAD): min(len(frames), a + analyze.FALL_TAIL)]
-    fall, times = analyze.game_times(clip)
-    raw = track_all(fall, cal)
+    fall, times = analyze.game_times(clip, wall=wall)
+    raw = track_all(fall, cal, min_score=analyze.LOW_MATCH) if weak else track_all(fall, cal)
     tracks = [replace(t, frames=times[t.frames.astype(int)]) for t in raw]
     try:
-        f = fit(tracks, n, s_guess=feed.height / 480.0)
+        f = fit(tracks, n, s_guess=feed.height / 480.0, **({"min_score": analyze.LOW_MATCH} if weak else {}))
     except ValueError as exc:
         f = None
         note = f"fit failed: {exc}"
@@ -69,9 +73,14 @@ def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Pat
     # --- 1. filmstrip ----------------------------------------------------------------
     # game times each letter contributed to the fit (residual frames are relative to the letter's start)
     used = {i: set(np.round(fr + letters_model.delay_frames(i, n)).astype(int)) for i, (fr, _) in (f.residuals.items() if f else [])}
-    seen = sorted({int(x) for t in raw for x in t.frames})
-    picks = np.linspace(seen[0], seen[-1], 6).round().astype(int) if seen else []
-    scale = 2 if feed.height < 400 else 1
+    # frames of the fall the fit used (else any frame a letter was matched in)
+    used_t = sorted(t for ts in used.values() for t in ts)
+    if used_t:
+        seen = [i for i, t in enumerate(times) if used_t[0] - 2 <= t <= used_t[-1] + 6]
+    else:
+        seen = sorted({int(x) for t in raw for x in t.frames})
+    picks = np.linspace(seen[0], seen[-1], 4 if compact else 6).round().astype(int) if seen else []
+    scale = 1 if compact else (2 if feed.height < 400 else 1)
     tiles = []
     for p in picks:
         img = cv2.cvtColor(fall[p], cv2.COLOR_GRAY2BGR)
@@ -91,14 +100,21 @@ def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Pat
         img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
         cv2.putText(img, f"clip frame {p}  game t {times[p]:.0f}", (6, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
         tiles.append(img)
-    rows = [cv2.hconcat(tiles[i:i + 3]) for i in range(0, len(tiles), 3)]
+    per_row = 4 if compact else 3
+    rows = [cv2.hconcat(tiles[i:i + per_row]) for i in range(0, len(tiles), per_row)]
     strip = cv2.vconcat(rows) if rows else np.zeros((10, 10, 3), np.uint8)
 
     # --- 2. heights over game time, 3. residuals --------------------------------------
-    W, H, R = strip.shape[1], 360, 200
+    W, H, R = strip.shape[1], (220 if compact else 360), (120 if compact else 200)
     plot = np.full((H + R, W, 3), 255, np.uint8)
+    if used_t:                                   # plot only around the fall the fit used
+        lo_t, hi_t = used_t[0] - 10, used_t[-1] + 25
+        tracks = [replace(tr, frames=tr.frames[m], y=tr.y[m], score=tr.score[m])
+                  for tr in tracks for m in [(tr.frames >= lo_t) & (tr.frames <= hi_t)]]
     all_t = np.concatenate([tr.frames for tr in tracks]) if tracks else np.array([0.0, 1.0])
     all_y = np.concatenate([tr.y for tr in tracks]) if tracks else np.array([0.0, 1.0])
+    if len(all_t) == 0:
+        all_t, all_y = np.array([0.0, 1.0]), np.array([0.0, 1.0])
     t0, t1 = float(all_t.min()) - 2, float(all_t.max()) + 2
     y0, y1 = float(all_y.min()) - 10, float(all_y.max()) + 10
     X = lambda t: int(50 + (t - t0) / (t1 - t0) * (W - 70))
@@ -138,5 +154,7 @@ def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Pat
     cv2.putText(head, note, (8, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
     img = cv2.vconcat([head, strip, plot])
     out = Path(out or f"debug_{Path(video_path).stem}_{frame}.png")
-    cv2.imwrite(str(out), img)
+    if compact and img.shape[1] > 1200:
+        img = cv2.resize(img, (1200, int(img.shape[0] * 1200 / img.shape[1])), interpolation=cv2.INTER_AREA)
+    cv2.imwrite(str(out), img, [cv2.IMWRITE_JPEG_QUALITY, 82] if str(out).lower().endswith(".jpg") else [])
     return out
