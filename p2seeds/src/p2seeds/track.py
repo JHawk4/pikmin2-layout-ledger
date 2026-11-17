@@ -36,7 +36,11 @@ def _subpixel(vals: np.ndarray, k: int) -> float:
     return float(k)
 
 
-def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min_score: float = 0.5) -> Track:
+MIN_BRIGHT = 25.0     # frames darker than this (black, or the very start of the fade) carry no glyphs
+
+
+def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min_score: float = 0.5,
+                 refs: list[float] | None = None) -> Track:
     t = box.template
     h, w = t.shape
     x0 = max(0, int(round(box.x)) - x_slack)
@@ -45,7 +49,10 @@ def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min
     pad = h                                # allow the glyph to hang above the top edge
     fr, ys, sc = [], [], []
     for k, gray in enumerate(frames):
-        strip = templates.prep(gray[0:y_bot, x0:x1])
+        ref = refs[k] if refs is not None else None
+        if ref is not None and ref < MIN_BRIGHT:
+            continue
+        strip = templates.prep(gray[0:y_bot, x0:x1], ref)
         strip = np.vstack([np.zeros((pad, strip.shape[1]), np.float32), strip])
         if strip.std() < 1e-3:
             continue
@@ -62,4 +69,6 @@ def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min
 
 
 def track_all(frames: list[np.ndarray], cal: Calibration, **kw) -> list[Track]:
-    return [track_letter(frames, box, **kw) for box in cal.letters]
+    # each frame's own brightness: the screen fades in during the fall
+    refs = [templates.bright_level(f) for f in frames]
+    return [track_letter(frames, box, refs=refs, **kw) for box in cal.letters]

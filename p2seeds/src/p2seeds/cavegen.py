@@ -71,7 +71,15 @@ _JUDGE_LINE = re.compile(r"Judge: (\S+) ([0-9A-Fa-f]{8}) -> (-?[0-9.]+) \(([0-9.
 
 
 def judge(cave_id: str, sublevel: int, seed: int, kind: str = "pod") -> Judgement | None:
-    """Score one layout with CaveGen's judge. None if CaveGen has no judge for this sublevel."""
+    """Score one layout with CaveGen's judge. None if CaveGen has no judge for this sublevel.
+
+    Uses CaveGen3 (same scores, much faster) when its bridge is built and the run is US."""
+    from . import cg3
+    ref = reference_scores(cave_id, sublevel, kind)
+    if cg3.available() and REGION == "us" and ref is not None:
+        score = round(cg3.layout(cave_id, sublevel, seed, kind)["score"], 2)   # as Java prints it
+        fixed = float(ref.min()) == float(ref.max())
+        return Judgement(kind, float(score), cg3.rank(score, ref), float(np.median(ref)), fixed)
     build = ensure_built()
     cmd = ["java", "-cp", str(build), "CaveGen", "cave", cave_id, str(sublevel),
            "-seed", f"0x{seed & 0xFFFFFFFF:08X}", "-noimages", "-judge", kind, *_region_args()]

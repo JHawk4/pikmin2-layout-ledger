@@ -34,9 +34,14 @@ def link(results, near: int = NEAR) -> None:
     """
     for r in results:
         r.chain_dist = None
+    before = [(r.letter_seed, r.layout_seed, r.confidence, r.note, r.candidates) for r in results]
+    # only seeds found by the full search AND agreeing with another such seed anchor the
+    # window searches; a lone read, even a confident one, could be wrong
+    settled = _backbone(results)
     _chains(results)
-    _forward(results, near)
-    _backward(results, near)
+    filled = _forward(results, near, set(settled))
+    _backward(results, near, set(settled) | filled)
+    _check_order(results, before, settled)
     for prev, r in zip(results, results[1:]):
         if r.letter_seed is not None and prev.layout_seed is not None:
             r.chain_dist = rng.distance(prev.layout_seed, r.letter_seed, limit=CONFIRM)
@@ -171,6 +176,8 @@ def _chains(results, per_entry: int = 6, keep: int = 12) -> None:
             continue
         if any(_known(results[p.entry]) and results[p.entry].letter_seed != p.letter_seed for p in path):
             continue          # never overrule a seed the letters alone already settled
+        if not _fits_neighbors(results, path):
+            continue          # out of order with a settled seed just before or after it
         conf = "high" if h.chance <= ACCEPT_HIGH else "medium"
         for p in path:
             r = results[p.entry]
@@ -183,35 +190,121 @@ def _chains(results, per_entry: int = 6, keep: int = 12) -> None:
         claimed |= entries
 
 
+def _backbone(results) -> list[int]:
+    """Entries whose full-search seed agrees with the next or previous full-search seed:
+    the later one follows the earlier within CONFIRM steps per sublevel between them.
+    Two wrong seeds, or a wrong and a right one, agree only by chance (~0.2% per gap)."""
+    known = [i for i, r in enumerate(results) if _known(r) and r.layout_seed is not None]
+    ok: set[int] = set()
+    for a, b in zip(known, known[1:]):
+        if rng.distance(results[a].layout_seed, results[b].letter_seed, limit=CONFIRM * (b - a)) is not None:
+            ok |= {a, b}
+    return sorted(ok)
+
+
+def _gap(results, i: int, settled: set[int], step: int) -> int | None:
+    """Index of the next backbone entry after (step=1) or before (step=-1) entry i."""
+    j = i + step
+    while 0 <= j < len(results):
+        if j in settled:
+            return j
+        j += step
+    return None
+
+
+def _check_order(results, before, settled: list[int]) -> None:
+    """Undo any seed linking filled in that is out of RNG order with the seeds the letters
+    settled on their own: it must follow the settled seed before it and lead to the one after
+    it, within CONFIRM steps per sublevel between them. (A window search picks the best match
+    in its window even when the true seed is elsewhere, e.g. JKira's Snagret Hole 2, which
+    landed in Bulblax Kingdom's range, past Snagret Hole 3.)"""
+    known = set(settled)
+    for i, r in enumerate(results):
+        if i in known or r.letter_seed is None or r.letter_seed == before[i][0]:
+            continue
+        j = max((k for k in settled if k < i), default=None)
+        k = min((k for k in settled if k > i), default=None)
+        ok = True
+        if j is not None and results[j].layout_seed is not None:
+            ok = rng.distance(results[j].layout_seed, r.letter_seed, limit=CONFIRM * (i - j)) is not None
+        if ok and k is not None:
+            ok = rng.distance(r.layout_seed, results[k].letter_seed, limit=CONFIRM * (k - i)) is not None
+        if not ok:
+            r.letter_seed, r.layout_seed, r.confidence, note, r.candidates = before[i]
+            r.note = (note + " (a linked seed was out of order with its neighbors, so it was dropped)").strip()
+
+
+def _fits_neighbors(results, path) -> bool:
+    """A chain must sit in RNG order between the settled seeds next to it in the video.
+
+    The chain's links are each checked, but its ends are not: a chain ending on a wrong seed
+    can land after the next sublevel's own settled seed (JKira's Snagret Hole 2 sat in Bulblax
+    Kingdom's range, past Snagret Hole 3). Require the settled entry just before the chain to
+    lead to its first seed, and its last seed to lead to the settled entry just after."""
+    first = min(path, key=lambda p: p.entry)
+    last = max(path, key=lambda p: p.entry)
+    before = results[first.entry - 1] if first.entry > 0 else None
+    after = results[last.entry + 1] if last.entry + 1 < len(results) else None
+    if before is not None and _known(before) and before.layout_seed is not None and before.letter_seed != first.letter_seed:
+        if rng.distance(before.layout_seed, first.letter_seed, limit=CONFIRM) is None:
+            return False
+    if after is not None and _known(after) and after.letter_seed != last.letter_seed:
+        if rng.distance(last.layout_seed, after.letter_seed, limit=CONFIRM) is None:
+            return False
+    return True
+
+
 def _usable(r) -> bool:
     return r.fit is not None and np.sum(np.isfinite(r.fit.v)) >= 2 and not _known(r)
 
 
-def _forward(results, near: int) -> None:
-    anchor = None
-    for r in results:
-        if _known(r):
+def _forward(results, near: int, settled: set[int]) -> set[int]:
+    """Search just after each anchor (a backbone seed, or one found this way from it), no
+    further than the next backbone seed. Returns the entries it filled."""
+    anchor, filled = None, set()
+    for i, r in enumerate(results):
+        if i in settled:
             anchor = r
             continue
+        if _known(r):
+            anchor = None         # a lone read: neither an anchor nor searched again
+            continue
         if anchor is not None and _usable(r):
-            cands = search_near(r.fit.v, r.fit.sigma, anchor.layout_seed, near)
+            window = near
+            k = _gap(results, i, settled, 1)
+            if k is not None:
+                d = rng.distance(anchor.layout_seed, results[k].letter_seed, limit=near)
+                window = d if d is not None else near
+            cands = search_near(r.fit.v, r.fit.sigma, anchor.layout_seed, window)
             if _apply(r, cands, f"near the previous sublevel ({anchor.cave} {anchor.sublevel or '?'})"):
                 anchor = r
+                filled.add(i)
+    return filled
 
 
-def _backward(results, near: int) -> None:
+def _backward(results, near: int, settled: set[int]) -> None:
+    """Search just before each anchor, no further back than the previous backbone seed."""
     anchor = None
-    for r in reversed(results):
-        if _known(r):
+    for i in range(len(results) - 1, -1, -1):
+        r = results[i]
+        if i in settled:
             anchor = r
+            continue
+        if _known(r):
+            anchor = None
             continue
         if anchor is not None and _usable(r):
             n = _n(r)
-            # r's layout seed (= letter seed + n) lies up to `near` steps before anchor's letter seed
-            start = rng.next_seed(anchor.letter_seed, -(near + n))
-            cands = search_near(r.fit.v, r.fit.sigma, start, near)
+            window = near
+            k = _gap(results, i, settled, -1)
+            if k is not None and results[k].layout_seed is not None:
+                d = rng.distance(results[k].layout_seed, anchor.letter_seed, limit=near)
+                window = d if d is not None else near
+            # r's layout seed (= letter seed + n) lies up to `window` steps before anchor's letter seed
+            start = rng.next_seed(anchor.letter_seed, -(window + n))
+            cands = search_near(r.fit.v, r.fit.sigma, start, window)
             # distance from r's layout seed to the anchor's letter seed
-            dist = near - cands[0].distance + 1 if cands else None
+            dist = window - cands[0].distance + 1 if cands else None
             if _apply(r, cands, f"just before the next sublevel ({anchor.cave} {anchor.sublevel or '?'})", dist):
                 anchor = r
 

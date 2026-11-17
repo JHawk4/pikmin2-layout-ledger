@@ -76,30 +76,80 @@ def top_runs(
     platforms = {p["id"]: p["name"] for p in board["platforms"]["data"]}
     regions = {r["id"]: r["name"] for r in board["regions"]["data"]}
 
-    runs = []
-    for entry in board["runs"]:
-        r = entry["run"]
-        players = [
-            Player(p.get("id"), users.get(p.get("id"), p.get("id") or "?")) if p["rel"] == "user"
-            else Player(None, p.get("name", "?"))
-            for p in r["players"]
-        ]
-        links = ((r.get("videos") or {}).get("links")) or []
-        system = r.get("system") or {}
-        runs.append(Run(
-            id=r["id"],
-            place=entry["place"],
-            players=players,
-            time_seconds=float(r["times"]["primary_t"]),
-            date=r.get("date"),
-            weblink=r["weblink"],
-            game_id=r["game"],
-            category_id=r["category"],
-            platform=platforms.get(system.get("platform"), system.get("platform")),
-            region=regions.get(system.get("region"), system.get("region")),
-            emulated=bool(system.get("emulated")),
-            videos=[parse_video_url(l["uri"]) for l in links],
-            values=r.get("values") or {},
-        ))
+    runs = [_run_from_api(entry["run"], entry["place"], users, platforms, regions) for entry in board["runs"]]
     runs.sort(key=lambda run: run.place)
     return runs[:n]
+
+
+def _run_from_api(r: dict, place: int, users: dict, platforms: dict, regions: dict, series: str | None = None) -> Run:
+    players = [
+        Player(p.get("id"), users.get(p.get("id"), p.get("id") or "?")) if p["rel"] == "user"
+        else Player(None, p.get("name", "?"))
+        for p in r["players"]
+    ]
+    links = ((r.get("videos") or {}).get("links")) or []
+    system = r.get("system") or {}
+    return Run(
+        id=r["id"],
+        place=place,
+        players=players,
+        time_seconds=float(r["times"]["primary_t"]),
+        date=r.get("date"),
+        weblink=r["weblink"],
+        game_id=r["game"],
+        category_id=r["category"],
+        platform=platforms.get(system.get("platform"), system.get("platform")),
+        region=regions.get(system.get("region"), system.get("region")),
+        emulated=bool(system.get("emulated")),
+        videos=[parse_video_url(l["uri"]) for l in links],
+        values=r.get("values") or {},
+        series=series,
+    )
+
+
+def all_runs(client: SrcomClient, game_id: str, category_id: str, var_ids: dict[str, str] | None = None) -> list[dict]:
+    """Every verified run of a category (current and obsolete), oldest first, as raw API dicts
+    with players, platform and region embedded; filtered to the given variable values."""
+    params = {"game": game_id, "category": category_id, "status": "verified", "orderby": "date",
+              "direction": "asc", "max": 200, "embed": "players,platform,region", "offset": 0}
+    out = []
+    while True:
+        page = client.get("runs", params)
+        out.extend(page["data"])
+        if len(page["data"]) < params["max"]:
+            break
+        params = dict(params, offset=params["offset"] + params["max"])
+    want = var_ids or {}
+    return [r for r in out if all((r.get("values") or {}).get(k) == v for k, v in want.items())]
+
+
+def wr_history(
+    client: SrcomClient,
+    game: str,
+    category: str,
+    variables: dict[str, str] | None = None,
+) -> list[Run]:
+    """Every run that was the world record when it was set, oldest first.
+
+    `place` is the run's position in the history (1 = the first record) and
+    `series` is "wr", so their slugs (`wr01_...`) never collide with leaderboard runs.
+    """
+    g = resolve_game(client, game)
+    cat = resolve_category(client, g["id"], category)
+    var_ids = resolve_variables(client, g["id"], cat["id"], variables)
+    best = None
+    out: list[Run] = []
+    for r in all_runs(client, g["id"], cat["id"], var_ids):
+        t = float(r["times"]["primary_t"])
+        if best is not None and t >= best:
+            continue
+        best = t
+        users = {p["id"]: p["names"]["international"] for p in r["players"]["data"] if p.get("rel") == "user"}
+        r = dict(r, players=[{"rel": p.get("rel"), "id": p.get("id"), "name": p.get("name")}
+                             for p in r["players"]["data"]])
+        plat = r.get("platform", {}).get("data") or {}
+        reg = r.get("region", {}).get("data") or {}
+        platforms = {plat.get("id"): plat.get("name")} if plat else {}
+        regions = {reg.get("id"): reg.get("name")} if reg else {}
+        out.append(_run_from_api(r, len(out) + 1, users, platforms, regions, series="wr"))
+    return out

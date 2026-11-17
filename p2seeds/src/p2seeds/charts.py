@@ -32,37 +32,56 @@ CSS = """
 .chart .zero { stroke:var(--ink-3); stroke-width:1; }
 .chart .range { stroke:var(--range); stroke-width:6; stroke-linecap:round; }
 .chart .hit { fill:transparent; cursor:default; outline:none; }
+.chart svg text, .chart .dot { pointer-events:none; }
 .chart .hit:hover + .dot, .chart .hit:focus + .dot { stroke:var(--ink-1); stroke-width:2; }
+.chart .runline { opacity:.35; } .chart .runline:hover, .chart .runline:focus-within { opacity:1; }
+.chart .runline:hover path { stroke-width:2.5; }
 .legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin:8px 2px 2px; font-size:12px; color:var(--ink-2); }
 .legend i { display:inline-block; width:16px; height:2px; vertical-align:middle; margin-right:6px; border-radius:1px; }
 .legend i.dotkey { width:8px; height:8px; border-radius:50%; }
 #viz-tip { position:fixed; pointer-events:none; z-index:10; background:var(--surface-1); color:var(--ink-2);
   border:1px solid var(--grid); border-radius:8px; padding:6px 9px; font:12px/1.4 system-ui,sans-serif;
-  box-shadow:0 4px 14px rgba(0,0,0,.18); display:none; max-width:260px; }
+  box-shadow:0 4px 14px rgba(0,0,0,.25); display:none; box-sizing:border-box; max-width:min(260px, calc(100vw - 16px)); }
 #viz-tip b { color:var(--ink-1); display:block; font-size:13px; }
-#viz-tip img { display:block; width:240px; height:200px; object-fit:contain; max-width:100%; margin-top:6px;
+#viz-tip img { display:block; width:240px; height:min(200px, 45vh); object-fit:contain; max-width:100%; margin-top:6px;
   border-radius:4px; background:#000; }
 """
 
 TOOLTIP_JS = """
 (() => {
-  const tip = document.createElement('div'); tip.id = 'viz-tip'; document.body.appendChild(tip);
+  const tip = document.createElement('div'); tip.id = 'viz-tip'; tip.className = 'viz-root';
+  document.body.appendChild(tip);
+  let at = null;
+  const place = () => {
+    if (!at) return;
+    const [x, y] = at, w = tip.offsetWidth, h = tip.offsetHeight, gap = 14;
+    // right of the pointer if it fits, else left; vertically centred on it, kept inside the window
+    let left = x + gap + w <= innerWidth - 8 ? x + gap : x - gap - w;
+    left = Math.max(8, Math.min(left, innerWidth - w - 8));
+    const top = Math.max(8, Math.min(y - h / 2, innerHeight - h - 8));
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  };
+  let cur = null;
+  const hide = () => { tip.style.display = 'none'; cur = null; };
   const show = (el, x, y) => {
+    if (cur === el) { at = [x, y]; place(); return; }  // same mark: just follow the pointer
+    cur = el;
     tip.replaceChildren();
     const [head, ...rest] = el.dataset.tip.split('\\n');
     const b = document.createElement('b'); b.textContent = head; tip.appendChild(b);
     rest.forEach(line => { const d = document.createElement('div'); d.textContent = line; tip.appendChild(d); });
-    if (el.dataset.img) { const im = document.createElement('img'); im.src = el.dataset.img; im.alt = ''; tip.appendChild(im); }
+    if (el.dataset.img) {
+      const im = document.createElement('img'); im.alt = ''; im.addEventListener('load', place);
+      im.src = el.dataset.img; tip.appendChild(im);
+    }
     tip.style.display = 'block';
-    const w = tip.offsetWidth, h = tip.offsetHeight;
-    tip.style.left = Math.min(innerWidth - w - 8, x + 14) + 'px';
-    tip.style.top = Math.max(8, y - h - 10) + 'px';
+    at = [x, y]; place();
   };
   document.querySelectorAll('[data-tip]').forEach(el => {
     el.addEventListener('pointermove', e => show(el, e.clientX, e.clientY));
-    el.addEventListener('pointerleave', () => tip.style.display = 'none');
+    el.addEventListener('pointerleave', hide);
     el.addEventListener('focus', () => { const r = el.getBoundingClientRect(); show(el, r.right, r.top); });
-    el.addEventListener('blur', () => tip.style.display = 'none');
+    el.addEventListener('blur', hide);
   });
 })();
 """
@@ -160,8 +179,12 @@ def timesave_chart(points: list[dict], title: str) -> str:
 
 
 def line_chart(series: list[dict], title: str, x_label: str, y_label: str, y_fmt=lambda v: f"{v:g}") -> str:
-    """series: dicts with name, slot (0-based color slot), points [(x, y, tip)], breaks allowed as None."""
-    W, H, L, R, T, B = 960, 360, 56, 120, 26, 40
+    """series: dicts with name, slot (0-based color slot), points [(x, y, tip)], breaks allowed as None.
+
+    More series than there are distinguishable colors are drawn in one neutral color without end
+    labels; each point's tooltip names its series and hovering a line brings it forward."""
+    many = len(series) > len(SERIES)
+    W, H, L, R, T, B = 960, 360, 56, 20 if many else 120, 26, 40
     xs = [p[0] for s in series for p in s["points"] if p]
     ys = [p[1] for s in series for p in s["points"] if p]
     xt = nice_ticks(0, max(xs or [1]))
@@ -180,7 +203,8 @@ def line_chart(series: list[dict], title: str, x_label: str, y_label: str, y_fmt
                f'text-anchor="middle">{_esc(y_label)}</text>')
     label_ys = []
     for s in series:
-        color = f"var({SERIES[s['slot'] % len(SERIES)]})"
+        color = "var(--series-1)" if many else f"var({SERIES[s['slot'] % len(SERIES)]})"
+        out.append('<g class="runline">' if many else "<g>")
         segs, cur = [], []
         for p in s["points"]:
             if p is None:
@@ -193,21 +217,27 @@ def line_chart(series: list[dict], title: str, x_label: str, y_label: str, y_fmt
             segs.append(cur)
         for seg in segs:
             d = " ".join(f"{'M' if i == 0 else 'L'}{x(px):.1f},{y(py):.1f}" for i, (px, py, _) in enumerate(seg))
-            out.append(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="2" stroke-linejoin="round"/>')
+            out.append(f'<path d="{d}" fill="none" stroke="{color}" stroke-width="{1.5 if many else 2}" '
+                       f'stroke-linejoin="round"/>')
         for px, py, tip in (p for p in s["points"] if p):
             out.append(f'<circle class="hit" tabindex="0" cx="{x(px):.1f}" cy="{y(py):.1f}" r="12" data-tip="{_esc(tip)}"/>'
-                       f'<circle class="dot" cx="{x(px):.1f}" cy="{y(py):.1f}" r="3" fill="{color}" '
-                       f'stroke="var(--surface-1)" stroke-width="1.5"/>')
+                       f'<circle class="dot" cx="{x(px):.1f}" cy="{y(py):.1f}" r="{2 if many else 3}" fill="{color}" '
+                       f'stroke="var(--surface-1)" stroke-width="1"/>')
+        out.append("</g>")
         last = [p for p in s["points"] if p]
-        if last:
+        if last and not many:
             ly = y(last[-1][1])
             while any(abs(ly - o) < 13 for o in label_ys):
                 ly += 13
             label_ys.append(ly)
             out.append(f'<text x="{x(last[-1][0]) + 14:.1f}" y="{ly + 4:.1f}" style="fill:var(--ink-1)">{_esc(s["name"])}</text>')
     out.append("</svg>")
-    legend = "".join(f'<span><i style="background:var({SERIES[s["slot"] % len(SERIES)]})"></i>{_esc(s["name"])}</span>'
-                     for s in series)
+    if many:
+        legend = (f'<span><i style="background:var(--series-1)"></i>{len(series)} runs, one line each; '
+                  f'hover a line or point to see which</span>')
+    else:
+        legend = "".join(f'<span><i style="background:var({SERIES[s["slot"] % len(SERIES)]})"></i>{_esc(s["name"])}</span>'
+                         for s in series)
     return f'<div class="chart viz-root">{"".join(out)}<div class="legend">{legend}</div></div>'
 
 
@@ -316,7 +346,10 @@ def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title:
 def dot_chart(categories: list[str], series: list[dict], title: str, y_label: str) -> str:
     """Values per category for several series, as dots side by side within each category.
 
-    series: dicts with name, slot, values {category: (value, tip, href)}."""
+    series: dicts with name, slot, values {category: (value, tip, href)}. With more series than
+    distinguishable colors, each dot is colored by its sign instead (green above zero, red below)
+    and its tooltip names the series."""
+    many = len(series) > len(SERIES)
     W, H, L, R, T, B = 960, 300, 48, 10, 26, 44
     vals = [v[0] for s in series for v in s["values"].values() if v and v[0] is not None]
     yt = nice_ticks(min(vals + [0]), max(vals + [1]))
@@ -348,12 +381,21 @@ def dot_chart(categories: list[str], series: list[dict], title: str, y_label: st
             if not v or v[0] is None:
                 continue
             px = cx + (j - (k - 1) / 2) * min(4.0, col / (k + 1))
-            color = f"var({SERIES[s['slot'] % len(SERIES)]})"
+            if many:
+                color = "var(--good-mark)" if v[0] > 0 else "var(--bad-mark)" if v[0] < 0 else "var(--ink-3)"
+            else:
+                color = f"var({SERIES[s['slot'] % len(SERIES)]})"
             mark = (f'<circle class="hit" tabindex="0" cx="{px:.1f}" cy="{y(v[0]):.1f}" r="9" data-tip="{_esc(v[1])}"/>'
                     f'<circle class="dot" cx="{px:.1f}" cy="{y(v[0]):.1f}" r="3.5" fill="{color}" '
                     f'stroke="var(--surface-1)" stroke-width="1.5"/>')
             out.append(f'<a href="{_esc(v[2])}" target="_blank" rel="noopener">{mark}</a>' if v[2] else mark)
     out.append("</svg>")
-    legend = "".join(f'<span><i class="dotkey" style="background:var({SERIES[s["slot"] % len(SERIES)]})"></i>{_esc(s["name"])}</span>'
-                     for s in series)
+    if many:
+        legend = (f'<span><i class="dotkey" style="background:var(--good-mark)"></i>above the median</span>'
+                  f'<span><i class="dotkey" style="background:var(--bad-mark)"></i>below</span>'
+                  f'<span><i class="dotkey" style="background:var(--ink-3)"></i>at the median</span>'
+                  f'<span>{len(series)} runs; hover a dot to see which</span>')
+    else:
+        legend = "".join(f'<span><i class="dotkey" style="background:var({SERIES[s["slot"] % len(SERIES)]})"></i>{_esc(s["name"])}</span>'
+                         for s in series)
     return f'<div class="chart viz-root">{"".join(out)}<div class="legend">{legend}</div></div>'

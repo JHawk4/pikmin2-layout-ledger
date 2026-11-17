@@ -5,6 +5,7 @@
   p2seeds judge OUT_DIR [--kind pod]                   judge a processed run's layouts with CaveGen
   p2seeds render OUT_DIR                               render layouts missing from img/ (after --no-render)
   p2seeds site [--root data/output]                    landing page + one page per judged run
+  p2seeds batch [--manifest ...] [--jobs 4]            run + judge + treasures for every new run, then site
   p2seeds treasures OUT_DIR                            count treasure panels per sublevel (for calibration)
 """
 
@@ -119,20 +120,64 @@ def main(argv: list[str] | None = None) -> int:
     tr = sub.add_parser("treasures", help="count treasures collected per sublevel from the treasure panel")
     tr.add_argument("out_dir")
     tr.add_argument("--rescan", action="store_true", help="scan the video for panels again")
+    tr.add_argument("--bugs-only", action="store_true",
+                    help="only recompute creature caps and the split of creature pokos (no video)")
+    bt = sub.add_parser("batch", help="process every downloaded run not done yet (run, judge, treasures), then the site")
+    bt.add_argument("--manifest", default="data/videos/manifest.json")
+    bt.add_argument("--out", default="data/output")
+    bt.add_argument("--jobs", type=int, default=4, help="runs processed at the same time")
+    bt.add_argument("--kind", default="pod", help="judge type for new runs")
     st = sub.add_parser("site", help="write index.html over every judged run, and refresh each run's page")
     st.add_argument("--root", default="data/output")
+    pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
+    pb.add_argument("--root", default="data/output")
+    pb.add_argument("--out", default="data/pages")
+    pb.add_argument("--no-push", action="store_true", help="only copy the files")
+    dg = sub.add_parser("debug", help="debug image of the letter tracking and fall fit for one entry screen")
+    dg.add_argument("video")
+    dg.add_argument("--frame", type=int, required=True, help="a frame inside the entry screen (seeds.json 'frame')")
+    dg.add_argument("--feed", default=None, help="x0,y0,x1,y1 (default: detect)")
+    dg.add_argument("--out", default=None)
     args = ap.parse_args(argv)
+
+    if args.cmd == "publish":
+        from . import site
+        out = site.export(args.root, args.out)
+        log(f"exported: {out}")
+        if not args.no_push:
+            site.publish(out)
+            log("pushed to gh-pages")
+        return 0
+
+    if args.cmd == "debug":
+        from . import debug
+        feed = Feed(*map(int, args.feed.split(","))) if args.feed else None
+        log(f"debug: {debug.render(args.video, args.frame, feed, args.out)}")
+        return 0
 
     if args.cmd == "treasures":
         from . import treasures
         out = Path(args.out_dir)
+        if args.bugs_only:
+            counts = treasures.refresh_bugs(out)
+            clipped = sum(v.get("bug_clipped") or 0 for v in counts.values())
+            log(f"  creature pokos {sum(v.get('bug_pokos') or 0 for v in counts.values()):.0f}, clipped {clipped}")
+            return 0
         have = treasures.load(out)
-        if args.rescan or not have or any("panels" not in v for v in have.values()):
-            treasures.count_run(out, progress=lambda i, n, e, c: log(
-                f"  {i:>3}/{n} {e['cave']} {e['sublevel']}: {c} treasure panel(s)"))
+        # older scans only looked between sublevels of one cave (no final floors, no surface)
+        if args.rescan or not have or any("window" not in v and v.get("cave") != "surface" for v in have.values()):
+            treasures.count_run(out, progress=lambda i, n: log(f"  scanning {100 * i / max(n, 1):4.1f}%"))
         treasures.read_values(out, progress=lambda i, n, v: log(
-            f"  {v['cave']} {v['sublevel']}: {v['pokos']} pokos from {[c[0] if c else '?' for c in v['collected']]}"))
+            f"  {v['cave']} {v['sublevel']}: treasures {[c[0] if c else '?' for c in v['collected']]}"))
+        counts = treasures.read_totals(out)
+        for v in counts.values():
+            if v.get("window"):
+                log(f"  {v['cave']} {v['sublevel']}: {v.get('pokos')} pokos "
+                    f"({v.get('treasure_pokos')} treasure + {v.get('bug_pokos')} creature)")
         return 0
+
+    if args.cmd == "batch":
+        return _batch(args)
 
     if args.cmd == "site":
         from . import site
@@ -180,8 +225,52 @@ def main(argv: list[str] | None = None) -> int:
         title = f"#{run['place']} {players} — {run['weblink']}"
         log(f"== {title}")
         run_video(entry["download"]["path"], Path(args.out) / slug, entry.get("video"), title,
-                  meta={"run": run}, render=not args.no_render)
+                  meta={"run": run}, render=not args.no_render,
+                  # a manifest entry may pin the game area ("feed": [x0, y0, x1, y1]) when
+                  # detection gets it wrong, e.g. a wide splits panel next to a 4:3 game
+                  feed=Feed(*entry["feed"]) if entry.get("feed") else None)
     return 0
+
+
+def _batch(args) -> int:
+    """One subprocess per run (isolated, parallel): detect seeds, judge, count treasures."""
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor
+
+    manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))["runs"]
+    todo = []
+    for run_id, entry in manifest.items():
+        if entry.get("status") != "ok":
+            continue
+        out = Path(args.out) / Path(entry["download"]["path"]).stem
+        if not (out / "seeds.json").exists() or not (out / "judge.json").exists() or not (out / "treasures.json").exists():
+            todo.append((run_id, out))
+    log(f"{len(todo)} run(s) to process with {args.jobs} job(s)")
+    py = [sys.executable, "-m", "p2seeds"]
+
+    def one(item):
+        run_id, out = item
+        logf = out.parent / f"{out.name}.log"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        steps = []
+        if not (out / "seeds.json").exists():
+            steps.append(py + ["run", "--manifest", args.manifest, "--out", args.out, "--only", run_id])
+        steps.append(py + ["judge", str(out), "--kind", args.kind])
+        steps.append(py + ["treasures", str(out)])
+        with open(logf, "a", encoding="utf-8") as fh:
+            for cmd in steps:
+                if subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode != 0:
+                    return run_id, f"failed at `{' '.join(cmd[2:4])}` (see {logf})"
+        return run_id, "ok"
+
+    failed = 0
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        for run_id, status in pool.map(one, todo):
+            log(f"  {run_id}: {status}")
+            failed += status != "ok"
+    from . import site
+    log(f"site: {site.build(args.out)}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

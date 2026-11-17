@@ -36,9 +36,21 @@ def match(image: np.ndarray, template: np.ndarray) -> np.ndarray:
     return res
 
 
-def prep(gray: np.ndarray) -> np.ndarray:
-    """Map to [0,1] emphasizing the bright glyph outlines over the grey background smoke."""
-    return np.clip((gray.astype(np.float32) - 90.0) / 120.0, 0.0, 1.0)
+FULL_BRIGHT = 214.0   # a faded-in entry screen's brightest outlines (99.9th percentile), where 90/120 were tuned
+
+
+def prep(gray: np.ndarray, ref: float | None = None) -> np.ndarray:
+    """Map to [0,1] emphasizing the bright glyph outlines over the grey background smoke.
+
+    `ref`: the frame's own bright level (99.9th percentile). The entry screen fades in while
+    the letters fall, and some captures are darker, so fixed cut-offs would black out the
+    early fall; with `ref` they scale with the frame. Frames at full brightness are unchanged."""
+    k = 1.0 if ref is None else min(1.0, max(ref, 1.0) / FULL_BRIGHT)
+    return np.clip((gray.astype(np.float32) - 90.0 * k) / (120.0 * k), 0.0, 1.0)
+
+
+def bright_level(gray: np.ndarray) -> float:
+    return float(np.percentile(gray, 99.9))
 
 
 @lru_cache(maxsize=None)

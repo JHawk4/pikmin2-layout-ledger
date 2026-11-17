@@ -91,8 +91,44 @@ def forward_states(s0: int, n: int) -> np.ndarray:
     return (a * np.uint64(s0 & MASK32) + c) & np.uint64(MASK32)
 
 
-def distance(s0: int, target: int, limit: int = 1 << 24, block: int = 1 << 22) -> int | None:
-    """Smallest n >= 1 with next_seed(s0, n) == target (both mod 2^31), if n <= limit."""
+_M4 = 4 * M32
+_C_INV = pow(C, -1, M32)
+M31 = 1 << 31
+
+
+def _v2(x: int) -> int:
+    """2-adic valuation of x mod 4*2^32 (how many times 2 divides it); 0 counts as infinite."""
+    x %= _M4
+    return 1 << 40 if x == 0 else (x & -x).bit_length() - 1
+
+
+def index(s: int) -> int:
+    """n such that advancing state 0 n times gives s (mod 2^31): the seed's position in the
+    RNG sequence, in O(log) time. Port of CaveGen's Seed.nth_inv (lifting the exponent):
+    the n-th state from 0 is C*(A^n - 1)/(A - 1), so A^n = s*(A-1)/C + 1 (mod 4*2^32), and
+    n is recovered one bit at a time by checking which choice makes A^n agree with that in
+    more low bits."""
+    x = s & MASK31
+    target = (x * (A - 1) * _C_INV + 1) % _M4
+    n, p = 0, 1
+    for _ in range(32):
+        if _v2(pow(A, n + p, _M4) - target) > _v2(pow(A, n, _M4) - target):
+            n += p
+        p *= 2
+    return n % M31
+
+
+def distance(s0: int, target: int, limit: int = 1 << 24, block: int | None = None) -> int | None:
+    """Smallest n >= 1 with next_seed(s0, n) == target (both mod 2^31), if n <= limit.
+    Exact and instant via `index` (the sequence mod 2^31 is one cycle of length 2^31)."""
+    d = (index(target) - index(s0)) % M31
+    if d == 0:
+        d = M31
+    return d if d <= limit else None
+
+
+def distance_brute(s0: int, target: int, limit: int = 1 << 24, block: int = 1 << 22) -> int | None:
+    """Reference implementation of `distance` by stepping through the states."""
     t = np.uint64(target & MASK31)
     done, s = 0, s0
     while done < limit:

@@ -29,6 +29,14 @@ git clone https://github.com/JHaack4/CaveGen.git vendor/CaveGen
 Java (JDK 8+) is needed to render layouts and to regenerate the test reference data.
 Node is used by yt-dlp to download from YouTube.
 
+Judge scores and treasure lists come from [CaveGen3](https://github.com/JHawk4/CaveGen3) when it is
+checked out next to this project (`../cavegen3`) and the bridge is built (Rust); otherwise from Java CaveGen.
+Both give identical scores; CaveGen3 is about 100x faster.
+
+```bash
+cargo build --release --manifest-path p2seeds/cg3/Cargo.toml --target-dir data/build/cg3
+```
+
 ## Use
 
 ```bash
@@ -60,6 +68,26 @@ run) and checks the judge against real sublevel times measured from the videos.
 
 `judge.html` embeds every layout render. For each sublevel it shows CaveGen's estimated clear time
 and how that compares with 1000 random layouts. Fixed floors, where every seed scores the same, are marked.
+
+## Published site
+
+The report site is at https://jhawk4.github.io/p2-vod-seeds/. To update it after `p2seeds site`:
+
+```bash
+.venv/Scripts/python -m p2seeds publish
+```
+
+This copies the landing page and each run's pages and layout images into `data/pages` and pushes them to the
+`gh-pages` branch as a single commit that replaces the previous one, so the history doesn't grow with each rebuild.
+
+## How a seed is found
+
+Each falling letter's starting velocity is fitted from its track, then the seed comes from a lattice
+search (`lattice.py`): the RNG is affine, so the measured letters, relative to the best-measured one,
+bound a lattice point in a box. LLL reduction and enumeration find every seed that fits in milliseconds,
+from any subset of letters. Linking (`chain.py`) then confirms seeds against their neighbors: only seeds
+that agree with another independently found seed anchor the searches near them, and anything filled in
+must sit in RNG order between them. Seed distances use CaveGen's O(log n) `nth_inv` (`rng.index`).
 
 ## Tests
 
