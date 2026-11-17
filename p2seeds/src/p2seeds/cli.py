@@ -7,6 +7,7 @@
   p2seeds site [--root data/output]                    landing page + one page per judged run
   p2seeds batch [--manifest ...] [--jobs 4]            run + judge + treasures for every new run, then site
   p2seeds treasures OUT_DIR                            count treasure panels per sublevel (for calibration)
+  p2seeds redo OUT_DIR                                 re-run a run's non-high sublevels with the current detector
 """
 
 from __future__ import annotations
@@ -132,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     dt = sub.add_parser("details", help="rebuild a run's detection page with tracking pictures, the comedown and landing views, and the layout with them outlined")
     dt.add_argument("out_dir")
     dt.add_argument("--force", action="store_true", help="redo pictures that already exist")
+    rd = sub.add_parser("redo", help="re-run a finished run's non-high sublevels; keep new high seeds that chain with a neighbour")
+    rd.add_argument("out_dir")
     pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
     pb.add_argument("--root", default="data/output")
     pb.add_argument("--out", default="data/pages")
@@ -142,6 +145,14 @@ def main(argv: list[str] | None = None) -> int:
     dg.add_argument("--feed", default=None, help="x0,y0,x1,y1 (default: detect)")
     dg.add_argument("--out", default=None)
     args = ap.parse_args(argv)
+
+    if args.cmd == "redo":
+        from . import redo
+        changed = redo.redo(args.out_dir, progress=lambda e, r, ok: log(
+            f"  {e['cave']} {e['sublevel']}: {e['confidence']} -> {r.confidence}"
+            + (" (kept: confirmed by a neighbour)" if ok else " (not kept)")))
+        log(f"{len(changed)} sublevel(s) changed; run judge, treasures and details next")
+        return 0
 
     if args.cmd == "details":
         from . import details
