@@ -79,13 +79,16 @@ def find_views(video, feed, frame: int, span: int = 240) -> tuple[int | None, in
     if not dark:
         return None, None
     d = int(dark[-1])
-    # the comedown: before the first dark gap (the title's fade-out), not the last; a stricter
-    # "dark" here, since the title over a dim scene is barely brighter than the gap
-    first_gap = int(np.nonzero(br <= lo + 0.06 * (hi - lo))[0][0])
+    # the comedown: the title stretch before that dark gap. The gap is found by walking back from
+    # its end while the screen stays at the gap's own floor (a dim title barely differs from it)
+    g0 = d
+    while g0 > 0 and br[g0 - 1] <= br[d] + 0.5:
+        g0 -= 1
     come = None
-    if first_gap >= 2:
-        p = int(np.argmax(br[:first_gap]))
-        come = fr[min(first_gap - 1, p + int(0.65 * (first_gap - p)))]   # past the flash of the pod opening
+    if g0 >= 2:
+        p = int(np.argmax(br[:g0]))
+        if g0 - p >= 2:
+            come = fr[p + int(0.65 * (g0 - p))]                # past the flash of the pod opening
     after = br[d: d + 30]
     hit = np.nonzero(after >= lo + 0.45 * (after.max() - lo))[0]
     land = fr[d + int(hit[0])] if len(hit) else None
