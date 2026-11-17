@@ -220,7 +220,56 @@ def _total_slot(g480: np.ndarray, k: int, dx: float = 0.0) -> np.ndarray:
 
 
 MAX_BUG = 2000              # most pokos from enemies between two treasure panels we consider
+OVER_CAP = 1.5              # score cost of creature pokos beyond what the layouts allow
 BUG_PENALTY = 0.0001       # score per bug poko (digit scores are summed, ~0.5-0.9 per matching digit)
+
+
+def panel_alignment(out_dir: Path, video: Video, feed: Feed, panels: list) -> np.ndarray:
+    """Affine fix (2x3) that lines this run's panel digits up with the slots, cached in
+    panel_align.json. Captures differ slightly (a game area that is not exactly 4:3, a few
+    pixels of crop), and a few pixels are enough to misread digits; the shift and scale where
+    the digits match the templates best are kept."""
+    path = out_dir / "panel_align.json"
+    if path.exists():
+        return np.float32(json.loads(path.read_text())["matrix"])
+    pick = panels[:: max(1, len(panels) // 10)][:10]
+    gs = [cv2.resize(feed.crop(video.frame_at((a + b) // 2)), (480, 360), interpolation=cv2.INTER_CUBIC)
+          for a, b, *_ in pick]
+    tmat = np.stack(list(_total_templates().values()))
+    vmat = np.stack(list(_digit_templates().values()))
+
+    def score(M):
+        sc = 0.0
+        for g in gs:
+            h = cv2.warpAffine(g, M, (480, 360), borderMode=cv2.BORDER_REPLICATE)
+            for k in range(3):
+                sc += float((tmat @ _norm(_total_slot(h, k))).max())
+            sc += float((vmat @ _norm(_slot(h, 0))).max())
+        return sc / max(1, len(gs)) / 4
+
+    def mat(scale, dx, dy):                       # scale about the digit area, then shift
+        cx, cy = 300.0, 285.0
+        return np.float32([[scale, 0, cx - scale * cx + dx], [0, scale, cy - scale * cy + dy]])
+    best = (score(mat(1, 0, 0)), 1.0, 0, 0)
+    for dx in range(-6, 7, 2):
+        for dy in range(-6, 7, 2):
+            c = score(mat(1, dx, dy))
+            if c > best[0]:
+                best = (c, 1.0, dx, dy)
+    _, _, bx, by = best
+    for scale in (0.97, 0.98, 0.99, 1.0, 1.01, 1.02, 1.03):     # refine around the best shift
+        for dx in range(bx - 2, bx + 3):
+            for dy in range(by - 2, by + 3):
+                c = score(mat(scale, dx, dy))
+                if c > best[0]:
+                    best = (c, scale, dx, dy)
+    M = mat(*best[1:])
+    path.write_text(json.dumps({"matrix": M.tolist(), "score": best[0], "scale": best[1], "dx": best[2], "dy": best[3]}))
+    return M
+
+
+def _aligned(g: np.ndarray, M: np.ndarray | None) -> np.ndarray:
+    return g if M is None else cv2.warpAffine(g, M, (480, 360), borderMode=cv2.BORDER_REPLICATE)
 
 
 def _total_templates() -> dict[str, np.ndarray]:
@@ -284,13 +333,14 @@ def read_totals(out_dir: Path, progress=None) -> dict:
     templates = _digit_templates()
     ttemplates = _total_templates()
     panels = sorted((a, b, key, i) for key, t in counts.items() for i, (a, b) in enumerate(t.get("panels", [])))
+    M = panel_alignment(out_dir, video, feed, panels) if panels else None
     steps = []                                   # per panel: (values, value scores, total scores)
     for n, (a, b, key, i) in enumerate(panels):
         gs = []
         for f in range(a + 8, max(a + 9, b - 8), 12):
             g = video.frame_at(f)
             if g is not None:
-                gs.append(cv2.resize(feed.crop(g), (480, 360), interpolation=cv2.INTER_CUBIC))
+                gs.append(_aligned(cv2.resize(feed.crop(g), (480, 360), interpolation=cv2.INTER_CUBIC), M))
         # the treasures CaveGen placed on the sublevel; on the surface (or without a seed) any value
         options = sorted({int(x[1]) for x in counts[key].get("items") or []}) or list(range(1, 1000))
         vs = value_scores(gs, options, templates) if gs else np.zeros(len(options))
@@ -299,26 +349,41 @@ def read_totals(out_dir: Path, progress=None) -> dict:
         if progress:
             progress(n + 1, len(panels), key, None)
     # Viterbi over the total. best[T] = best score of a sequence ending at total T.
-    # T_k = T_{k-1} + v_k + bug, bug >= 0, costing BUG_PENALTY per poko.
+    # T_k = T_{k-1} + v_k + bug, bug >= 0, costing BUG_PENALTY per poko. Creatures can give no
+    # more than they are worth: a bug beyond the cap of the cave sublevels between the two
+    # panels costs OVER_CAP as well (a misread Value or Total is then the likelier story).
+    windows = {k: (v["window"], v.get("creature_cap")) for k, v in counts.items() if v.get("window")}
     prev = np.full(10000, -np.inf)
     prev[0] = 0.0
     back = []
-    for options, vs, ts in steps:
-        # g[x] = max over T' <= x of prev[T'] + pen*T'   (so prev[T'] - pen*(x - T') = g[x] - pen*x)
-        run_max = np.maximum.accumulate(prev + BUG_PENALTY * _ALL)
-        arg = np.zeros(10000, int)
+    prev_end = 0
+    for (a, b, key, i), (options, vs, ts) in zip(panels, steps):
+        cap = sum((c if c is not None else 300) for (w0, w1), c in windows.values() if min(w1, a) > max(w0, prev_end))
+        m = int(min(MAX_BUG, cap + 5))
+        prev_end = b
+        A = prev + BUG_PENALTY * _ALL             # A[T'] - pen*x = prev[T'] - pen*(x - T')
+        W, Widx = A.copy(), _ALL.copy()           # best start within the cap: x - m <= T' <= x
+        for d in range(1, m + 1):
+            sh = np.concatenate([np.full(d, -np.inf), A[:-d]])
+            better = sh > W
+            W = np.where(better, sh, W)
+            Widx = np.where(better, _ALL - d, Widx)
+        C = np.maximum.accumulate(A)              # any start (beyond the cap, penalized)
+        Cidx = np.maximum.accumulate(np.where(A == C, _ALL, 0))
+        over = C - OVER_CAP > W
+        start_score = np.where(over, C - OVER_CAP, W)
+        start_idx = np.where(over, Cidx, Widx)
         cur = np.full(10000, -np.inf)
         choice = np.zeros(10000, int)
         best_prev = np.zeros(10000, int)
-        idx = np.maximum.accumulate(np.where(prev + BUG_PENALTY * _ALL == run_max, _ALL, 0))  # argmax so far
         for j, val in enumerate(options):
-            x = _ALL - val                        # the total before this treasure and its bugs
-            ok = x >= 0
-            cand = np.where(ok, run_max[np.clip(x, 0, 9999)] - BUG_PENALTY * np.clip(x, 0, 9999), -np.inf) + vs[j] + ts
+            x = _ALL - val                        # the total before this treasure and its creatures
+            xc = np.clip(x, 0, 9999)
+            cand = np.where(x >= 0, start_score[xc] - BUG_PENALTY * xc, -np.inf) + vs[j] + ts
             better = cand > cur
             cur = np.where(better, cand, cur)
             choice = np.where(better, j, choice)
-            best_prev = np.where(better, idx[np.clip(x, 0, 9999)], best_prev)
+            best_prev = np.where(better, start_idx[xc], best_prev)
         back.append((choice, best_prev))
         prev = cur
     T = int(np.argmax(prev))
@@ -350,6 +415,41 @@ def creature_cap(cave: str, sublevel: int, seed: int) -> int | None:
         return None
 
 
+MAX_CLIPPED = 30            # a sublevel whose creature pokos needed more clipping has no reliable poko count
+
+
+def reliable_pokos(t: dict | None) -> int | None:
+    """A sublevel's pokos (treasure + creature), or None when they could not be read reliably."""
+    if not t or t.get("pokos") is None or (t.get("bug_clipped") or 0) > MAX_CLIPPED:
+        return None
+    return t["pokos"]
+
+
+def _missed_treasures(counts: dict, keys: list[str], amount: float) -> list[tuple[str, str, int]]:
+    """Uncounted treasures on these sublevels whose values add up to `amount` (within 5%, at
+    least 5 pokos), fewest first: [(sublevel key, name, value)], or [] if none fit."""
+    import itertools
+    pool = []
+    for k in keys:
+        v = counts[k]
+        seen = list(v.get("values") or []) + [x[1] for x in v.get("inferred") or []]
+        for name, val in v.get("items") or []:
+            if val in seen:
+                seen.remove(val)                 # already counted
+            else:
+                pool.append((k, name, int(val)))
+    tol = max(5.0, 0.05 * amount)
+    for n in (1, 2, 3):
+        best = None
+        for combo in itertools.combinations(pool, n):
+            gap = abs(sum(c[2] for c in combo) - amount)
+            if gap <= tol and (best is None or gap < best[0]):
+                best = (gap, combo)
+        if best:
+            return list(best[1])
+    return []
+
+
 def allocate_bugs(counts: dict) -> None:
     """Give each sublevel its pokos from creatures ("bug_pokos").
 
@@ -364,7 +464,7 @@ def allocate_bugs(counts: dict) -> None:
     windows = {k: v["window"] for k, v in counts.items() if v.get("window")}
     for v in counts.values():
         if v.get("window"):
-            v["bug_pokos"], v["bug_clipped"] = 0.0, 0
+            v["bug_pokos"], v["bug_clipped"], v["inferred"] = 0.0, 0, []
     prev_end = 0
     for a, b, key, i in panels:
         bug = float((counts[key].get("bug_before") or [0] * (i + 1))[i] or 0)
@@ -387,6 +487,18 @@ def allocate_bugs(counts: dict) -> None:
                 left -= given
                 if given < 1e-6:
                     break
+            if left > 0.5 and counts[key].get("cave") == "surface":
+                # creatures give nothing on the surface: the surface treasure's Value was misread
+                # (read freely, it most often loses its hundreds digit)
+                counts[key]["values"][i] += int(round(left))
+                left = 0.0
+            if left > 0.5:
+                # treasures collected without their panel being read (two panels back to back
+                # merge into one): uncounted treasures on these sublevels that add up to the rest
+                found = _missed_treasures(counts, [k for k, x in time.items() if x > 0], left)
+                for k, name, val in found:
+                    counts[k]["inferred"].append([name, val])
+                    left -= val
             if left > 0.5:
                 owner = key if counts[key].get("window") else max(time, key=time.get, default=None)
                 if owner and owner in counts:
@@ -396,7 +508,7 @@ def allocate_bugs(counts: dict) -> None:
         if "bug_pokos" in v:
             v["bug_pokos"] = round(v["bug_pokos"], 1)
             # the sublevel's pokos: its treasures (each panel's Value) and its creatures
-            v["treasure_pokos"] = sum(x for x in v.get("values") or [] if x)
+            v["treasure_pokos"] = sum(x for x in v.get("values") or [] if x) + sum(x[1] for x in v.get("inferred") or [])
             v["pokos"] = int(round(v["treasure_pokos"] + v["bug_pokos"]))
 
 

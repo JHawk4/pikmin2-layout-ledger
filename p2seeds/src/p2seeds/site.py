@@ -106,7 +106,7 @@ def actuals(runs: list[dict]) -> list[dict]:
                     continue      # pokos are read against the seed's treasures: no trusted seed, no net time
                 t = tre.get(str(a["frame"]))
                 plays.setdefault(f'{a["cave"]} {a["sublevel"]}', []).append(
-                    (i, str(a["frame"]), (b["frame"] - a["frame"]) / r["fps"], t.get("pokos") if t else None))
+                    (i, str(a["frame"]), (b["frame"] - a["frame"]) / r["fps"], treasures.reliable_pokos(t)))
     out: list[dict] = [{} for _ in runs]
     for sub, ps in plays.items():
         if len(ps) < 2:
@@ -158,7 +158,9 @@ def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -
                 ref = cavegen.reference_scores(a["cave"], a["sublevel"], r["kind"])
                 t = tre.get(str(a["frame"]))
                 took = (b["frame"] - a["frame"]) / r["fps"]
-                pokos = t.get("pokos") if t else None
+                pokos = treasures.reliable_pokos(t)
+                if net and pokos is None:
+                    continue          # Pay Off Debt is judged on net time: no reliable pokos, no outcome
                 rows.append({
                     "run": i, "runner": r["runner"], "sub": f'{a["cave"]} {a["sublevel"]}',
                     "order": order.get(a["cave"], 99) * 100 + a["sublevel"],
@@ -351,7 +353,7 @@ def pokos_section(runs: list[dict]) -> str:
         entries = {str(e["frame"]): e for e in r["entries"]}
         vals = {}
         for k, t in treasures.load(r["dir"]).items():
-            if t.get("pokos") is None:
+            if treasures.reliable_pokos(t) is None:
                 continue
             e = entries.get(k, {})
             if not judge_report.trusted(e):
