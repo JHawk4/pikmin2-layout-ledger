@@ -34,6 +34,9 @@ class FitResult:
     residuals: dict          # index -> (frames, residual px)
 
 
+BOUNCE_PX = 25.0       # a fall starts well above the settled row; a bounce rises only ~10-20 px
+
+
 def free_fall(track: Track, min_score: float = 0.55, segment: str = "longest") -> tuple[np.ndarray, np.ndarray]:
     """The letter's fall: the stretch of steadily accelerating downward motion that drops the
     furthest. A stretch ends where the letter stops, bounces, slows (it hit the floor) or jumps
@@ -65,6 +68,10 @@ def free_fall(track: Track, min_score: float = 0.55, segment: str = "longest") -
         keep_y.append(yy)
     segments.append((keep_f, keep_y))
     best = max(segments, key=lambda s: (s[1][-1] - s[1][0]) if len(s[1]) > 1 else -1.0)
+    if best[1] and best[1][0] > track.rest_y - BOUNCE_PX:
+        # starts just above where the letter settles: a bounce, not the fall (whose start was
+        # not tracked); leave the letter out rather than fit a bounce as a fall
+        return np.array([], float), np.array([], float)
     return np.array(best[0], float), np.array(best[1], float)
 
 
@@ -93,8 +100,37 @@ def _first_fall(track: Track, min_score: float) -> tuple[np.ndarray, np.ndarray]
     return np.array(keep_f, float), np.array(keep_y, float)
 
 
+PRUNE_RMS = 0.5        # a fit worse than this may drop a letter that is clearly mistracked
+MAX_PRUNED = 2
+
+
 def fit(tracks: list[Track], num_chars: int, s_guess: float, min_points: int = 4,
         min_score: float = 0.55, min_letters: int = 3, segment: str = "longest") -> FitResult:
+    """_fit_once, then, while the fit is poor, without the letter that fits worst when it is far
+    worse than the rest (a mistracked letter), keeping the refit only when it is better."""
+    kw = dict(min_points=min_points, min_score=min_score, min_letters=min_letters, segment=segment)
+    best = _fit_once(tracks, num_chars, s_guess, **kw)
+    dropped: set[int] = set()
+    while best.rms_px > PRUNE_RMS and len(dropped) < MAX_PRUNED:
+        per = {i: float(np.sqrt(np.mean(r ** 2))) for i, (_, r) in best.residuals.items() if len(r)}
+        if len(per) <= max(min_letters, 6):
+            break
+        worst = max(per, key=per.get)
+        if per[worst] < max(1.0, 3 * float(np.median(list(per.values())))):
+            break
+        dropped.add(worst)
+        try:
+            f2 = _fit_once([t for t in tracks if t.index not in dropped], num_chars, s_guess, **kw)
+        except ValueError:
+            break
+        if f2.rms_px >= best.rms_px:
+            break
+        best = f2
+    return best
+
+
+def _fit_once(tracks: list[Track], num_chars: int, s_guess: float, min_points: int = 4,
+              min_score: float = 0.55, min_letters: int = 3, segment: str = "longest") -> FitResult:
     data = []
     for t in tracks:
         f, y = free_fall(t, min_score=min_score, segment=segment)
