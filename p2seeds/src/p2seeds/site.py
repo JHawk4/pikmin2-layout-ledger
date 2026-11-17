@@ -597,3 +597,39 @@ layout, so its judge score would be noise. Hover a point for its seed and pokos;
     dest = root / "index.html"
     dest.write_text(page, encoding="utf-8")
     return dest
+
+
+def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> Path:
+    """Copy the built site (landing page, each run's pages and layout images) into `out`,
+    ready to serve as static files (GitHub Pages). Videos, caches and JSON stay behind."""
+    import shutil
+    root, out = Path(root), Path(out)
+    if out.exists():
+        shutil.rmtree(out)
+    out.mkdir(parents=True)
+    shutil.copy2(root / "index.html", out / "index.html")
+    (out / ".nojekyll").write_text("")          # serve files as they are (no Jekyll processing)
+    for run in sorted(p for p in root.iterdir() if (p / "judge.html").exists()):
+        dest = out / run.name
+        dest.mkdir()
+        for name in ("judge.html", "report.html"):
+            if (run / name).exists():
+                shutil.copy2(run / name, dest / name)
+        if (run / "img").exists():
+            shutil.copytree(run / "img", dest / "img")
+    return out
+
+
+def publish(out: str | Path = "data/pages", remote: str = "origin", branch: str = "gh-pages") -> None:
+    """Push `out` to `branch` as a single commit that replaces the previous one, so the
+    repository's history doesn't grow with every rebuild of the site."""
+    import subprocess
+    out = Path(out).resolve()
+    url = subprocess.run(["git", "remote", "get-url", remote], capture_output=True, text=True, check=True).stdout.strip()
+
+    def git(*a):
+        subprocess.run(["git", *a], cwd=out, check=True)
+    git("init", "-q", "-b", branch)
+    git("add", "-A")
+    git("commit", "-q", "-m", "Site build")
+    git("push", "-q", "--force", url, f"{branch}:{branch}")

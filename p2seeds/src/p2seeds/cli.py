@@ -129,12 +129,25 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--kind", default="pod", help="judge type for new runs")
     st = sub.add_parser("site", help="write index.html over every judged run, and refresh each run's page")
     st.add_argument("--root", default="data/output")
+    pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
+    pb.add_argument("--root", default="data/output")
+    pb.add_argument("--out", default="data/pages")
+    pb.add_argument("--no-push", action="store_true", help="only copy the files")
     dg = sub.add_parser("debug", help="debug image of the letter tracking and fall fit for one entry screen")
     dg.add_argument("video")
     dg.add_argument("--frame", type=int, required=True, help="a frame inside the entry screen (seeds.json 'frame')")
     dg.add_argument("--feed", default=None, help="x0,y0,x1,y1 (default: detect)")
     dg.add_argument("--out", default=None)
     args = ap.parse_args(argv)
+
+    if args.cmd == "publish":
+        from . import site
+        out = site.export(args.root, args.out)
+        log(f"exported: {out}")
+        if not args.no_push:
+            site.publish(out)
+            log("pushed to gh-pages")
+        return 0
 
     if args.cmd == "debug":
         from . import debug
