@@ -69,6 +69,17 @@ run) and checks the judge against real sublevel times measured from the videos.
 `judge.html` embeds every layout render. For each sublevel it shows CaveGen's estimated clear time
 and how that compares with 1000 random layouts. Fixed floors, where every seed scores the same, are marked.
 
+## Published site
+
+The report site is at https://jhawk4.github.io/p2-vod-seeds/. To update it after `p2seeds site`:
+
+```bash
+.venv/Scripts/python -m p2seeds publish
+```
+
+This copies the landing page and each run's pages and layout images into `data/pages` and pushes them to the
+`gh-pages` branch as a single commit that replaces the previous one, so the history doesn't grow with each rebuild.
+
 ## How a seed is found
 
 Each falling letter's starting velocity is fitted from its track, then the seed comes from a lattice
