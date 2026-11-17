@@ -6,9 +6,12 @@ Landing view: what the camera shows once the pod has landed. Port of CaveGen3's 
 a target `lookAhead` units ahead of the pod, looking the way the pod faces. On the floor that
 is a trapezoid ahead of the pod. GameCube runs are 4:3.
 
-Comedown view: the higher, wider view while the sublevel's title is still on screen, as the
-pod comes down. Its camera is not known yet (COMEDOWN is None), so only the landing view and
-the pod's facing are drawn until it is.
+Comedown view: the still, nearly top-down shot the game holds while the sublevel's title is
+up (frame 0 of the floor-start cutscene s0B_cv_coursein; found in CaveGen3, JHawk4/CaveGen3#1).
+
+render() draws a layout with both views and the pod's facing using CaveGen3's command line
+(`cavegen3 <sublevel> <seed> --show landingBox,comedownBox,podAngle`). Without that program
+it falls back to drawing the landing view on a Java CaveGen render (draw()).
 
 Java CaveGen's renders are 80 px per map cell and a cell is 170 game units, from the map's corner.
 """
@@ -16,6 +19,9 @@ Java CaveGen's renders are 80 px per map cell and a cell is 170 game units, from
 from __future__ import annotations
 
 import math
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 
 import cv2
@@ -83,4 +89,39 @@ def draw(render: Path, ship: dict, out: Path, aspect: float = 4 / 3) -> Path:
     cv2.arrowedLine(img, (int(cx), int(cz)), (int(tip[0]), int(tip[1])), (255, 255, 255), 4, cv2.LINE_AA, tipLength=0.35)
     out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), img)
+    return out
+
+
+def cavegen3_exe() -> Path | None:
+    """CaveGen3's command line: $P2SEEDS_CAVEGEN3, else data/build/cavegen3/cavegen3.exe."""
+    env = os.environ.get("P2SEEDS_CAVEGEN3")
+    for p in ([Path(env)] if env else []) + [Path("data/build/cavegen3/cavegen3.exe"),
+                                              Path(__file__).resolve().parents[3] / "data/build/cavegen3/cavegen3.exe"]:
+        if p.is_file():
+            return p
+    return None
+
+
+def render(cave: str, sublevel: int, layout_seed: int, out: Path, fallback: Path | None = None,
+           aspect: str = "4:3") -> Path | None:
+    """The layout with the comedown and landing views and the pod's facing, as a JPEG at `out`."""
+    exe = cavegen3_exe()
+    if exe is not None:
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run([str(exe), f"{cave}-{sublevel}", f"{layout_seed:08X}", "--show",
+                            "landingBox,comedownBox,podAngle", "--screen", aspect, "-o", tmp],
+                           check=True, capture_output=True, timeout=120)
+            png = next(Path(tmp).glob("*.png"))
+            cv2.imwrite(str(out), cv2.imread(str(png)), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        return out
+    if fallback is None:
+        return None
+    from . import cg3
+    ship = cg3.layout(cave, sublevel, layout_seed).get("ship")
+    if not ship:
+        return None
+    tmp = out.with_suffix(".tmp.png")
+    draw(fallback, ship, tmp)
+    cv2.imwrite(str(out), cv2.imread(str(tmp)), [cv2.IMWRITE_JPEG_QUALITY, 82])
+    tmp.unlink()
     return out

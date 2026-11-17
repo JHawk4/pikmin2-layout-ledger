@@ -36,8 +36,9 @@ hundred thousand steps apart in the generator, which almost never happens by cha
 </ul>
 <p>Two pictures from the video show the floor as the sublevel starts: the <b>comedown</b>, the high, wide view behind
 the title while the pod comes down (often dim, so it is brightened), and the <b>landing view</b>, the first view once
-the pod has landed. The layout render outlines the landing view in orange (and the comedown in blue once its camera
-is known), with an arrow for the way the pod faces, so the pictures and the layout should match.</p></details>"""
+the pod has landed. The layout, drawn by CaveGen3, outlines both on the floor: the comedown in blue (the game holds
+this one still shot, nearly straight down, while the title is up) and the landing view in yellow, with an arrow for
+the way the pod faces, so the pictures and the layout should match.</p></details>"""
 
 
 def explain(row: dict) -> str:
@@ -103,7 +104,7 @@ def _figure(src: str, alt: str, caption: str, wide: bool = False) -> str:
 
 
 def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
-    from . import cg3, debug, views
+    from . import debug, views
     from .feed import Feed
     from .video import Video
     out_dir = Path(out_dir)
@@ -136,13 +137,9 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
                     cv2.imwrite(str(path), _brighten(pic) if bright else pic, [cv2.IMWRITE_JPEG_QUALITY, 80])
         lay = next(iter(img.glob(f"layout_{f}_*.png")), None)
         outl = img / f"layout_views_{f}.jpg"
-        if lay and row.get("layout_seed") and row.get("sublevel") and (force or not outl.exists()):
+        if row.get("layout_seed") and row.get("sublevel") and (force or not outl.exists()):
             try:
-                ship = cg3.layout(row["cave"], row["sublevel"], int(row["layout_seed"], 16)).get("ship")
-                if ship:
-                    tmp = views.draw(lay, ship, img / f"_views_{f}.png")
-                    cv2.imwrite(str(outl), cv2.imread(str(tmp)), [cv2.IMWRITE_JPEG_QUALITY, 82])
-                    tmp.unlink()
+                views.render(row["cave"], row["sublevel"], int(row["layout_seed"], 16), outl, fallback=lay)
             except Exception:
                 pass
         pics = []
@@ -153,7 +150,8 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
         if land.exists():
             pics.append(_figure(f"img/{land.name}", "landing view", "Landing view"))
         if outl.exists():
-            pics.append(_figure(f"img/{outl.name}", "layout", "Layout: landing view (orange), pod facing (arrow)"))
+            pics.append(_figure(f"img/{outl.name}", "layout", "Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)"
+                                if views.cavegen3_exe() else "Layout: landing view (orange), pod facing (arrow)"))
         elif lay:
             pics.append(_figure(f"img/{lay.name}", "layout", "Layout"))
         entry = img / f"entry_{f}.jpg"
