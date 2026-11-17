@@ -80,9 +80,10 @@ def find_views(video, feed, frame: int, span: int = 240) -> tuple[int | None, in
         return None, None
     d = int(dark[-1])
     # the comedown: the title stretch before that dark gap. The gap is found by walking back from
-    # its end while the screen stays at the gap's own floor (a dim title barely differs from it)
-    g0 = d
-    while g0 > 0 and br[g0 - 1] <= br[d] + 0.5:
+    # its darkest point while the screen stays that dark (a dim title barely differs from it)
+    floor = float(br[: d + 1].min())
+    g0 = int(np.nonzero(br[: d + 1] <= floor + 0.5)[0][-1])     # the gap's darkest stretch
+    while g0 > 0 and br[g0 - 1] <= floor + 0.5:
         g0 -= 1
     come = None
     if g0 >= 2:
