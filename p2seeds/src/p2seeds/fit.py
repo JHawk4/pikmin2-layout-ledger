@@ -34,12 +34,15 @@ class FitResult:
     residuals: dict          # index -> (frames, residual px)
 
 
-def free_fall(track: Track, min_score: float = 0.55) -> tuple[np.ndarray, np.ndarray]:
+def free_fall(track: Track, min_score: float = 0.55, segment: str = "longest") -> tuple[np.ndarray, np.ndarray]:
     """The letter's fall: the stretch of steadily accelerating downward motion that drops the
     furthest. A stretch ends where the letter stops, bounces, slows (it hit the floor) or jumps
     implausibly (a bad match). Taking the stretch that drops furthest, not the first, keeps
     spurious matches before the fall (something static the template half-matches) and the
-    bounces after it from hiding the fall itself."""
+    bounces after it from hiding the fall itself. segment="first" is the older rule instead
+    (_first_fall), which works better on some captures."""
+    if segment == "first":
+        return _first_fall(track, min_score)
     ok = (track.score >= min_score) & (track.score < 0.995)
     fr, y = track.frames[ok], track.y[ok]
     segments: list[tuple[list, list]] = []
@@ -65,11 +68,36 @@ def free_fall(track: Track, min_score: float = 0.55) -> tuple[np.ndarray, np.nda
     return np.array(best[0], float), np.array(best[1], float)
 
 
+def _first_fall(track: Track, min_score: float) -> tuple[np.ndarray, np.ndarray]:
+    """The older rule: the track from its start until the letter stops, bounces or slows; a bad
+    match restarts it. A letter whose track starts on something static so ends up with too few
+    points and is left out of the fit, which keeps doubtful letters out."""
+    ok = (track.score >= min_score) & (track.score < 0.995)
+    fr, y = track.frames[ok], track.y[ok]
+    keep_f, keep_y = [], []
+    prev_dy = None
+    for f, yy in zip(fr, y):
+        if keep_f:
+            gap = f - keep_f[-1]
+            if gap <= 0:
+                continue
+            dy = (yy - keep_y[-1]) / gap
+            if dy <= 0.5 or (prev_dy is not None and dy < 0.8 * prev_dy):
+                break                                     # stopped, bouncing, or hit the floor
+            if prev_dy is not None and dy > prev_dy + 4:
+                keep_f, keep_y, prev_dy = [f], [yy], None     # implausible jump: restart here
+                continue
+            prev_dy = dy
+        keep_f.append(f)
+        keep_y.append(yy)
+    return np.array(keep_f, float), np.array(keep_y, float)
+
+
 def fit(tracks: list[Track], num_chars: int, s_guess: float, min_points: int = 4,
-        min_score: float = 0.55, min_letters: int = 3) -> FitResult:
+        min_score: float = 0.55, min_letters: int = 3, segment: str = "longest") -> FitResult:
     data = []
     for t in tracks:
-        f, y = free_fall(t, min_score=min_score)
+        f, y = free_fall(t, min_score=min_score, segment=segment)
         if len(f) >= min_points:
             data.append((t.index, f - letters_model.delay_frames(t.index, num_chars), y))
     if len(data) < min_letters:
@@ -113,10 +141,14 @@ def fit(tracks: list[Track], num_chars: int, s_guess: float, min_points: int = 4
             tot += float(np.sum(np.minimum((target - v * f) ** 2, 25.0)))
         return tot
 
-    grid = np.arange(-40, 60, 0.5)
+    # F0 comes before the earliest point seen (the letter had started) and not long before it
+    # (letters fall into view within a few dozen frames). A fixed range missed captures with a
+    # long blank lead-in, where the letters start late in the clip.
+    first = min(float(f_rel.min()) for _, f_rel, _ in data)
+    grid = np.arange(min(-40.0, first - 70), max(60.0, first + 5), 0.5)
     F0_start = grid[int(np.argmin([sse_at(F0) for F0 in grid]))]
-    lo = np.r_[-60, s_guess * 0.7, floor0 - 30, np.full(len(data), -0.5)]
-    hi = np.r_[80, s_guess * 1.3, floor0 + 30, np.full(len(data), 5.5)]
+    lo = np.r_[min(-60.0, first - 90), s_guess * 0.7, floor0 - 30, np.full(len(data), -0.5)]
+    hi = np.r_[max(80.0, first + 20), s_guess * 1.3, floor0 + 30, np.full(len(data), 5.5)]
     best = None
     for F0 in (F0_start - 1, F0_start, F0_start + 1):
         p0 = np.r_[F0, s_guess, floor0, np.full(len(data), 2.5)]

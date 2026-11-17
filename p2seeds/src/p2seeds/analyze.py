@@ -201,14 +201,20 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
     #    clock is right.
     first_failure = None
     #  - blended: each frame a 50/50 blend of two game frames, so falling letters show twice
-    for weak, wall_clock, blended in ((False, False, False), (False, True, False), (True, False, False),
-                                      (True, True, False), (True, False, True), (True, True, True)):
+    #  - first: the letter's fall taken as its first falling stretch instead of the one that drops
+    #    furthest (fit.free_fall); each works better on some captures
+    for weak, wall_clock, blended, first in (
+            (False, False, False, False), (False, False, False, True), (False, True, False, False),
+            (False, True, False, True), (True, False, False, False), (True, True, False, False),
+            (True, False, True, False), (True, True, True, False)):
         if r.confidence == "high":
             break
         fall, times = game_times(clip, wall=wall_clock)
         raw = track_all(fall, cal, min_score=LOW_MATCH, blended=blended) if weak else track_all(fall, cal)
         tracks = [replace(t, frames=to_time(t.frames, times)) for t in raw]
-        kw = {**fit_kw, "min_score": min(fit_kw.get("min_score", 0.55), LOW_MATCH)} if weak else fit_kw
+        kw = {**fit_kw, "min_score": min(fit_kw.get("min_score", 0.55), LOW_MATCH)} if weak else dict(fit_kw)
+        if first:
+            kw["segment"] = "first"
         try:
             f = fit(tracks, cal.cave.num_chars, s_guess=s_guess, **kw)
         except ValueError as exc:
@@ -220,14 +226,15 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
             continue
         how = ", ".join(x for x in ("weaker letter matches allowed" if weak else "",
                                      "timed by the video clock" if wall_clock else "",
-                                     "blended frames (letters doubled)" if blended else "") if x)
+                                     "blended frames (letters doubled)" if blended else "",
+                                     "first falling stretch" if first else "") if x)
         cands, conf = _search(f, search_kw)
         if r.fit is None or _RANK[conf] > _RANK[r.confidence]:
             r.fit, r.candidates, r.confidence, r.note = f, cands, conf, how
         if conf != "high" and n_meas >= 5:
             # the capture may have skipped or repeated one game frame mid-fall: every letter
             # is then a frame further along (or behind) from that point on
-            for f2, d, k in _fit_with_step(tracks, cal.cave.num_chars, s_guess, f):
+            for f2, d, k in _fit_with_step(tracks, cal.cave.num_chars, s_guess, f, segment=kw.get("segment", "longest")):
                 c2, conf2 = _search(f2, search_kw, retries=False)
                 if _RANK[conf2] > _RANK[r.confidence]:
                     r.fit, r.candidates, r.confidence = f2, c2, conf2
@@ -284,7 +291,7 @@ def _search(f: FitResult, search_kw: dict | None = None, retries: bool = True) -
 
 
 def _fit_with_step(tracks, num_chars: int, s_guess: float, base: FitResult,
-                   min_gain: float = 0.8, max_picks: int = 40) -> list[tuple[FitResult, int, int]]:
+                   min_gain: float = 0.8, max_picks: int = 40, segment: str = "longest") -> list[tuple[FitResult, int, int]]:
     """Refits assuming the video skipped (+1) or repeated (-1) one game frame at
     clip frame k. Returns the plausible (fit, d, k), most letters first.
 
@@ -303,7 +310,7 @@ def _fit_with_step(tracks, num_chars: int, s_guess: float, base: FitResult,
     def attempt(d, k):
         shifted = [replace(t, frames=np.where(t.frames >= k, t.frames + d, t.frames)) for t in tracks]
         try:
-            return fit(shifted, num_chars, s_guess=s_guess)
+            return fit(shifted, num_chars, s_guess=s_guess, segment=segment)
         except ValueError:
             return None
 
