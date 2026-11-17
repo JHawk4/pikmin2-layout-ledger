@@ -618,7 +618,13 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> 
     import shutil
     root, out = Path(root), Path(out)
     if out.exists():
-        shutil.rmtree(out)
+        import os
+        import stat
+
+        def writable(func, path, _exc):          # git's pack files are read-only on Windows
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        shutil.rmtree(out, onexc=writable)
     out.mkdir(parents=True)
     shutil.copy2(root / "index.html", out / "index.html")
     (out / ".nojekyll").write_text("")          # serve files as they are (no Jekyll processing)
