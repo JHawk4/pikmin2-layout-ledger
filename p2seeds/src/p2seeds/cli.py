@@ -129,7 +129,7 @@ def main(argv: list[str] | None = None) -> int:
     bt.add_argument("--kind", default="pod", help="judge type for new runs")
     st = sub.add_parser("site", help="write index.html over every judged run, and refresh each run's page")
     st.add_argument("--root", default="data/output")
-    dt = sub.add_parser("details", help="rebuild a run's detection page with tracking pictures, the comedown and the layout outline")
+    dt = sub.add_parser("details", help="rebuild a run's detection page with tracking pictures, the comedown and landing views, and the layout with them outlined")
     dt.add_argument("out_dir")
     dt.add_argument("--force", action="store_true", help="redo pictures that already exist")
     pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")

@@ -1,8 +1,9 @@
 """A run's detection page with what the detector saw, for checking it by eye.
 
-Per sublevel: the falling letters with the tracker's boxes and the fitted fall, the comedown
-(the floor in view after landing, before the Pikmin pour out), the layout with the camera's
-view at landing outlined, and a plain reading of the score. Built from seeds.json and the
+Per sublevel: the falling letters with the tracker's boxes and the fitted fall, the two views of
+the floor in the video (the comedown, the high view behind the title as the pod comes down, and
+the landing view once it has landed), the layout with those views outlined, and a plain
+reading of the score. Built from seeds.json and the
 video; detection itself is not redone, and pictures already made are kept.
 """
 
@@ -33,8 +34,10 @@ dominate) after removing a shared speed offset. Lower is better; about 1 per let
 under 6 and a gap of 15+. A seed can also be confirmed by its neighbours: consecutive sublevels' seeds sit a few
 hundred thousand steps apart in the generator, which almost never happens by chance.</li>
 </ul>
-<p>The comedown picture is the first moment the floor is in view after landing. The layout render outlines what the
-camera shows at landing, so the two should match.</p></details>"""
+<p>Two pictures from the video show the floor as the sublevel starts: the <b>comedown</b>, the high, wide view behind
+the title while the pod comes down (often dim, so it is brightened), and the <b>landing view</b>, the first view once
+the pod has landed. The layout render outlines the landing view in orange (and the comedown in blue once its camera
+is known), with an arrow for the way the pod faces, so the pictures and the layout should match.</p></details>"""
 
 
 def explain(row: dict) -> str:
@@ -53,25 +56,45 @@ def explain(row: dict) -> str:
     return "; ".join(parts) + "."
 
 
-def find_comedown(video, feed, frame: int, span: int = 240) -> int | None:
-    """First frame of the landing view: after the entry screen and the dark gap that follows it
-    (the last such gap, past any short cutscene), once the floor has faded in."""
+def find_views(video, feed, frame: int, span: int = 240) -> tuple[int | None, int | None]:
+    """Frames of the comedown and the landing view after the entry screen settles at `frame`.
+
+    The title stays up over the comedown (the pod coming down, seen from above) until the
+    screen goes dark; the landing view fades in after that dark gap (the last one, past any
+    short cutscene). The comedown frame is two thirds of the way from its brightest moment to the gap;
+    the landing frame is early in the fade-in, before the Pikmin pour out."""
     fr, br = [], []
-    for f, g in video.sample(3, frame, frame + span):
+    for f, g in video.sample(2, frame, frame + span):
         fr.append(f)
         br.append(float(feed.crop(g).mean()))
     if not br:
-        return None
+        return None, None
     br = np.array(br)
     # captures' black is rarely 0 (often ~17), so "dark" is relative to this clip's range
-    lo = br.min()
-    dark = [i for i in np.nonzero(br <= lo + 0.12 * (br.max() - lo))[0] if fr[i] < frame + 180]
+    # (the range is taken over the first 180 frames: later the player may walk somewhere brighter)
+    early = np.array(fr) < frame + 180
+    lo, hi = br[early].min(), br[early].max()
+    dark = [i for i in np.nonzero(br <= lo + 0.12 * (hi - lo))[0] if early[i]]
     if not dark:
-        return None
+        return None, None
     d = int(dark[-1])
-    after = br[d: d + 20]
-    hit = np.nonzero(after >= lo + 0.6 * (after.max() - lo))[0]      # early: before the Pikmin pour out
-    return fr[d + int(hit[0])] if len(hit) else None
+    # the comedown: before the first dark gap (the title's fade-out), not the last; a stricter
+    # "dark" here, since the title over a dim scene is barely brighter than the gap
+    first_gap = int(np.nonzero(br <= lo + 0.06 * (hi - lo))[0][0])
+    come = None
+    if first_gap >= 2:
+        p = int(np.argmax(br[:first_gap]))
+        come = fr[min(first_gap - 1, p + int(0.65 * (first_gap - p)))]   # past the flash of the pod opening
+    after = br[d: d + 30]
+    hit = np.nonzero(after >= lo + 0.45 * (after.max() - lo))[0]
+    land = fr[d + int(hit[0])] if len(hit) else None
+    return come, land
+
+
+def _brighten(img: np.ndarray) -> np.ndarray:
+    """Stretch a dim frame's levels so the floor shows (1st-99.5th percentile to full range)."""
+    lo, hi = np.percentile(img, (1, 99.5))
+    return cv2.convertScaleAbs(img, alpha=255.0 / max(hi - lo, 1.0), beta=-lo * 255.0 / max(hi - lo, 1.0))
 
 
 def _figure(src: str, alt: str, caption: str, wide: bool = False) -> str:
@@ -80,7 +103,7 @@ def _figure(src: str, alt: str, caption: str, wide: bool = False) -> str:
 
 
 def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
-    from . import cg3, comedown, debug
+    from . import cg3, debug, views
     from .feed import Feed
     from .video import Video
     out_dir = Path(out_dir)
@@ -101,19 +124,23 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
                              compact=True, video=video)
             except Exception:
                 pass
-        come = img / f"comedown_{f}.jpg"
-        if force or not come.exists():
-            cf = find_comedown(video, feed, f)
-            g = video.frame_at(cf) if cf is not None else None
-            if g is not None:
-                cv2.imwrite(str(come), cv2.resize(feed.crop(g), (480, 360)), [cv2.IMWRITE_JPEG_QUALITY, 80])
+        come, land = img / f"view_comedown_{f}.jpg", img / f"view_landing_{f}.jpg"
+        if force or not come.exists() or not land.exists():
+            for p in (img / f"comedown_{f}.jpg", img / f"layout_outline_{f}.jpg"):     # older names
+                p.unlink(missing_ok=True)
+            cf, lf = find_views(video, feed, f)
+            for fr_, path, bright in ((cf, come, True), (lf, land, False)):
+                g = video.frame_at(fr_) if fr_ is not None else None
+                if g is not None:
+                    pic = cv2.resize(feed.crop(g), (480, 360))
+                    cv2.imwrite(str(path), _brighten(pic) if bright else pic, [cv2.IMWRITE_JPEG_QUALITY, 80])
         lay = next(iter(img.glob(f"layout_{f}_*.png")), None)
-        outl = img / f"layout_outline_{f}.jpg"
+        outl = img / f"layout_views_{f}.jpg"
         if lay and row.get("layout_seed") and row.get("sublevel") and (force or not outl.exists()):
             try:
                 ship = cg3.layout(row["cave"], row["sublevel"], int(row["layout_seed"], 16)).get("ship")
                 if ship:
-                    tmp = comedown.draw(lay, ship, img / f"_outline_{f}.png")
+                    tmp = views.draw(lay, ship, img / f"_views_{f}.png")
                     cv2.imwrite(str(outl), cv2.imread(str(tmp)), [cv2.IMWRITE_JPEG_QUALITY, 82])
                     tmp.unlink()
             except Exception:
@@ -122,9 +149,11 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
         if fall.exists():
             pics.append(_figure(f"img/{fall.name}", "falling letters", "Falling letters, tracker boxes and the fitted fall", True))
         if come.exists():
-            pics.append(_figure(f"img/{come.name}", "comedown", "Comedown in the video"))
+            pics.append(_figure(f"img/{come.name}", "comedown", "Comedown (behind the title, brightened)"))
+        if land.exists():
+            pics.append(_figure(f"img/{land.name}", "landing view", "Landing view"))
         if outl.exists():
-            pics.append(_figure(f"img/{outl.name}", "layout", "Layout, camera view at landing outlined"))
+            pics.append(_figure(f"img/{outl.name}", "layout", "Layout: landing view (orange), pod facing (arrow)"))
         elif lay:
             pics.append(_figure(f"img/{lay.name}", "layout", "Layout"))
         entry = img / f"entry_{f}.jpg"
