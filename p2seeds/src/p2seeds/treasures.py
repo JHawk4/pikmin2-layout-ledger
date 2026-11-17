@@ -293,7 +293,7 @@ def read_totals(out_dir: Path, progress=None) -> dict:
                 gs.append(cv2.resize(feed.crop(g), (480, 360), interpolation=cv2.INTER_CUBIC))
         # the treasures CaveGen placed on the sublevel; on the surface (or without a seed) any value
         options = sorted({int(x[1]) for x in counts[key].get("items") or []}) or list(range(1, 1000))
-        vs = np.array([np.mean([value_score(g, val, templates) for g in gs]) if gs else 0.0 for val in options])
+        vs = value_scores(gs, options, templates) if gs else np.zeros(len(options))
         ts = _total_scores(*_total_slots(gs, ttemplates)) if gs else np.zeros(10000)
         steps.append((options, vs, ts))
         if progress:
@@ -413,6 +413,36 @@ def refresh_bugs(out_dir: Path) -> dict:
     allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
+
+
+def value_scores(g480s: list[np.ndarray], values: list[int], templates) -> np.ndarray:
+    """value_score averaged over frames, for many candidate values at once.
+
+    Each slot's digit scores and blankness are computed once per frame and shift, then every
+    candidate is scored from those (the same rules as value_score). Reading a surface panel
+    tries every value 1..999, which was the slow part of read_totals."""
+    dxs = (-2, -1, 0, 1, 2)
+    nf = len(g480s)
+    S = np.zeros((nf, len(dxs), 3, 10))
+    B = np.zeros((nf, len(dxs), 3))
+    for f, g in enumerate(g480s):
+        for j, dx in enumerate(dxs):
+            for k in range(3):
+                sl = _slot(g, k, dx)
+                B[f, j, k] = _blankness(sl)
+                v = _norm(sl)
+                S[f, j, k] = [float(v @ templates[str(d)]) for d in range(10)]
+    out = np.zeros(len(values))
+    for n, value in enumerate(values):
+        digits = [int(c) for c in str(value)[::-1]][:3]
+        L = len(digits)
+        s = sum(S[:, :, k, d] for k, d in enumerate(digits)) / L          # (frames, shifts)
+        if L < 3:
+            s = s - np.where(B[:, :, L] > VALUE_BLANK, 1.0, 0.0)
+        if L >= 2:
+            s = s - np.where(B[:, :, L - 1] < VALUE_BLANK, 1.0, 0.0)
+        out[n] = float(np.mean(s.max(axis=1))) if nf else 0.0
+    return out
 
 
 def ensure_helper() -> Path:
