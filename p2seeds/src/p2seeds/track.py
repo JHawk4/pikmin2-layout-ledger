@@ -40,7 +40,11 @@ MIN_BRIGHT = 25.0     # frames darker than this (black, or the very start of the
 
 
 def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min_score: float = 0.5,
-                 refs: list[float] | None = None) -> Track:
+                 refs: list[float] | None = None, blended: bool = False) -> Track:
+    """`blended`: frames that are a 50/50 blend of two consecutive game frames (interlaced captures
+    blended on upload). A falling letter then shows twice in its column: the upper copy is the
+    earlier game frame, the lower one the next. Both are kept, the lower one a frame later (its
+    frame number is k + 0.5 here; the caller's clock maps k -> game time, see analyze)."""
     t = box.template
     h, w = t.shape
     x0 = max(0, int(round(box.x)) - x_slack)
@@ -60,6 +64,18 @@ def track_letter(frames: list[np.ndarray], box: LetterBox, x_slack: int = 2, min
         col = int(np.argmax(res.max(axis=0)))
         column = res[:, col]
         row = int(np.argmax(column))
+        if blended:
+            # a second copy of the letter further along its fall (lower), or before it (higher)
+            sep = max(3, int(0.25 * h))
+            masked = column.copy()
+            masked[max(0, row - sep): row + sep + 1] = -1
+            row2 = int(np.argmax(masked))
+            if column[row] >= min_score and masked[row2] >= min_score and abs(row2 - row) <= 1.6 * h:
+                top, bot = sorted((row, row2))
+                fr += [k, k + 0.5]
+                ys += [_subpixel(column, top) - pad, _subpixel(column, bot) - pad]
+                sc += [float(column[top]), float(column[bot])]
+                continue
         if column[row] < min_score:
             continue
         fr.append(k)

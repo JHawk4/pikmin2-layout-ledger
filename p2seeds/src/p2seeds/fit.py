@@ -35,8 +35,14 @@ class FitResult:
 
 
 def free_fall(track: Track, min_score: float = 0.55) -> tuple[np.ndarray, np.ndarray]:
+    """The letter's fall: the stretch of steadily accelerating downward motion that drops the
+    furthest. A stretch ends where the letter stops, bounces, slows (it hit the floor) or jumps
+    implausibly (a bad match). Taking the stretch that drops furthest, not the first, keeps
+    spurious matches before the fall (something static the template half-matches) and the
+    bounces after it from hiding the fall itself."""
     ok = (track.score >= min_score) & (track.score < 0.995)
     fr, y = track.frames[ok], track.y[ok]
+    segments: list[tuple[list, list]] = []
     keep_f, keep_y = [], []
     prev_dy = None
     for f, yy in zip(fr, y):
@@ -45,18 +51,18 @@ def free_fall(track: Track, min_score: float = 0.55) -> tuple[np.ndarray, np.nda
             if gap <= 0:
                 continue
             dy = (yy - keep_y[-1]) / gap
-            if dy <= 0.5:                      # stopped or bouncing
-                break
-            if prev_dy is not None and dy < 0.8 * prev_dy:
-                break                          # hit the floor during this frame
-            if prev_dy is not None and dy > prev_dy + 4:
-                # implausible jump (bad match); restart from here
+            if (dy <= 0.5                                         # stopped or bouncing
+                    or (prev_dy is not None and dy < 0.8 * prev_dy)   # hit the floor during this frame
+                    or (prev_dy is not None and dy > prev_dy + 4)):   # implausible jump (bad match)
+                segments.append((keep_f, keep_y))
                 keep_f, keep_y, prev_dy = [f], [yy], None
                 continue
             prev_dy = dy
         keep_f.append(f)
         keep_y.append(yy)
-    return np.array(keep_f, float), np.array(keep_y, float)
+    segments.append((keep_f, keep_y))
+    best = max(segments, key=lambda s: (s[1][-1] - s[1][0]) if len(s[1]) > 1 else -1.0)
+    return np.array(best[0], float), np.array(best[1], float)
 
 
 def fit(tracks: list[Track], num_chars: int, s_guess: float, min_points: int = 4,

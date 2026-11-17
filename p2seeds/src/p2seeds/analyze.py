@@ -200,12 +200,14 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
     #    shows the game unevenly repeats frames the game ran through; then the video's own
     #    clock is right.
     first_failure = None
-    for weak, wall_clock in ((False, False), (False, True), (True, False), (True, True)):
+    #  - blended: each frame a 50/50 blend of two game frames, so falling letters show twice
+    for weak, wall_clock, blended in ((False, False, False), (False, True, False), (True, False, False),
+                                      (True, True, False), (True, False, True), (True, True, True)):
         if r.confidence == "high":
             break
         fall, times = game_times(clip, wall=wall_clock)
-        raw = track_all(fall, cal, min_score=LOW_MATCH) if weak else track_all(fall, cal)
-        tracks = [replace(t, frames=times[t.frames.astype(int)]) for t in raw]
+        raw = track_all(fall, cal, min_score=LOW_MATCH, blended=blended) if weak else track_all(fall, cal)
+        tracks = [replace(t, frames=to_time(t.frames, times)) for t in raw]
         kw = {**fit_kw, "min_score": min(fit_kw.get("min_score", 0.55), LOW_MATCH)} if weak else fit_kw
         try:
             f = fit(tracks, cal.cave.num_chars, s_guess=s_guess, **kw)
@@ -217,7 +219,8 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
             first_failure = first_failure or "too few letters measured"   # chain.link may still find it
             continue
         how = ", ".join(x for x in ("weaker letter matches allowed" if weak else "",
-                                     "timed by the video clock" if wall_clock else "") if x)
+                                     "timed by the video clock" if wall_clock else "",
+                                     "blended frames (letters doubled)" if blended else "") if x)
         cands, conf = _search(f, search_kw)
         if r.fit is None or _RANK[conf] > _RANK[r.confidence]:
             r.fit, r.candidates, r.confidence, r.note = f, cands, conf, how
@@ -240,6 +243,13 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
     r.letter_seed = best.letter_seed
     r.layout_seed = letters_model.layout_seed(best.letter_seed, cal.cave.num_chars)
     return r
+
+
+def to_time(frames: np.ndarray, times: np.ndarray) -> np.ndarray:
+    """Clip frame numbers -> game time. A blended frame's lower copy (frame k + 0.5) is the
+    game frame after frame k's."""
+    k = np.floor(frames).astype(int)
+    return times[k] + np.where(frames - k > 0, 1.0, 0.0)
 
 
 _RANK = {"none": 0, "low": 1, "medium": 2, "high": 3}
