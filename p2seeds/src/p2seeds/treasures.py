@@ -222,6 +222,7 @@ def _total_slot(g480: np.ndarray, k: int, dx: float = 0.0) -> np.ndarray:
     return cv2.resize(crop, (22, 25), interpolation=cv2.INTER_AREA)
 
 
+SETTLE = 48                 # frames into a panel before its Value and Total stop counting up
 MAX_BUG = 2000              # most pokos from enemies between two treasure panels we consider
 OVER_CAP = 1.5              # score cost of creature pokos beyond what the layouts allow
 BUG_PENALTY = 0.0001       # score per bug poko (digit scores are summed, ~0.5-0.9 per matching digit)
@@ -349,7 +350,9 @@ def read_totals(out_dir: Path, progress=None) -> dict:
     steps = []                                   # per panel: (values, value scores, total scores)
     for n, (a, b, key, i) in enumerate(panels):
         gs = []
-        for f in range(a + 8, max(a + 9, b - 8), 12):
+        # the panel animates: the Value counts up from 0 and the Total still shows the old number
+        # for the first ~40 frames, so read only once it has settled
+        for f in range(min(a + max(SETTLE, (b - a) // 3), b - 9), max(a + 9, b - 8), 12):
             g = video.frame_at(f)
             if g is not None:
                 gs.append(_aligned(cv2.resize(feed.crop(g), (480, 360), interpolation=cv2.INTER_CUBIC), M))
@@ -411,9 +414,35 @@ def read_totals(out_dir: Path, progress=None) -> dict:
             t.setdefault(name, [None] * len(t.get("panels", [])))
         t["totals"][i], t["values"][i], t["bug_before"][i] = int(tot), int(val), int(tot - last - val)
         last = tot
+    _names_from_values(counts)
     allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
+
+
+def _names_from_values(counts: dict) -> None:
+    """Make the collected treasures agree with the values read off the panels: each panel gets a
+    treasure of its value from the sublevel's list (keeping the earlier pick when it fits)."""
+    for t in counts.values():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items:
+            continue
+        old = t.get("collected") or [None] * len(vals)
+        left = [list(x) for x in items]
+        picks: list = [None] * len(vals)
+        for i, v in enumerate(vals):                    # keep earlier picks that match the value
+            o = old[i] if i < len(old) else None
+            if o and o[1] == v:
+                k = next((j for j, x in enumerate(left) if x[0] == o[0].split(" or ")[0]), None)
+                if k is not None:
+                    picks[i] = o
+                    left.pop(k)
+        for i, v in enumerate(vals):
+            if picks[i] is None:
+                k = next((j for j, x in enumerate(left) if x[1] == v), None)
+                if k is not None:
+                    picks[i] = left.pop(k)
+        t["collected"] = picks
 
 
 def creature_cap(cave: str, sublevel: int, seed: int) -> int | None:
@@ -534,9 +563,35 @@ def refresh_bugs(out_dir: Path) -> dict:
     for k, v in counts.items():
         if v.get("window") and k in seeds:
             v["creature_cap"] = creature_cap(v["cave"], v["sublevel"], int(seeds[k]["layout_seed"], 16))
+    _names_from_values(counts)
     allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
+
+
+def _names_from_values(counts: dict) -> None:
+    """Make the collected treasures agree with the values read off the panels: each panel gets a
+    treasure of its value from the sublevel's list (keeping the earlier pick when it fits)."""
+    for t in counts.values():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items:
+            continue
+        old = t.get("collected") or [None] * len(vals)
+        left = [list(x) for x in items]
+        picks: list = [None] * len(vals)
+        for i, v in enumerate(vals):                    # keep earlier picks that match the value
+            o = old[i] if i < len(old) else None
+            if o and o[1] == v:
+                k = next((j for j, x in enumerate(left) if x[0] == o[0].split(" or ")[0]), None)
+                if k is not None:
+                    picks[i] = o
+                    left.pop(k)
+        for i, v in enumerate(vals):
+            if picks[i] is None:
+                k = next((j for j, x in enumerate(left) if x[1] == v), None)
+                if k is not None:
+                    picks[i] = left.pop(k)
+        t["collected"] = picks
 
 
 def value_scores(g480s: list[np.ndarray], values: list[int], templates) -> np.ndarray:
