@@ -61,6 +61,9 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
     links = [("runs", f"{prefix}index.html", "All runs")]
     if run:
         links += [("judge", "judge.html", "Layouts &amp; luck"), ("detection", "report.html", "Seed detection")]
+    else:
+        links += [("accuracy", "accuracy.html", "Judge accuracy"), ("pokos", "pokos.html", "Pokos"),
+                  ("seeds", "seeds.html", "Seed check")]
     links.append(("suggest", f"{prefix}suggest.html", "Suggestion box"))
     nav = "".join(f'<a href="{href}"{" aria-current=page" if key == active else ""}'
                   f'{" class=nav-suggest" if key == "suggest" else ""}>{label}</a>' for key, href, label in links)
@@ -107,15 +110,15 @@ button.primary {{ background:linear-gradient(135deg, var(--leaf), var(--leaf-2))
 </style></head><body><main>
 <h1>Suggestion box</h1>
 <p>Spotted a wrong seed, a misread poko count, a run that is missing, or have an idea for this site? Leave a note.
-Your name is optional.</p>
+It goes privately to the site's maker (through a Google Form) and is not published. Both other fields are optional.</p>
 <!-- The same Google Form as the other Pikmin sites; "page" tells them apart. -->
 <form id="suggest" class="suggest" action="{SUGGEST_FORM}" method="POST">
   <label class="field"><span>Name (optional)</span>
-    <input name="entry.1125475916" maxlength="80" placeholder="e.g. your Discord or speedrun.com name"></label>
+    <input name="entry.1125475916" maxlength="80" placeholder="e.g. your speedrun.com name"></label>
   <label class="field"><span>Suggestion</span>
     <textarea name="entry.1148029577" rows="7" maxlength="4000" required></textarea></label>
-  <label class="field"><span>Contact (optional)</span>
-    <input name="entry.303778019" maxlength="120" placeholder="Discord username, so we can follow up"></label>
+  <label class="field"><span>How to reach you (optional)</span>
+    <input name="entry.303778019" maxlength="120" placeholder="Discord username or email, if you'd like a reply"></label>
   <input type="hidden" name="entry.1626566187" id="suggest-page">
   <div class="buttons"><button type="submit" class="primary">Send</button>
     <span id="suggest-status" class="status" role="status" aria-live="polite"></span></div>

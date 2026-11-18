@@ -22,6 +22,7 @@ CSS = """
 .cumul .brush-area { cursor:crosshair; touch-action:none; }
 .cumul .sortval { font-size:10px; }
 .cumul .brush-read { font-size:12px; font-weight:600; }
+.cumul .hover-read { font-size:11px; fill:var(--ink-1); }
 .viz-root { --surface-1:#fcfcfb; --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#8a8984; --grid:#e6e5e0;
   --range:#d4d3cd; --good-mark:#0ca30c; --bad-mark:#d03b3b; --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
   --series-5:#e87ba4; --series-6:#008300; --series-7:#6250d6; --series-8:#e34948; }
@@ -85,10 +86,19 @@ TOOLTIP_JS = """
     tip.style.display = 'block';
     at = [x, y]; place();
   };
+  // touch: the first tap on a mark shows its tooltip, a second tap on the same mark follows its link
+  let touch = false;
+  addEventListener('pointerdown', e => { touch = e.pointerType === 'touch'; }, true);
+  addEventListener('scroll', () => { if (touch) hide(); }, { passive: true });
+  addEventListener('click', e => { if (touch && !e.target.closest('[data-tip]')) hide(); });
   document.querySelectorAll('[data-tip]').forEach(el => {
-    el.addEventListener('pointermove', e => show(el, e.clientX, e.clientY));
-    el.addEventListener('pointerleave', hide);
-    el.addEventListener('focus', () => { const r = el.getBoundingClientRect(); show(el, r.right, r.top); });
+    el.addEventListener('click', e => {
+      if (!touch || cur === el) return;
+      e.preventDefault(); e.stopPropagation(); show(el, e.clientX, e.clientY);
+    });
+    el.addEventListener('pointermove', e => { if (e.pointerType !== 'touch') show(el, e.clientX, e.clientY); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') hide(); });
+    el.addEventListener('focus', () => { if (touch) return; const r = el.getBoundingClientRect(); show(el, r.right, r.top); });
     el.addEventListener('blur', hide);
   });
 })();
@@ -122,14 +132,21 @@ def _scale(d0, d1, r0, r1):
 def timesave_chart(points: list[dict], title: str) -> str:
     """One column per sublevel, in seconds against the median (negative = faster, like splits).
 
-    Grey bar: 5th to 95th percentile of random layouts (judge). Circle: the judge's estimate
+    Grey shape: how 1000 random layouts of the sublevel score (a violin, wider where more layouts
+    land; without `dist`, a bar from the 5th to the 95th percentile). Circle: the judge's estimate
     for this run's layout. Diamond: what the runner actually did, net of pokos, against the
     median run. Marks are green when faster than the median and red when slower.
 
     points: dicts with label, anchor, fixed (bool), judge (or None), lo/hi (5th/95th
-    percentile deltas), beats (% of layouts beaten), actual (or None), extra (tooltip text)."""
-    W, H, L, R, T, B = 960, 320, 48, 10, 26, 44
+    percentile deltas), dist (optional: random layouts' deltas), beats (% of layouts beaten),
+    actual (or None), extra (tooltip text)."""
+    W, H, L, R, T, B = 960, 340, 48, 10, 26, 44
     vals = [v for p in points for v in (p.get("judge"), p.get("lo"), p.get("hi"), p.get("actual")) if v is not None]
+    # the violins show the 1st to 99th percentile: the rare extreme layouts would squash everything else
+    for p in points:
+        if p.get("dist") is not None and len(p["dist"]):
+            d = sorted(p["dist"])
+            vals += [d[int(0.01 * (len(d) - 1))], d[int(0.99 * (len(d) - 1))]]
     lo, hi = min(vals + [0]), max(vals + [0])
     pad = 0.08 * (hi - lo or 1)
     ticks = nice_ticks(lo - pad, hi + pad)
@@ -162,11 +179,19 @@ def timesave_chart(points: list[dict], title: str) -> str:
             out.append(f'<circle cx="{cx - 3:.1f}" cy="{y(0):.1f}" r="2.5" fill="var(--ink-3)"/>')
             lines.append("judge: fixed floor (every seed scores the same)" if p.get("fixed") else "judge: none")
         else:
-            out.append(f'<line class="range" x1="{cx - 3:.1f}" x2="{cx - 3:.1f}" y1="{y(p["hi"]):.1f}" y2="{y(p["lo"]):.1f}"/>')
+            if p.get("dist") is not None and len(p["dist"]) > 5:
+                out.append(_violin(p["dist"], cx - 3, min(col * 0.46, 11), y))
+                q = sorted(p["dist"])
+                pc = lambda f: q[int(round(f * (len(q) - 1)))]
+                lines.append(f'random layouts: half within {pc(.25):+.1f} to {pc(.75):+.1f} s, '
+                             f'9 in 10 within {pc(.05):+.1f} to {pc(.95):+.1f} s')
+            else:
+                out.append(f'<line class="range" x1="{cx - 3:.1f}" x2="{cx - 3:.1f}" y1="{y(p["hi"]):.1f}" y2="{y(p["lo"]):.1f}"/>')
             out.append(f'<circle cx="{cx - 3:.1f}" cy="{y(p["judge"]):.1f}" r="4.5" fill="{color(p["judge"])}" '
                        f'stroke="var(--surface-1)" stroke-width="1.5"/>')
-            lines.append(f'judge: {p["judge"]:+.1f} s (faster than {p["beats"]:.0f}% of layouts)')
-            lines.append(f'random layouts, 5th–95th pct: {p["lo"]:+.1f} to {p["hi"]:+.1f} s')
+            lines.insert(1, f'layout: {p["judge"]:+.1f} s (faster than {p["beats"]:.0f}% of layouts)')
+            if p.get("dist") is None:
+                lines.append(f'random layouts, 5th–95th pct: {p["lo"]:+.1f} to {p["hi"]:+.1f} s')
         if p.get("actual") is not None:
             ax, ay = cx + 4, y(p["actual"])
             out.append(f'<path d="M{ax:.1f},{ay - 5:.1f} L{ax + 5:.1f},{ay:.1f} L{ax:.1f},{ay + 5:.1f} L{ax - 5:.1f},{ay:.1f} Z" '
@@ -178,12 +203,106 @@ def timesave_chart(points: list[dict], title: str) -> str:
                    f'width="{col:.1f}" height="{H - B - T}" data-tip="{_esc(chr(10).join(lines))}"/></a>')
     out.append("</svg>")
     legend = ('<div class="legend"><span><i class="dotkey" style="background:var(--good-mark)"></i>'
-              '<i class="dotkey" style="background:var(--bad-mark);margin-left:-4px"></i>judge estimate for this layout</span>'
+              '<i class="dotkey" style="background:var(--bad-mark);margin-left:-4px"></i>this run\'s layout, by the judge</span>'
               '<span><i class="dotkey" style="background:transparent;border:2px solid var(--ink-2);border-radius:2px;'
               'transform:rotate(45deg);width:7px;height:7px"></i>runner\'s actual result, net of pokos</span>'
-              '<span><i style="background:var(--range);height:6px"></i>5th–95th percentile of random layouts</span>'
+              + ('<span><i style="background:var(--range);height:8px;width:10px;border-radius:5px"></i>how 1000 random layouts '
+                 'score (wider = more common)</span>' if any(p.get("dist") is not None for p in points) else
+                 '<span><i style="background:var(--range);height:6px"></i>5th–95th percentile of random layouts</span>')
+              + 
               '<span>green = faster than the median, red = slower</span></div>')
     return f'<div class="chart viz-root">{"".join(out)}{legend}</div>'
+
+
+def _density(vals, grid, bw=None):
+    """Gaussian kernel density of `vals` on `grid` (Silverman's bandwidth)."""
+    n = len(vals)
+    mean = sum(vals) / n
+    sd = math.sqrt(sum((v - mean) ** 2 for v in vals) / max(1, n - 1))
+    q = sorted(vals)
+    iqr = q[int(0.75 * (n - 1))] - q[int(0.25 * (n - 1))]
+    spread = min(sd, iqr / 1.34) if iqr > 0 else sd
+    bw = bw or max(1e-3, 0.9 * (spread or 1.0) * n ** -0.2)
+    return [sum(math.exp(-0.5 * ((g - v) / bw) ** 2) for v in vals) / (n * bw * 2.5066) for g in grid]
+
+
+def _violin(dist, cx: float, half: float, y) -> str:
+    """A violin of `dist` at x = cx, half-width `half` at its widest, on the y scale `y`.
+    Drawn from the 1st to the 99th percentile."""
+    q = sorted(dist)
+    if len(q) > 300:                      # the shape doesn't need every layout
+        q = [q[int(i * (len(q) - 1) / 299)] for i in range(300)]
+    lo, hi = q[int(0.01 * (len(q) - 1))], q[int(0.99 * (len(q) - 1))]
+    if hi - lo < 1e-6:
+        return f'<line class="range" x1="{cx:.1f}" x2="{cx:.1f}" y1="{y(lo) - 1:.1f}" y2="{y(lo) + 1:.1f}"/>'
+    grid = [lo + (hi - lo) * k / 30 for k in range(31)]
+    dens = _density(q, grid)
+    top = max(dens) or 1
+    right = [f"{cx + half * d / top + 0.6:.1f},{y(g):.1f}" for g, d in zip(grid, dens)]
+    left = [f"{cx - half * d / top - 0.6:.1f},{y(g):.1f}" for g, d in zip(reversed(grid), reversed(dens))]
+    return f'<polygon points="{" ".join(right + left)}" fill="var(--range)" stroke="none"/>'
+
+
+def distribution_chart(samples: list[float], marks: list[dict], title: str, x_label: str,
+                       subtitle: str = "") -> str:
+    """How a total is distributed for random layouts (a density curve of `samples`), with
+    marks for actual values. marks: dicts with x, tip, href (optional), label (optional, drawn
+    under a main mark), main (bool: drawn large and labelled; others small and stacked), hollow (bool)."""
+    W, L, R = 760, 40, 16
+    T = 44 if subtitle else 28
+    B = 64
+    H = T + 120 + B
+    q = sorted(samples)
+    lo, hi = q[int(0.001 * (len(q) - 1))], q[int(0.999 * (len(q) - 1))]
+    xs = [m["x"] for m in marks]
+    t = nice_ticks(min([lo] + xs), max([hi] + xs), 7)
+    x = _scale(t[0], t[-1], L, W - R)
+    sub = q if len(q) <= 2000 else [q[int(i * (len(q) - 1) / 1999)] for i in range(2000)]
+    grid = [t[0] + (t[-1] - t[0]) * k / 100 for k in range(101)]
+    dens = _density(sub, grid)
+    top = max(dens) or 1
+    base = T + 120                         # the curve's baseline; the marks sit under it
+    curve_h = 120 - 22
+    out = [f'<svg viewBox="0 0 {W} {H}" role="img" aria-label="{_esc(title)}">',
+           f'<text class="ttl" x="{L}" y="14">{_esc(title)}</text>']
+    if subtitle:
+        out.append(f'<text x="{L}" y="30">{_esc(subtitle)}</text>')
+    for k in t:
+        out.append(f'<line class="{"zero" if k == 0 else "grid"}" x1="{x(k):.1f}" x2="{x(k):.1f}" y1="{T + 16}" y2="{base}"/>'
+                   f'<text x="{x(k):.1f}" y="{H - B + 36}" text-anchor="middle">{k:+g}</text>')
+    pts = " ".join(f"{x(g):.1f},{base - curve_h * d / top:.1f}" for g, d in zip(grid, dens))
+    out.append(f'<polygon points="{x(grid[0]):.1f},{base} {pts} {x(grid[-1]):.1f},{base}" fill="var(--range)" fill-opacity=".8"/>')
+    for f, lab in ((0.05, "5th pct"), (0.5, "median"), (0.95, "95th pct")):
+        v = q[int(f * (len(q) - 1))]
+        out.append(f'<line x1="{x(v):.1f}" x2="{x(v):.1f}" y1="{T + 14}" y2="{base}" stroke="var(--ink-3)" stroke-dasharray="2 3"/>'
+                   f'<text x="{x(v):.1f}" y="{T + 10}" text-anchor="middle" style="fill:var(--ink-3)">{lab}</text>')
+    out.append(f'<line class="zero" x1="{L}" x2="{W - R}" y1="{base}" y2="{base}"/>')
+    placed: list[tuple[float, int]] = []
+    for m in sorted(marks, key=lambda m: m.get("main", False)):
+        px = x(m["x"])
+        if m.get("main"):
+            py, r = base + 12, 6.5
+        else:
+            level = 0
+            while any(abs(px - qx) < 8 and lv == level for qx, lv in placed):
+                level += 1
+            placed.append((px, level))
+            py, r = base + 9 + 8 * min(level, 4), 3.6
+        col = "var(--good-mark)" if m["x"] < 0 else "var(--bad-mark)"
+        fill = "var(--surface-1)" if m.get("hollow") else col
+        mark = (f'<circle class="hit" tabindex="-1" cx="{px:.1f}" cy="{py:.1f}" r="{r + 5}" data-tip="{_esc(m["tip"])}"/>'
+                f'<circle class="dot" cx="{px:.1f}" cy="{py:.1f}" r="{r}" fill="{fill}" stroke="{col}" stroke-width="1.6"/>')
+        if m.get("main"):
+            mark = (f'<line x1="{px:.1f}" x2="{px:.1f}" y1="{T + 16}" y2="{base}" stroke="var(--ink-1)" stroke-width="1.5"/>'
+                    + mark +
+                    f'<text x="{px:.1f}" y="{base + 32}" text-anchor="middle" style="fill:var(--ink-1);font-weight:600">'
+                    f'{_esc(m.get("label", ""))}</text>')
+        if m.get("href"):
+            mark = f'<a href="{_esc(m["href"])}">{mark}</a>'
+        out.append(mark)
+    out.append(f'<text x="{(L + W - R) / 2:.0f}" y="{H - 6}" text-anchor="middle">{_esc(x_label)}</text>')
+    out.append("</svg>")
+    return f'<div class="chart viz-root dist">{"".join(out)}</div>'
 
 
 def line_chart(series: list[dict], title: str, x_label: str, y_label: str, y_fmt=lambda v: f"{v:g}") -> str:
@@ -310,11 +429,14 @@ def scatter_chart(points: list[tuple], title: str, x_label: str, y_label: str,
         data = (f' data-run="{_esc(info["run"])}" data-runner="{_esc(info["runner"])}" '
                 f'data-col="var({colour.get(info["runner"], "--ink-3")})"') if info else ""
         ring = (f'<circle cx="{s(px):.1f}" cy="{v(py):.1f}" r="7.5" fill="none" stroke="var(--bad-mark)" stroke-width="1.5" '
-                f'class="ring"{data}/>') if info and info.get("flag") else ""
+                f'class="ring"/>') if info and info.get("flag") else ""
         mark = (f'<circle class="hit" tabindex="-1" cx="{s(px):.1f}" cy="{v(py):.1f}" r="12" data-tip="{_esc(tip)}"{img_attr}/>'
                 f'{ring}<circle class="dot" cx="{s(px):.1f}" cy="{v(py):.1f}" r="4" fill="var(--series-1)" '
-                f'fill-opacity=".75" stroke="var(--surface-1)" stroke-width="1.5"{data}/>')
-        out.append(f'<a href="{_esc(href)}" target="_blank" rel="noopener" tabindex="-1">{mark}</a>' if href else mark)
+                f'fill-opacity=".75" stroke="var(--surface-1)" stroke-width="1.5"/>')
+        if href:
+            mark = f'<a href="{_esc(href)}" target="_blank" rel="noopener" tabindex="-1">{mark}</a>'
+        # one group per point, so a highlighted point (its dot, ring and hover target) can be raised whole
+        out.append(f'<g class="pt"{data}>{mark}</g>')
     out.append(f'<text x="{(L + W - R) / 2:.0f}" y="{H - 8}" text-anchor="middle">{_esc(x_label)}</text>')
     out.append(f'<text x="14" y="{(T + H - B) / 2:.0f}" transform="rotate(-90 14 {(T + H - B) / 2:.0f})" '
                f'text-anchor="middle">{_esc(y_label)}</text>')
@@ -323,7 +445,7 @@ def scatter_chart(points: list[tuple], title: str, x_label: str, y_label: str,
               '<span><i style="background:var(--series-2)"></i>fitted slope</span>'
               '<span><i style="background:var(--ink-3)"></i>y = x (perfect calibration)</span>'
               + ('<span><i class="dotkey" style="background:transparent;box-shadow:inset 0 0 0 2px var(--bad-mark)"></i>'
-                 'unusual play (far off under every judge)</span>' if any(i and i.get("flag") for i in infos) else "")
+                 'unusual play (far off the prediction)</span>' if any(i and i.get("flag") for i in infos) else "")
               + '</div>')
     controls = ""
     if runner_count:
@@ -394,14 +516,16 @@ def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title:
                f'pointer-events="none"/>')
     d = f"M{x(0):.1f},{y(0):.1f} " + " ".join(f"L{x(p[0]):.1f},{y(p[1]):.1f}" for p in points)
     out.append(f'<path d="{d}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" pointer-events="none"/>')
-    for p in points:
-        px, py, tip, href = p[:4]
-        hit = f'<circle class="hit" tabindex="-1" cx="{x(px):.1f}" cy="{y(py):.1f}" r="7" data-tip="{_esc(tip)}"/>'
-        out.append(f'<a href="{_esc(href)}" target="_blank" rel="noopener" tabindex="-1">{hit}</a>' if href else hit)
+    # no mark per play (seven charts of every play would weigh megabytes): the script finds the
+    # play nearest the pointer in data-pts and reads it out at the top
+    out.append(f'<circle class="cur" r="4" cx="-99" cy="-99" fill="var(--series-1)" stroke="var(--surface-1)" '
+               f'stroke-width="1.5" pointer-events="none"/>')
     out.append(f'<text class="brush-read" x="{W - R}" y="{T + 14}" text-anchor="end"></text>')
+    out.append(f'<text class="hover-read" x="{L + 6}" y="{T + 30}"></text>')
     out.append("</svg>")
-    data = [[round(x(0), 1), 0, 0, ""]] + [[round(x(p[0]), 1), round(p[0], 2), round(p[1], 2), labels[i] or ""]
-                                           for i, p in enumerate(points)]
+    data = [[round(x(0), 1), 0, 0, "", round(y(0), 1), ""]] + [
+        [round(x(p[0]), 1), round(p[0], 2), round(p[1], 2), labels[i] or "", round(y(p[1]), 1), p[2]]
+        for i, p in enumerate(points)]
     return (f'<div class="chart viz-root cumul" data-pts="{_esc(json.dumps(data))}" data-beta="{beta:.4f}">'
             f'{"".join(out)}</div>')
 
@@ -413,15 +537,18 @@ document.querySelectorAll('.scatter').forEach(box => {
   if (!pick) return;
   const apply = () => {
     const [kind, val] = pick.value ? [pick.value.split(':')[0], pick.value.slice(pick.value.indexOf(':') + 1)] : [null, null];
-    box.querySelectorAll('[data-runner]').forEach(d => {
-      const on = !kind || d.dataset[kind] === val;
-      if (d.classList.contains('dot')) {
-        d.setAttribute('fill', col.checked ? d.dataset.col : 'var(--series-1)');
-        d.setAttribute('fill-opacity', on ? '.85' : '.08');
-        d.setAttribute('r', kind && on ? 5 : 4);
-      } else d.setAttribute('stroke-opacity', on ? 1 : .1);
-      if (on && kind) d.parentNode.appendChild(d);      // bring the highlighted points to the front
+    const svg = box.querySelector('svg'), raise = [];
+    box.querySelectorAll('g.pt').forEach(g => {
+      const on = !kind || g.dataset[kind] === val, dot = g.querySelector('.dot'), ring = g.querySelector('.ring');
+      dot.setAttribute('fill', col.checked ? g.dataset.col : (kind && on ? 'var(--series-4)' : 'var(--series-1)'));
+      dot.setAttribute('fill-opacity', !kind ? '.75' : on ? '1' : '.12');
+      dot.setAttribute('stroke-opacity', on ? 1 : 0);          // faded dots lose their outline, so they hide nothing
+      dot.setAttribute('r', kind && on ? 5.5 : kind ? 3 : 4);
+      if (ring) ring.setAttribute('stroke-opacity', on ? 1 : .12);
+      g.style.pointerEvents = on ? '' : 'none';                // and only the highlighted points answer the mouse
+      if (on && kind) raise.push(g);
     });
+    raise.forEach(g => svg.appendChild(g));                     // the highlighted points on top of everything
     keys.hidden = !col.checked;
   };
   pick.addEventListener('change', apply); col.addEventListener('change', apply);
@@ -448,7 +575,14 @@ document.querySelectorAll('.cumul').forEach(box => {
       (sxx > 0 ? (sxy / sxx).toFixed(2) : '–') + ` (all ${(+box.dataset.beta).toFixed(2)})`;
   };
   area.addEventListener('pointerdown', e => { x0 = toX(e); area.setPointerCapture(e.pointerId); show(x0, x0); });
-  area.addEventListener('pointermove', e => { if (x0 !== null) show(x0, toX(e)); });
+  const cur = svg.querySelector('.cur'), hov = svg.querySelector('.hover-read');
+  area.addEventListener('pointermove', e => {
+    if (x0 !== null) { show(x0, toX(e)); return; }
+    const k = near(toX(e)), q = pts[k];
+    cur.setAttribute('cx', q[0]); cur.setAttribute('cy', q[4]);
+    hov.textContent = q[5] ? q[5].replace('\\n', ' · ') : '';
+  });
+  area.addEventListener('pointerleave', () => { cur.setAttribute('cx', -99); hov.textContent = ''; });
   area.addEventListener('pointerup', e => { if (x0 !== null) { const x1 = toX(e);
     if (Math.abs(x1 - x0) < 3) { brush.setAttribute('width', 0); read.textContent = ''; } x0 = null; } });
 });
