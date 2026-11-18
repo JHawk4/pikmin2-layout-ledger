@@ -19,11 +19,26 @@ import numpy as np
 
 D = Path(__file__).resolve().parent / "data"
 ROOT = Path(__file__).resolve().parents[1]
+# the net-timesave snapshot (creature pokos included); plays.json is the earlier treasure-only one
+PLAYS = "plays_net.json"
 
 
-def load_plays(side: str = "in") -> list[dict]:
-    """side: 'in', 'oos' or 'all'. Fixed layouts (judge_fixed) carry no comparison and are dropped."""
-    plays = [p for p in json.loads((D / "plays.json").read_text(encoding="utf-8"))["plays"] if not p["judge_fixed"]]
+# Measurement validity (decided before looking at any judge's residuals; set VALID_ONLY = False
+# for the raw calibration() set): a play whose treasure pokos exceed every treasure CaveGen placed
+# on the layout cannot be right (misread value, panel of another sublevel, wrong seed).
+VALID_ONLY = True
+
+
+def possible(p: dict) -> bool:
+    return (p.get("treasure_pokos") or 0) <= sum(x[1] for x in p.get("items") or []) + 0.5
+
+
+def load_plays(side: str = "in", valid_only: bool | None = None) -> list[dict]:
+    """side: 'in', 'oos' or 'all'. Fixed layouts (judge_fixed) carry no comparison and are dropped,
+    as are plays without reliable pokos (no net outcome) and, with valid_only, impossible poko counts."""
+    valid_only = VALID_ONLY if valid_only is None else valid_only
+    plays = [p for p in json.loads((D / PLAYS).read_text(encoding="utf-8"))["plays"]
+             if not p["judge_fixed"] and p.get("cost") is not None and (possible(p) or not valid_only)]
     split = json.loads((D / "split.json").read_text(encoding="utf-8"))
     oos = set(split["oos_runners"])
     if side == "in":
@@ -65,7 +80,10 @@ class FE:
 def spread_table() -> dict[str, float]:
     """5th-95th percentile spread of random-layout pod scores (CaveGen rank_file.txt)."""
     out = {}
-    with open(ROOT / "vendor" / "CaveGen" / "files" / "rank_file.txt", encoding="utf-8", errors="replace") as fh:
+    rank = ROOT / "vendor" / "CaveGen" / "files" / "rank_file.txt"
+    if not rank.exists():         # a git worktree has no vendor/ (ignored): use the main checkout's
+        rank = Path(__file__).resolve().parents[4] / "vendor" / "CaveGen" / "files" / "rank_file.txt"
+    with open(rank, encoding="utf-8", errors="replace") as fh:
         for line in fh:
             key, _, rest = line.partition(";")
             if key.endswith("-pod"):

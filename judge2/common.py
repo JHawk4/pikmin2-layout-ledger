@@ -15,9 +15,9 @@ def judged():
     return _J
 
 
-def plays(side="in"):
+def plays(side="in", valid_only=None):
     J = judged()
-    P = ek.load_plays(side)
+    P = ek.load_plays(side, valid_only)
     for p in P:
         p["J"] = J[f'{p["run"]}|{p["frame"]}']
     return P

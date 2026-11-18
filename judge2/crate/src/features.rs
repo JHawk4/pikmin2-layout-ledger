@@ -199,23 +199,46 @@ pub(crate) fn dump(c: &mut Ctx, layout: &Layout) -> Value {
     }
 
     // teki: in the way of the counted treasures' carry paths (as the old judge marks them)
+    // Per teki, against every treasure (in `treasures` order) and the hole:
+    //   off_tre[i]: tree distance from the teki off treasure i's route (its detour, one way)
+    //   near_tre[i]: straight-line distance from the teki to treasure i's route polyline
+    //   near_hole: the same for the ship-hole route
+    let tre_routes: Vec<(V3, Route)> = c
+        .p
+        .items
+        .iter()
+        .map(|i| i.sp)
+        .chain(c.p.tekis.iter().filter(|t| t.item_inside.is_some()).map(|t| t.sp))
+        .collect::<Vec<_>>()
+        .into_iter()
+        .map(|sp| {
+            let p = c.sp_pos(sp);
+            (p, route(c, &rects, p))
+        })
+        .collect();
+    let hole_pos = hole_sp.map(|h| c.sp_pos(h));
     let mut tekis = Vec::new();
     for t in 0..c.p.tekis.len() {
         let tk = c.p.tekis[t].clone();
         let name = tk.name.to_ascii_lowercase();
         let d = difficulty(&name);
         let td = c.dist_to_start(tk.sp);
+        let rt = route(c, &rects, tk.pos);
         let off_hole = match &hole_route {
-            Some(h) => {
-                let rt = route(c, &rects, tk.pos);
-                tree_between(c, &rt, h).1
-            }
+            Some(h) => tree_between(c, &rt, h).1,
             None => td,
+        };
+        let off_tre: Vec<f64> = tre_routes.iter().map(|(_, r)| r1(tree_between(c, &rt, r).1)).collect();
+        let near_tre: Vec<f64> = tre_routes.iter().map(|(p, r)| r1(near_route(c, tk.pos, *p, r))).collect();
+        let near_hole = match (&hole_route, hole_pos) {
+            (Some(h), Some(hp)) => r1(near_route(c, tk.pos, hp, h)),
+            _ => -1.0,
         };
         tekis.push(json!({"name": tk.name, "carrying": tk.item_inside, "sec": d.sec, "piki": d.piki,
             "carcass": !n.no_carcass.contains(name.as_str()), "pokos": pokos(&name),
             "dist": r1(td), "off_hole": r1(off_hole), "x": r1(tk.pos.x), "z": r1(tk.pos.z),
-            "in_water": in_water(&rects, tk.pos.x, tk.pos.z), "seam": c.p.sps[tk.sp].unit.is_none()}));
+            "in_water": in_water(&rects, tk.pos.x, tk.pos.z), "seam": c.p.sps[tk.sp].unit.is_none(),
+            "off_tre": off_tre, "near_tre": near_tre, "near_hole": near_hole}));
     }
 
     let gates: Vec<Value> = c
@@ -232,6 +255,18 @@ pub(crate) fn dump(c: &mut Ctx, layout: &Layout) -> Value {
         "speed": speed, "units": layout.units.len(), "water_area": rects.iter().map(|r| ((r.2 - r.0) * (r.3 - r.1)) as f64).sum::<f64>(),
         "hole": hole_json, "treasures": treasures, "tekis": tekis, "gates": gates,
     })
+}
+
+/// Straight-line distance from `q` to a route: the object at `start`, then its waypoints to the ship.
+pub(crate) fn near_route(c: &mut Ctx, q: V3, start: V3, r: &Route) -> f32 {
+    let mut best = dist(q, start);
+    let mut prev = start;
+    for &w in r.wps.iter() {
+        let p = c.g.wps[w].pos;
+        best = best.min(c.g.point_to_segment_dist(q, prev, p, 0.0, 0.0));
+        prev = p;
+    }
+    best
 }
 
 /// Gates whose door lies on this route (the gate's closest waypoint is on it).
