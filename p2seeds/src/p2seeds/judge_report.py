@@ -137,7 +137,7 @@ def chart_points(rows: list[dict], kind: str, tre: dict | None = None, actual: d
 
 def _actual_html(a: dict | None, last: bool = False) -> str:
     if not a:
-        why = ("last floor of the cave, so there is no next entry screen to stop the clock" if last
+        why = ("last floor of the cave, and its results screen was not found in the video" if last
                else "no other high-confidence run of this sublevel to compare with")
         return f'<div class="verdict mid"><span class="lbl">Runner</span><span class="muted small">Not timed: {why}.</span></div>'
     rows = f'<dt>Time</dt><dd>{a["took"]:.1f} s <span class="muted">(median {a["median_took"]:.1f} s)</span></dd>'

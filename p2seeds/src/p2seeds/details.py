@@ -249,8 +249,8 @@ h1 {{ font-size:22px; margin:0 0 4px; }} .meta {{ color:var(--muted); margin-bot
 .high .conf {{ color:var(--hi); }} .medium .conf {{ color:var(--mid); }} .low .conf, .none .conf {{ color:var(--lo); }}
 dl {{ display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:10px 0; }} dt {{ color:var(--muted); }} dd {{ margin:0; }}
 .imgs {{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; }}
-figure {{ margin:0; }} figure img {{ display:block; max-width:100%; height:auto; max-height:320px; border-radius:4px; border:1px solid var(--line); }}
-figure.wide {{ flex-basis:100%; }} figure.wide img {{ max-height:none; width:100%; }}
+figure {{ margin:0; }} figure img {{ display:block; width:auto; max-width:100%; height:auto; max-height:320px; object-fit:contain; border-radius:4px; border:1px solid var(--line); }}
+figure.wide {{ flex-basis:100%; }} figure.wide img {{ max-height:none; width:100%; height:auto; }}
 figcaption {{ color:var(--muted); font-size:12px; margin-top:3px; max-width:480px; }}
 .why {{ margin:6px 0 0; }} .card {{ scroll-margin-top:12px; }}
 .filter {{ display:flex; gap:6px; align-items:center; font-size:14px; margin:0 0 12px; }}

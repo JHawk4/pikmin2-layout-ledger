@@ -201,7 +201,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         have = treasures.load(out)
         # older scans only looked between sublevels of one cave (no final floors, no surface)
-        if args.rescan or not have or any("window" not in v and v.get("cave") != "surface" for v in have.values()):
+        # rescan when the entries moved (a re-detect can shift entry frames, and the scan is keyed by them)
+        frames = {str(e["frame"]) for e in json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"] if e.get("cave")}
+        stale = frames != {k for k, v in (have or {}).items() if v.get("cave") not in (None, "surface")}
+        if args.rescan or not have or stale or any("window" not in v and v.get("cave") != "surface" for v in have.values()):
             treasures.count_run(out, progress=lambda i, n: log(f"  scanning {100 * i / max(n, 1):4.1f}%"))
         treasures.read_values(out, progress=lambda i, n, v: log(
             f"  {v['cave']} {v['sublevel']}: treasures {[c[0] if c else '?' for c in v['collected']]}"))

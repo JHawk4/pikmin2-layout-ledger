@@ -16,6 +16,9 @@ SERIES = ["--series-1", "--series-2", "--series-3", "--series-4", "--series-5",
           "--series-6", "--series-7", "--series-8"]
 
 CSS = """
+.sc-keys[hidden] { display:none !important; }
+.scatter-controls { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; font-size:13px; margin:0 0 6px; }
+.scatter-controls select { font:inherit; color:inherit; background:var(--surface-1); border:1px solid var(--grid); border-radius:6px; padding:2px 6px; max-width:60vw; }
 .cumul .brush-area { cursor:crosshair; touch-action:none; }
 .cumul .sortval { font-size:10px; }
 .cumul .brush-read { font-size:12px; font-weight:600; }
@@ -250,7 +253,10 @@ def scatter_chart(points: list[tuple], title: str, x_label: str, y_label: str,
                   slope: float | None = None, quadrants: tuple | None = None) -> str:
     """Single-series scatter with a y = x reference and an optional fitted line through 0.
 
-    points: (x, y, tip[, href[, image url]]); the image is shown in the tooltip on hover.
+    points: (x, y, tip[, href[, image url[, info]]]); the image is shown in the tooltip on hover.
+            info: {"run": label, "runner": name, "flag": bool}; with it the chart gets a menu to
+            highlight one runner or run and a switch to colour the points by runner, and flagged
+            (unusual) points get a ring.
     quadrants: labels for the top-right, bottom-right, top-left and bottom-left corners."""
     W, H, L, R, T, B = 620, 440, 56, 16, 26, 44
     lim = max([abs(c) for p in points for c in p[:2]] + [1]) * 1.05
@@ -289,23 +295,49 @@ def scatter_chart(points: list[tuple], title: str, x_label: str, y_label: str,
             for k, line in enumerate(lines):
                 out.append(f'<text x="{qx}" y="{qy + 15 * k - (15 * (len(lines) - 1) if qy > H / 2 else 0)}" '
                            f'text-anchor="{anchor}" style="fill:{fill};font-weight:{weight}">{_esc(line)}</text>')
-    for pt in points:
+    infos = [pt[5] if len(pt) > 5 else None for pt in points]
+    runner_count: dict = {}
+    for info in infos:
+        if info:
+            runner_count[info["runner"]] = runner_count.get(info["runner"], 0) + 1
+    # the runners with the most plays get the series colours, the rest share grey
+    colour = {name: SERIES[k] for k, name in enumerate(sorted(runner_count, key=lambda n: -runner_count[n])[:len(SERIES)])}
+    for pt, info in zip(points, infos):
         px, py, tip = pt[:3]
         href = pt[3] if len(pt) > 3 else None
         img = pt[4] if len(pt) > 4 else None
         img_attr = f' data-img="{_esc(img)}"' if img else ""
-        mark = (f'<circle class="hit" tabindex="0" cx="{s(px):.1f}" cy="{v(py):.1f}" r="12" data-tip="{_esc(tip)}"{img_attr}/>'
-                f'<circle class="dot" cx="{s(px):.1f}" cy="{v(py):.1f}" r="4" fill="var(--series-1)" '
-                f'fill-opacity=".75" stroke="var(--surface-1)" stroke-width="1.5"/>')
-        out.append(f'<a href="{_esc(href)}" target="_blank" rel="noopener">{mark}</a>' if href else mark)
+        data = (f' data-run="{_esc(info["run"])}" data-runner="{_esc(info["runner"])}" '
+                f'data-col="var({colour.get(info["runner"], "--ink-3")})"') if info else ""
+        ring = (f'<circle cx="{s(px):.1f}" cy="{v(py):.1f}" r="7.5" fill="none" stroke="var(--bad-mark)" stroke-width="1.5" '
+                f'class="ring"{data}/>') if info and info.get("flag") else ""
+        mark = (f'<circle class="hit" tabindex="-1" cx="{s(px):.1f}" cy="{v(py):.1f}" r="12" data-tip="{_esc(tip)}"{img_attr}/>'
+                f'{ring}<circle class="dot" cx="{s(px):.1f}" cy="{v(py):.1f}" r="4" fill="var(--series-1)" '
+                f'fill-opacity=".75" stroke="var(--surface-1)" stroke-width="1.5"{data}/>')
+        out.append(f'<a href="{_esc(href)}" target="_blank" rel="noopener" tabindex="-1">{mark}</a>' if href else mark)
     out.append(f'<text x="{(L + W - R) / 2:.0f}" y="{H - 8}" text-anchor="middle">{_esc(x_label)}</text>')
     out.append(f'<text x="14" y="{(T + H - B) / 2:.0f}" transform="rotate(-90 14 {(T + H - B) / 2:.0f})" '
                f'text-anchor="middle">{_esc(y_label)}</text>')
     out.append("</svg>")
     legend = ('<div class="legend"><span><i class="dotkey" style="background:var(--series-1)"></i>one sublevel in one run</span>'
               '<span><i style="background:var(--series-2)"></i>fitted slope</span>'
-              '<span><i style="background:var(--ink-3)"></i>y = x (perfect calibration)</span></div>')
-    return f'<div class="chart viz-root">{"".join(out)}{legend}</div>'
+              '<span><i style="background:var(--ink-3)"></i>y = x (perfect calibration)</span>'
+              + ('<span><i class="dotkey" style="background:transparent;box-shadow:inset 0 0 0 2px var(--bad-mark)"></i>'
+                 'unusual play (far off under every judge)</span>' if any(i and i.get("flag") for i in infos) else "")
+              + '</div>')
+    controls = ""
+    if runner_count:
+        runs = sorted({i["run"] for i in infos if i}, key=lambda r: (r.split(" ")[0].lower(), r))
+        opts = ('<option value="">All runs</option><optgroup label="Runner">'
+                + "".join(f'<option value="runner:{_esc(n)}">{_esc(n)} ({runner_count[n]} plays)</option>'
+                          for n in sorted(runner_count, key=str.lower))
+                + '</optgroup><optgroup label="Run">'
+                + "".join(f'<option value="run:{_esc(r)}">{_esc(r)}</option>' for r in runs) + '</optgroup>')
+        keys = "".join(f'<span><i class="dotkey" style="background:var({c})"></i>{_esc(n)}</span>' for n, c in colour.items())
+        controls = (f'<div class="scatter-controls"><label>Highlight <select class="sc-pick">{opts}</select></label>'
+                    f'<label><input type="checkbox" class="sc-colour"> Colour by runner</label></div>'
+                    f'<div class="legend sc-keys" hidden>{keys}<span><i class="dotkey" style="background:var(--ink-3)"></i>others</span></div>')
+    return f'<div class="chart viz-root scatter">{controls}{"".join(out)}{legend}</div>'
 
 
 def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title: str, subtitle: str) -> str:
@@ -372,6 +404,29 @@ def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title:
                                            for i, p in enumerate(points)]
     return (f'<div class="chart viz-root cumul" data-pts="{_esc(json.dumps(data))}" data-beta="{beta:.4f}">'
             f'{"".join(out)}</div>')
+
+
+# Scatter options: highlight one runner or run, colour the points by runner.
+SCATTER_JS = """
+document.querySelectorAll('.scatter').forEach(box => {
+  const pick = box.querySelector('.sc-pick'), col = box.querySelector('.sc-colour'), keys = box.querySelector('.sc-keys');
+  if (!pick) return;
+  const apply = () => {
+    const [kind, val] = pick.value ? [pick.value.split(':')[0], pick.value.slice(pick.value.indexOf(':') + 1)] : [null, null];
+    box.querySelectorAll('[data-runner]').forEach(d => {
+      const on = !kind || d.dataset[kind] === val;
+      if (d.classList.contains('dot')) {
+        d.setAttribute('fill', col.checked ? d.dataset.col : 'var(--series-1)');
+        d.setAttribute('fill-opacity', on ? '.85' : '.08');
+        d.setAttribute('r', kind && on ? 5 : 4);
+      } else d.setAttribute('stroke-opacity', on ? 1 : .1);
+      if (on && kind) d.parentNode.appendChild(d);      // bring the highlighted points to the front
+    });
+    keys.hidden = !col.checked;
+  };
+  pick.addEventListener('change', apply); col.addEventListener('change', apply);
+});
+"""
 
 
 # Dragging across a cumulative chart: the slope of the selected stretch of plays.

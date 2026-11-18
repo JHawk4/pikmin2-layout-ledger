@@ -97,23 +97,40 @@ def median_pokos(values) -> int | None:
     return int(np.floor(float(np.median(vals)) + 0.5)) if vals else None     # Pay Off Debt: two extra pokos are worth one second
 
 
+def timed(entries: list[dict], tre: dict) -> list[tuple[dict, int]]:
+    """(entry, frame its time stops) for every sublevel that can be timed: up to the next
+    sublevel's entry screen, or for a cave's last sublevel up to the cave's results screen
+    ("Treasures Salvaged"), found by the treasure scan. Each sublevel is only compared with
+    itself across runs, so the two kinds of end needn't match."""
+    out = []
+    for k, a in enumerate(entries):
+        b = entries[k + 1] if k + 1 < len(entries) else None
+        if not a.get("sublevel"):
+            continue
+        if b is not None and b["cave"] == a["cave"] and b.get("sublevel") == a["sublevel"] + 1:
+            out.append((a, b["frame"]))
+        elif (b is None or b["cave"] != a["cave"]) and (tre.get(str(a["frame"])) or {}).get("exit"):
+            out.append((a, tre[str(a["frame"])]["exit"][0]))
+    return out
+
+
 def actuals(runs: list[dict]) -> list[dict]:
     """Per run: entry frame -> what the runner did on that sublevel against the median run.
 
-    took: seconds from this entry screen to the next one (same cave); pokos from the treasure
+    took: seconds from this entry screen to the next one (same cave), or to the cave's results
+    screen for its last sublevel (see timed); pokos from the treasure
     panels. net = (took - median took) - (pokos - median pokos) / 2 for Pay Off Debt, plain
     time otherwise. Negative = faster than the median run."""
     plays: dict[str, list[tuple[int, str, float, int | None]]] = {}
     for i, r in enumerate(runs):
         tre = treasures.load(r["dir"])
         e = r["entries"]
-        for a, b in zip(e, e[1:]):
-            if a["cave"] == b["cave"] and a.get("sublevel") and b.get("sublevel") == a["sublevel"] + 1:
-                if r["kind"] == "pod" and not judge_report.trusted(a):
-                    continue      # pokos are read against the seed's treasures: no trusted seed, no net time
-                t = tre.get(str(a["frame"]))
-                plays.setdefault(f'{a["cave"]} {a["sublevel"]}', []).append(
-                    (i, str(a["frame"]), (b["frame"] - a["frame"]) / r["fps"], treasures.reliable_pokos(t)))
+        for a, end in timed(e, tre):
+            if r["kind"] == "pod" and not judge_report.trusted(a):
+                continue      # pokos are read against the seed's treasures: no trusted seed, no net time
+            t = tre.get(str(a["frame"]))
+            plays.setdefault(f'{a["cave"]} {a["sublevel"]}', []).append(
+                (i, str(a["frame"]), (end - a["frame"]) / r["fps"], treasures.reliable_pokos(t)))
     out: list[dict] = [{} for _ in runs]
     for sub, ps in plays.items():
         if len(ps) < 2:
@@ -141,7 +158,7 @@ def _treasure_names(t) -> str:
     return ", ".join(f"{n.replace('_', ' ')} ({p})" for n, p in picks)
 
 
-def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -> dict:
+def calibration(runs: list[dict], key: str = "judge", drop: set | None = None, flag: set | None = None) -> dict:
     """Judge estimate vs measured sublevel outcome, with sublevel and runner fixed effects.
 
     For Pay Off Debt the outcome is net time: seconds taken minus pokos collected / 2, so a
@@ -150,7 +167,7 @@ def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -
     of the sublevel are left out instead.
 
     `key`: "judge" (CaveGen's) or "judge2" (judge2/, the refit PoD judge). `drop`: (run index,
-    sublevel) plays to leave out, e.g. outliers where the runner made a big mistake."""
+    sublevel) plays to leave out; `flag`: plays to mark as unusual in the chart."""
     order = {c: k for k, c in enumerate(STORY_ORDER)}
     drop = drop or set()
     rows = []
@@ -158,13 +175,12 @@ def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -
         tre = treasures.load(r["dir"])
         e = r["entries"]
         net = r["kind"] == "pod"
-        for a, b in zip(e, e[1:]):
-            if (a["cave"] == b["cave"] and a.get("sublevel") and b.get("sublevel") == a["sublevel"] + 1
-                    and a.get(f"{key}_score") is not None and not a.get(f"{key}_fixed") and judge_report.trusted(a)
+        for a, end in timed(e, tre):
+            if (a.get(f"{key}_score") is not None and not a.get(f"{key}_fixed") and judge_report.trusted(a)
                     and (i, f'{a["cave"]} {a["sublevel"]}') not in drop):
                 ref = cavegen.reference_scores(a["cave"], a["sublevel"], r["kind"])
                 t = tre.get(str(a["frame"]))
-                took = (b["frame"] - a["frame"]) / r["fps"]
+                took = (end - a["frame"]) / r["fps"]
                 pokos = treasures.reliable_pokos(t)
                 if net and pokos is None:
                     continue          # Pay Off Debt is judged on net time: no reliable pokos, no outcome
@@ -252,7 +268,9 @@ def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -
             lines.append(f"{row['pokos']} pokos{vs}" + (f": {row['names']}" if row["names"] else ""))
         return "\n".join(lines)
 
-    pts = [(row["x"], row["y"], tip(row), row["link"], row["img"]) for row in rows]
+    pts = [(row["x"], row["y"], tip(row), row["link"], row["img"],
+            {"run": row["runner"], "runner": row["runner"].split(" ")[0], "flag": (row["run"], row["sub"]) in (flag or set())})
+           for row in rows]
     e = yr - xr                                  # what a perfectly calibrated judge leaves unexplained
     r2 = float(1 - (e @ e) / (yr @ yr)) if yr @ yr > 0 else 0.0
     for row, ek in zip(rows, e):
@@ -499,7 +517,10 @@ def build(root: str | Path = "data/output") -> Path:
     # compare the judges on the same plays (they disagree on a few fixed floors)
     seen = [{(row["run"], row["sub"]) for row in c.get("rows") or []} for c in first]
     not_shared = set().union(*seen) - set.intersection(*seen) if seen else set()
-    cals = {k: calibration(runs, k, drop=set(out) | not_shared) for k in keys}
+    # unusual plays stay in: many are real choices (a skipped treasure); they are marked in the
+    # chart, and the table also gives the fit without them
+    cals = {k: calibration(runs, k, drop=not_shared, flag=set(out)) for k in keys}
+    trims = {k: calibration(runs, k, drop=set(out) | not_shared) for k in keys}
     cal = cals["judge"]
     names = {"judge": "CaveGen judge", "judge2": "judge2 (refit)"}
     if cal.get("points"):
@@ -522,6 +543,9 @@ def build(root: str | Path = "data/output") -> Path:
             f"<tr><td>{names[k]}</td><td class='num'>{c['n']}</td>"
             f"<td class='num'><b>{c['slope']:.2f}</b> ({c['slope'] - 1.96 * c['se']:.2f}–{c['slope'] + 1.96 * c['se']:.2f})</td>"
             f"<td class='num'>{c['corr']:.2f}</td><td class='num'>{c['r2']:.2f}</td></tr>"
+            + (f"<tr class='muted'><td>&nbsp;&nbsp;without the {len(out)} unusual plays</td><td class='num'>{trims[k]['n']}</td>"
+               f"<td class='num'>{trims[k]['slope']:.2f} ({trims[k]['slope'] - 1.96 * trims[k]['se']:.2f}–{trims[k]['slope'] + 1.96 * trims[k]['se']:.2f})</td>"
+               f"<td class='num'>{trims[k]['corr']:.2f}</td><td class='num'>{trims[k]['r2']:.2f}</td></tr>" if out and trims[k].get("points") else "")
             for k, c in cals.items() if c.get("points"))
         out_rows = "".join(
             f"<tr><td>{html.escape(row['sub'])}</td><td>{html.escape(row['runner'])}</td>"
@@ -542,9 +566,10 @@ def build(root: str | Path = "data/output") -> Path:
                     f"<th class='num'>Correlation</th><th class='num'>R² (slope 1)</th></tr></thead><tbody>{cmp_rows}</tbody></table></div>"
                     + (f"<p>The outcome is <b>net time</b>: seconds minus pokos ÷ 2. The CaveGen judge on plain time would have slope "
                        f"{cal['time_only'][0]:.2f} (correlation {cal['time_only'][2]:.2f}).</p>" if cal["net"] else "")
-                    + (f"<details><summary>{len(out)} play{'s' if len(out) != 1 else ''} left out as unusual</summary>"
-                       f"<p class='muted small'>More than {OUTLIER_Z:g} robust standard deviations off under every judge, so no layout "
-                       f"judge explains them (a skipped treasure, a death, a misplay). Check them in the video.</p>"
+                    + (f"<details><summary>{len(out)} unusual play{'s' if len(out) != 1 else ''} (ringed in the charts)</summary>"
+                       f"<p class='muted small'>More than {OUTLIER_Z:g} robust standard deviations off under every judge: no layout "
+                       f"judge explains them. Many are real choices (a skipped treasure); some are mistakes (a death, a misplay). "
+                       f"They are kept in the fit; the table above also gives it without them.</p>"
                        f"<div class='tablewrap'><table><thead><tr><th>Sublevel</th><th>Runner</th><th>Video</th>"
                        f"<th class='num'>Run vs others</th></tr></thead><tbody>{out_rows}</tbody></table></div></details>" if out else ""))
     else:
@@ -663,7 +688,7 @@ Click a column to sort; open a runner for their layouts.</li>
 
 <h2 id="calibration">Do the judges predict real times?</h2>
 <p>Each sublevel's real time is measured from the video: from its entry screen to the next sublevel's entry screen
-(so each cave's last sublevel is left out). Both the judge's estimate and the real time are compared within the same
+(a cave's last sublevel runs to the cave's results screen). Both the judge's estimate and the real time are compared within the same
 sublevel across runs, after removing each runner's overall pace. For Pay Off Debt the outcome counts pokos too, at
 two pokos per second; for other categories, plays where the runner collected a different number of treasures than
 most runs of that sublevel are left out. Only seeds read at high confidence are used: a misread seed is a wrong
@@ -686,6 +711,7 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
 </main>
 <script>{charts.TOOLTIP_JS}</script>
 <script>{charts.BRUSH_JS}</script>
+<script>{charts.SCATTER_JS}</script>
 </body></html>'''
     from . import theme
     dest = root / "index.html"
