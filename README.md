@@ -70,15 +70,19 @@ cargo build --release --manifest-path p2seeds/cg3/Cargo.toml --target-dir data/b
 ```
 
 ```bash
-# landing page over every judged run -> data/output/index.html (and refreshes each run's judge.html)
+# the site over every judged run -> data/output/index.html (runs and their layout luck), accuracy.html
+# (does the judge predict real times), pokos.html, seeds.html (RNG-order check); also refreshes each
+# run's judge.html and the draft layouts judge_a/b/c.html
 .venv/Scripts/python -m p2seeds site
 ```
 
-The landing page also shows where each seed falls in the RNG sequence (it should rise steadily through a
-run) and checks the judge against real sublevel times measured from the videos.
+Layout luck comes from **judge2** (`judge2/`, CaveGen's Pay Off Debt judge refit on these runs' real times;
+also in CaveGen3 as the `judge2` judge). Each sublevel's luck is its score against the median of 1000
+random layouts; a run's luck percentile compares its total with 20,000 simulated runs that each draw one
+random layout of the same sublevels (`luck.py`).
 
-`judge.html` embeds every layout render. For each sublevel it shows CaveGen's estimated clear time
-and how that compares with 1000 random layouts. Fixed floors, where every seed scores the same, are marked.
+`judge.html` shows every layout render, its luck, how random layouts of that sublevel are spread (a
+violin per sublevel), and what the runner actually did against the median run, net of pokos.
 
 ## Published site
 
@@ -93,6 +97,9 @@ This copies the landing page and each run's pages and layout images into `data/p
 
 ## How a seed is found
 
+Each falling letter is tracked down its column by template matching (`track.py`). Some captures blend
+two game frames into each video frame, so a falling letter shows twice; the detector tries both a
+two-peak tracker and, when the copies overlap, a glyph-pair template matched at every separation.
 Each falling letter's starting velocity is fitted from its track, then the seed comes from a lattice
 search (`lattice.py`): the RNG is affine, so the measured letters, relative to the best-measured one,
 bound a lattice point in a box. LLL reduction and enumeration find every seed that fits in milliseconds,

@@ -222,7 +222,13 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
                   if unsure else "") + ".")
     filt = ('<label class="filter"><input type="checkbox" id="only-unsure"> Show only the uncertain sublevels</label>'
             if unsure else "")
-    page = PAGE.format(title=title, summary=e(summary), help=SCORE_HELP, cards=filt + "".join(cards))
+    # every sublevel at a glance, coloured by confidence; each chip jumps to its card
+    chips = "".join(f'<a class="chip {e(r["confidence"])}" href="#{e(r["cave"])}-{r["sublevel"] or 0}" '
+                    f'title="{e(r["confidence"])} confidence">{e(r["cave"])} {r["sublevel"] or "?"}</a>' for r in entries)
+    strip = (f'<nav class="chips" aria-label="Sublevels">{chips}</nav>'
+             '<p class="muted small legend-chips"><span class="chip high">high</span> read with confidence '
+             '<span class="chip medium">medium</span> <span class="chip low">low</span> uncertain: left out of every total</p>')
+    page = PAGE.format(title=title, summary=e(summary), help=SCORE_HELP, cards=strip + filt + "".join(cards))
     from . import theme
     page = theme.apply(page, prefix="../", run=out_dir.name, active="detection")
     path = out_dir / "report.html"
@@ -256,6 +262,12 @@ figcaption {{ color:var(--muted); font-size:12px; margin-top:3px; max-width:480p
 .filter {{ display:flex; gap:6px; align-items:center; font-size:14px; margin:0 0 12px; }}
 body.only-unsure .card.high {{ display:none; }}
 code {{ font-size:14px; }} a {{ color:inherit; }}
+.chips {{ display:flex; flex-wrap:wrap; gap:4px; margin:0 0 6px; }}
+.chip {{ font-size:12px; font-weight:600; text-decoration:none; padding:1px 7px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); white-space:nowrap; }}
+.chip.high {{ border-color:var(--hi); color:var(--hi); }} .chip.medium {{ border-color:var(--mid); color:var(--mid); border-style:dashed; }}
+.chip.low, .chip.none {{ border-color:var(--lo); color:var(--lo); border-style:dashed; background:transparent; }}
+.legend-chips {{ font-size:12px; color:var(--muted); margin:0 0 14px; }} .legend-chips .chip {{ margin-left:6px; }}
 </style></head><body><main>
 <h1>{title}</h1>
 <div class="meta">{summary}</div>
