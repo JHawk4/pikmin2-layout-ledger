@@ -50,6 +50,7 @@ class EventResult:
     num_chars: int = 0
     best_cave: str | None = None   # for an unrecognized screen: its best (rejected) match and margin
     best_margin: float = 0.0
+    near: list = field(default_factory=list)   # every rejected (cave, score, margin) in the window
 
 
 def entry_runs(frames: list[np.ndarray], min_len: int = 6) -> list[tuple[int, int]]:
@@ -155,6 +156,7 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
     # cave, small gap, e.g. split by a flicker) belongs to the same entry
     entries: list[list] = []          # [cal, a, b, k]
     best_reject = None
+    near = []
     for a, b in runs:
         k = max(a, b - 3)             # late in the run: bubbles have faded, before the fade-out
         cal = calibrate(frames[k])
@@ -168,6 +170,8 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
         if cal is None or cal.score < min_score or margin < min_margin:
             if cal and (best_reject is None or cal.score > best_reject[0].score):
                 best_reject = (cal, margin)
+            if cal:
+                near.append((cal.cave.cavegen, cal.score, margin))
             continue
         if entries and entries[-1][0].cave == cal.cave and a - entries[-1][2] < 60:
             entries[-1][2] = b
@@ -178,7 +182,7 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
     if not entries:
         if best_reject:
             cal, margin = best_reject
-            return [EventResult(event, cave_score=cal.score, best_cave=cal.cave.cavegen, best_margin=margin,
+            return [EventResult(event, cave_score=cal.score, best_cave=cal.cave.cavegen, best_margin=margin, near=near,
                                 note=f"cave name not recognized (best {cal.cave.cavegen} {cal.score:.2f}, margin {margin:.2f})")]
         return [EventResult(event, note="no text found")]
     return [_analyze_entry(video, feed, event, frames, start, *e, search_kw=search_kw) for e in entries]
@@ -433,6 +437,11 @@ def rescue_caves(rejected: list[EventResult], found: list[EventResult]) -> list[
     have: dict[str, int] = {}
     for r in found:
         have[r.cave_id] = have.get(r.cave_id, 0) + 1
-    return [(r, r.best_cave) for r in rejected
-            if r.best_cave in POD_CAVES and have.get(r.best_cave, 0) < total.get(r.best_cave, 0)
-            and r.cave_score >= RESCUE_SCORE and r.best_margin >= RESCUE_MARGIN]
+    out = []
+    for r in rejected:
+        # any screen in the window may be the one: the best rejected match can be a menu or a
+        # memory-card warning that happens to score higher than the blurry title
+        caves = {c for c, sc, m in (r.near or [(r.best_cave, r.cave_score, r.best_margin)])
+                 if c in POD_CAVES and have.get(c, 0) < total.get(c, 0) and sc >= RESCUE_SCORE and m >= RESCUE_MARGIN}
+        out += [(r, c) for c in sorted(caves)]
+    return out
