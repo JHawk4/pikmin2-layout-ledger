@@ -17,7 +17,7 @@ def judge_many(reqs: list[dict]) -> list[dict]:
 
 
 def main():
-    plays = json.loads((HERE / "data" / "plays.json").read_text(encoding="utf-8"))["plays"]
+    plays = json.loads((HERE / "data" / "plays_net.json").read_text(encoding="utf-8"))["plays"]
     reqs = [{"sub": p["sub"], "seed": p["layout_seed"], "dump": True} for p in plays]
     res = judge_many(reqs)
     out, bad = {}, 0

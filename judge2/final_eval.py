@@ -1,4 +1,5 @@
-"""Final comparison, old judge vs judge2 (the Rust pod2 score in data/judged.json).
+"""Final comparison, old judge vs judge2 (the Rust pod2 score in data/judged.json), on the
+net-timesave snapshot (data/plays_net.json; evalkit.VALID_ONLY drops impossible poko counts).
 
   python judge2/final_eval.py            in-sample, OOS, all plays; per sublevel and per cave
 """
@@ -14,8 +15,8 @@ def pooled_beta(xr, yr):
     return b, float(np.sqrt((e @ e) / max(1, len(xr) - 1) / (xr @ xr)))
 
 
-def block(side):
-    P = common.plays(side); fe = ek.FE(P)
+def block(side, valid_only=None):
+    P = common.plays(side, valid_only); fe = ek.FE(P)
     old = np.array([p["judge"] for p in P]); new = np.array([p["J"]["pod2"] for p in P])
     sp = ek.spread_table(); hv = np.array([sp.get(p["sub"], 0) >= HV for p in P])
     out = {}
@@ -43,6 +44,12 @@ if __name__ == "__main__":
         for name, (m, h, caves) in out.items():
             print(f"{name:7s} {ek.fmt(m)} | high-var n={h['n']} R2={h['R2']:+.3f} corr2={h['corr2']:.3f} beta={h['beta']:.2f}±{h['se']:.2f}")
             print("        caves: " + "  ".join(f"{c} {b:.2f}±{s:.2f}" for c, (b, s, n) in caves.items()))
+    # the raw calibration() set (impossible poko counts kept)
+    print("\n== raw set (VALID_ONLY off: plays with impossible treasure pokos kept) ==")
+    for side in ("in", "oos", "all"):
+        _, out = block(side, False)
+        for name, (m, h, caves) in out.items():
+            print(f"{side:4s} {name:7s} {ek.fmt(m)} | high-var n={h['n']} R2={h['R2']:+.3f} beta={h['beta']:.2f}")
     # per-sublevel betas on all plays
     P, out = res["all"]
     sp = ek.spread_table()
