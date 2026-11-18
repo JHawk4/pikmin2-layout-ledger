@@ -612,16 +612,21 @@ def value_scores(g480s: list[np.ndarray], values: list[int], templates) -> np.nd
                 v = _norm(sl)
                 S[f, j, k] = [float(v @ templates[str(d)]) for d in range(10)]
         B[f] /= np.maximum(B[f, :, :1], 1e-6)         # relative to the ones digit (contrast varies)
+    # each digit at its own best shift: the font is proportional, so a narrow 1 between two
+    # digits ("110") sits a couple of pixels off a fixed grid and one shared shift misreads it
+    # a slot is empty if it is blank at some small shift (a digit is wider than the shift), and a
+    # leading digit is there if it shows at some shift
+    S, Bhi, Blo = S.max(axis=1), B.max(axis=1), B.min(axis=1)      # (frames, slots, 10), (frames, slots)
     out = np.zeros(len(values))
     for n, value in enumerate(values):
         digits = [int(c) for c in str(value)[::-1]][:3]
         L = len(digits)
-        s = sum(S[:, :, k, d] for k, d in enumerate(digits)) / L          # (frames, shifts)
+        s = sum(S[:, k, d] for k, d in enumerate(digits)) / L          # (frames,)
         if L < 3:
-            s = s - np.where(B[:, :, L] > VALUE_BLANK, 1.0, 0.0)
+            s = s - np.where(Blo[:, L] > VALUE_BLANK, 1.0, 0.0)
         if L >= 2:
-            s = s - np.where(B[:, :, L - 1] < VALUE_BLANK, 1.0, 0.0)
-        out[n] = float(np.mean(s.max(axis=1))) if nf else 0.0
+            s = s - np.where(Bhi[:, L - 1] < VALUE_BLANK, 1.0, 0.0)
+        out[n] = float(np.mean(s)) if nf else 0.0
     return out
 
 
