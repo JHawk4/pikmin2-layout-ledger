@@ -414,10 +414,40 @@ def read_totals(out_dir: Path, progress=None) -> dict:
             t.setdefault(name, [None] * len(t.get("panels", [])))
         t["totals"][i], t["values"][i], t["bug_before"][i] = int(tot), int(val), int(tot - last - val)
         last = tot
+    _fit_items(counts, panels, steps)
     _names_from_values(counts)
     allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
+
+
+def _fit_items(counts: dict, panels: list, steps: list) -> None:
+    """A sublevel with as many panels as treasures showed exactly those treasures. When one
+    read value is not among them (and one treasure value is missing), the panel whose read was
+    least sure takes the missing value. The final panel of a run ("debt paid", total past
+    10000) has a larger layout the reader cannot line up, so its total is rebuilt from the
+    previous one instead of read."""
+    from collections import Counter
+    where = {(key, i): n for n, (a, b, key, i) in enumerate(panels)}
+    for key, t in counts.items():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items or len(vals) != len(items) or None in vals:
+            continue
+        want = Counter(int(p) for _, p in items)
+        have = Counter(vals)
+        missing, extra = list((want - have).elements()), list((have - want).elements())
+        if len(missing) != 1 or len(extra) != 1:
+            continue
+        def doubt(i):
+            options, vs, _ = steps[where[(key, i)]]
+            sc = dict(zip(options, vs))
+            return sc.get(missing[0], -9) - sc.get(extra[0], -9)
+        i = max((i for i, v in enumerate(vals) if v == extra[0]), key=doubt)
+        prev = t["totals"][i] - vals[i] - t["bug_before"][i]
+        vals[i] = missing[0]
+        if t["totals"][i] >= 10000:
+            t["totals"][i] = prev + vals[i]
+        t["bug_before"][i] = max(0, t["totals"][i] - prev - vals[i])
 
 
 def _names_from_values(counts: dict) -> None:
@@ -567,6 +597,35 @@ def refresh_bugs(out_dir: Path) -> dict:
     allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
+
+
+def _fit_items(counts: dict, panels: list, steps: list) -> None:
+    """A sublevel with as many panels as treasures showed exactly those treasures. When one
+    read value is not among them (and one treasure value is missing), the panel whose read was
+    least sure takes the missing value. The final panel of a run ("debt paid", total past
+    10000) has a larger layout the reader cannot line up, so its total is rebuilt from the
+    previous one instead of read."""
+    from collections import Counter
+    where = {(key, i): n for n, (a, b, key, i) in enumerate(panels)}
+    for key, t in counts.items():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items or len(vals) != len(items) or None in vals:
+            continue
+        want = Counter(int(p) for _, p in items)
+        have = Counter(vals)
+        missing, extra = list((want - have).elements()), list((have - want).elements())
+        if len(missing) != 1 or len(extra) != 1:
+            continue
+        def doubt(i):
+            options, vs, _ = steps[where[(key, i)]]
+            sc = dict(zip(options, vs))
+            return sc.get(missing[0], -9) - sc.get(extra[0], -9)
+        i = max((i for i, v in enumerate(vals) if v == extra[0]), key=doubt)
+        prev = t["totals"][i] - vals[i] - t["bug_before"][i]
+        vals[i] = missing[0]
+        if t["totals"][i] >= 10000:
+            t["totals"][i] = prev + vals[i]
+        t["bug_before"][i] = max(0, t["totals"][i] - prev - vals[i])
 
 
 def _names_from_values(counts: dict) -> None:
