@@ -61,6 +61,9 @@ pub struct Parts {
     pub hazard_hole: f64,
     /// SH-6: water the lens (bey_goma) carry route must cross, if it is taken
     pub lens_cross: f64,
+    /// seconds to walk the union of the routes travelled on the waypoint tree (ship to every
+    /// taken treasure and to the hole), once each, at Olimar's speed
+    pub tree_walk: f64,
 }
 
 impl Parts {
@@ -75,7 +78,7 @@ impl Parts {
             "optional": self.optional, "poko": self.poko, "bug": self.bug, "adj": self.adj, "taken": self.taken,
             "water_carry": self.water_carry, "water_carry_max": self.water_carry_max, "water_hole": self.water_hole,
             "hole_walk": self.hole_walk, "gate_hole": self.gate_hole, "carrier_fight": self.carrier_fight,
-            "skipped": self.skipped, "hole_part": self.hole_part, "haz_by": self.haz_by, "hazard_hole": self.hazard_hole, "lens_cross": self.lens_cross,
+            "skipped": self.skipped, "hole_part": self.hole_part, "haz_by": self.haz_by, "hazard_hole": self.hazard_hole, "lens_cross": self.lens_cross, "tree_walk": self.tree_walk,
         })
     }
 }
@@ -106,6 +109,9 @@ pub fn parts(j: &JhawkJudge, layout: &Layout, skip: &[bool]) -> Parts {
     let num_pokos_collected: i32 = take.iter().map(|t| pokos(&t.0)).sum();
     let targets: Vec<usize> = take.iter().map(|t| t.1).collect();
 
+    // the waypoints of every route travelled (for tree_walk)
+    let mut tree: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    let mut tree_ends = 0.0f32;
     // carry
     let mut pikmin_seconds = 0.0f32;
     let mut active_pikmin = 0.0f32;
@@ -115,6 +121,10 @@ pub fn parts(j: &JhawkJudge, layout: &Layout, skip: &[bool]) -> Parts {
         pikmin_seconds += j.story_carry(&mut c, name, *sp, *dig, j.piki_carry_value);
         let p = c.sp_pos(*sp);
         let r = route(&mut c, &rects, p);
+        tree.extend(r.wps.iter().copied());
+        if let Some(&w0) = r.wps.first() {
+            tree_ends += crate::graph::dist(p, c.g.wps[w0].pos);
+        }
         out.water_carry += r.cross as f64;
         out.water_carry_max = out.water_carry_max.max(r.cross as f64);
         if name == "bey_goma" {
@@ -134,7 +144,12 @@ pub fn parts(j: &JhawkJudge, layout: &Layout, skip: &[bool]) -> Parts {
         out.hole_part = (d / j.olimar_speed_cm / (1 + num_treasures_collected) as f32) as f64;
         out.hole_walk = (d / j.olimar_speed_cm) as f64;
         let p = c.sp_pos(h);
-        out.water_hole = route(&mut c, &rects, p).cross as f64;
+        let rh = route(&mut c, &rects, p);
+        out.water_hole = rh.cross as f64;
+        tree.extend(rh.wps.iter().copied());
+        if let Some(&w0) = rh.wps.first() {
+            tree_ends += crate::graph::dist(p, c.g.wps[w0].pos);
+        }
     } else {
         walking_seconds += 300.0;
     }
@@ -293,6 +308,15 @@ pub fn parts(j: &JhawkJudge, layout: &Layout, skip: &[bool]) -> Parts {
         }
     }
 
+    let mut tree_len = tree_ends;
+    for &w in tree.iter() {
+        if let Some(b) = c.g.wps[w].back {
+            if tree.contains(&b) {
+                tree_len += crate::graph::dist(c.g.wps[w].pos, c.g.wps[b].pos);
+            }
+        }
+    }
+    out.tree_walk = (tree_len / j.olimar_speed_cm) as f64;
     out.walking = walking_seconds as f64;
     out.carry = carry_seconds as f64;
     out.hazard = hazard_seconds as f64;
