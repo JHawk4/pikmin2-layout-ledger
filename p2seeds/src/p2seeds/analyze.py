@@ -160,6 +160,13 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
     for a, b in runs:
         k = max(a, b - 3)             # late in the run: bubbles have faded, before the fade-out
         cal = calibrate(frames[k])
+        if b - a < 90:
+            # a short title (the runner moved on quickly) may already be fading at the end of its
+            # run: also try a frame a little earlier and keep the better match
+            k2 = a + (b - a) * 2 // 3
+            cal2 = calibrate(frames[k2]) if k2 != k else None
+            if cal2 is not None and (cal is None or cal2.score > cal.score):
+                cal, k = cal2, k2
         margin = cal.score - (cal.runner_up[1] if cal.runner_up else 0.0) if cal else 0.0
         min_score = MIN_CAVE_SCORE_JA if cal is not None and cal.cave.lang == "ja" else MIN_CAVE_SCORE
         min_margin = MIN_CAVE_MARGIN
