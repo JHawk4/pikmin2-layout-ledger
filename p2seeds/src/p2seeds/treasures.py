@@ -222,6 +222,7 @@ def _total_slot(g480: np.ndarray, k: int, dx: float = 0.0) -> np.ndarray:
     return cv2.resize(crop, (22, 25), interpolation=cv2.INTER_AREA)
 
 
+SETTLE = 48                 # frames into a panel before its Value and Total stop counting up
 MAX_BUG = 2000              # most pokos from enemies between two treasure panels we consider
 OVER_CAP = 1.5              # score cost of creature pokos beyond what the layouts allow
 BUG_PENALTY = 0.0001       # score per bug poko (digit scores are summed, ~0.5-0.9 per matching digit)
@@ -307,18 +308,25 @@ def total_score(sc: np.ndarray, bl: np.ndarray, total: int) -> float:
     return s
 
 
-_ALL = np.arange(10000)
+# The last treasure can take the total past the 10000 debt (e.g. 9895 + 100 = 10005). The fifth
+# digit's slot sits where the panel's "0x" label is, so it is not read: a total of 10000 or more
+# is scored on its last four digits with a small cost (OVER_10K), and the sequence decides
+# (totals never go down, so "0005" after 9895 can only be 10005).
+NT = 11000
+OVER_10K = 0.15
+_ALL = np.arange(NT)
 _DIG = np.stack([(_ALL // 10 ** k) % 10 for k in range(4)])          # digit k (right to left) of each total
 _LEN = np.where(_ALL >= 1000, 4, np.where(_ALL >= 100, 3, np.where(_ALL >= 10, 2, 1)))
 
 
 def _total_scores(sc: np.ndarray, bl: np.ndarray) -> np.ndarray:
-    """total_score for every total 0..9999 at once."""
-    s = np.zeros(10000)
+    """total_score for every total 0..NT-1 at once."""
+    s = np.zeros(NT)
     for k in range(4):
         used = _LEN > k
         s += np.where(used, sc[k][_DIG[k]], 0.0)
         s -= np.where(~used & (bl[k] > TOTAL_BLANK) & (k < 3), 0.3 * _LEN, 0.0)   # (mean below is over _LEN)
+    s[10000:] -= OVER_10K
     return s                      # summed: each digit is evidence (a 4-digit total outweighs a 3-digit value)
 
 
@@ -327,7 +335,7 @@ def read_totals(out_dir: Path, progress=None) -> dict:
 
     The Total after a panel is the previous Total + this panel's Value + whatever came from
     enemies since (never negative). All panels are decoded together (dynamic programming over
-    the total, 0..9999): each panel scores its Value among the treasures CaveGen placed on the
+    the total, 0..NT-1): each panel scores its Value among the treasures CaveGen placed on the
     sublevel and its Total digit by digit, and each unexplained poko costs BUG_PENALTY, so the
     whole sequence that fits the digits best wins. Adds to each treasures.json entry, per panel:
     "values", "totals" and "bug_before" (pokos since the previous panel beyond its treasure)."""
@@ -342,14 +350,16 @@ def read_totals(out_dir: Path, progress=None) -> dict:
     steps = []                                   # per panel: (values, value scores, total scores)
     for n, (a, b, key, i) in enumerate(panels):
         gs = []
-        for f in range(a + 8, max(a + 9, b - 8), 12):
+        # the panel animates: the Value counts up from 0 and the Total still shows the old number
+        # for the first ~40 frames, so read only once it has settled
+        for f in range(min(a + max(SETTLE, (b - a) // 3), b - 9), max(a + 9, b - 8), 12):
             g = video.frame_at(f)
             if g is not None:
                 gs.append(_aligned(cv2.resize(feed.crop(g), (480, 360), interpolation=cv2.INTER_CUBIC), M))
         # the treasures CaveGen placed on the sublevel; on the surface (or without a seed) any value
         options = sorted({int(x[1]) for x in counts[key].get("items") or []}) or list(range(1, 1000))
         vs = value_scores(gs, options, templates) if gs else np.zeros(len(options))
-        ts = _total_scores(*_total_slots(gs, ttemplates)) if gs else np.zeros(10000)
+        ts = _total_scores(*_total_slots(gs, ttemplates)) if gs else np.zeros(NT)
         steps.append((options, vs, ts))
         if progress:
             progress(n + 1, len(panels), key, None)
@@ -358,7 +368,7 @@ def read_totals(out_dir: Path, progress=None) -> dict:
     # more than they are worth: a bug beyond the cap of the cave sublevels between the two
     # panels costs OVER_CAP as well (a misread Value or Total is then the likelier story).
     windows = {k: (v["window"], v.get("creature_cap")) for k, v in counts.items() if v.get("window")}
-    prev = np.full(10000, -np.inf)
+    prev = np.full(NT, -np.inf)
     prev[0] = 0.0
     back = []
     prev_end = 0
@@ -378,12 +388,12 @@ def read_totals(out_dir: Path, progress=None) -> dict:
         over = C - OVER_CAP > W
         start_score = np.where(over, C - OVER_CAP, W)
         start_idx = np.where(over, Cidx, Widx)
-        cur = np.full(10000, -np.inf)
-        choice = np.zeros(10000, int)
-        best_prev = np.zeros(10000, int)
+        cur = np.full(NT, -np.inf)
+        choice = np.zeros(NT, int)
+        best_prev = np.zeros(NT, int)
         for j, val in enumerate(options):
             x = _ALL - val                        # the total before this treasure and its creatures
-            xc = np.clip(x, 0, 9999)
+            xc = np.clip(x, 0, NT - 1)
             cand = np.where(x >= 0, start_score[xc] - BUG_PENALTY * xc, -np.inf) + vs[j] + ts
             better = cand > cur
             cur = np.where(better, cand, cur)
@@ -404,9 +414,65 @@ def read_totals(out_dir: Path, progress=None) -> dict:
             t.setdefault(name, [None] * len(t.get("panels", [])))
         t["totals"][i], t["values"][i], t["bug_before"][i] = int(tot), int(val), int(tot - last - val)
         last = tot
+    _fit_items(counts, panels, steps)
+    _names_from_values(counts)
     allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
+
+
+def _fit_items(counts: dict, panels: list, steps: list) -> None:
+    """A sublevel with as many panels as treasures showed exactly those treasures. When one
+    read value is not among them (and one treasure value is missing), the panel whose read was
+    least sure takes the missing value. The final panel of a run ("debt paid", total past
+    10000) has a larger layout the reader cannot line up, so its total is rebuilt from the
+    previous one instead of read."""
+    from collections import Counter
+    where = {(key, i): n for n, (a, b, key, i) in enumerate(panels)}
+    for key, t in counts.items():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items or len(vals) != len(items) or None in vals:
+            continue
+        want = Counter(int(p) for _, p in items)
+        have = Counter(vals)
+        missing, extra = list((want - have).elements()), list((have - want).elements())
+        if len(missing) != 1 or len(extra) != 1:
+            continue
+        def doubt(i):
+            options, vs, _ = steps[where[(key, i)]]
+            sc = dict(zip(options, vs))
+            return sc.get(missing[0], -9) - sc.get(extra[0], -9)
+        i = max((i for i, v in enumerate(vals) if v == extra[0]), key=doubt)
+        prev = t["totals"][i] - vals[i] - t["bug_before"][i]
+        vals[i] = missing[0]
+        if t["totals"][i] >= 10000:
+            t["totals"][i] = prev + vals[i]
+        t["bug_before"][i] = max(0, t["totals"][i] - prev - vals[i])
+
+
+def _names_from_values(counts: dict) -> None:
+    """Make the collected treasures agree with the values read off the panels: each panel gets a
+    treasure of its value from the sublevel's list (keeping the earlier pick when it fits)."""
+    for t in counts.values():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items:
+            continue
+        old = t.get("collected") or [None] * len(vals)
+        left = [list(x) for x in items]
+        picks: list = [None] * len(vals)
+        for i, v in enumerate(vals):                    # keep earlier picks that match the value
+            o = old[i] if i < len(old) else None
+            if o and o[1] == v:
+                k = next((j for j, x in enumerate(left) if x[0] == o[0].split(" or ")[0]), None)
+                if k is not None:
+                    picks[i] = o
+                    left.pop(k)
+        for i, v in enumerate(vals):
+            if picks[i] is None:
+                k = next((j for j, x in enumerate(left) if x[1] == v), None)
+                if k is not None:
+                    picks[i] = left.pop(k)
+        t["collected"] = picks
 
 
 def creature_cap(cave: str, sublevel: int, seed: int) -> int | None:
@@ -527,9 +593,64 @@ def refresh_bugs(out_dir: Path) -> dict:
     for k, v in counts.items():
         if v.get("window") and k in seeds:
             v["creature_cap"] = creature_cap(v["cave"], v["sublevel"], int(seeds[k]["layout_seed"], 16))
+    _names_from_values(counts)
     allocate_bugs(counts)
     (out_dir / "treasures.json").write_text(json.dumps(counts, indent=1), encoding="utf-8")
     return counts
+
+
+def _fit_items(counts: dict, panels: list, steps: list) -> None:
+    """A sublevel with as many panels as treasures showed exactly those treasures. When one
+    read value is not among them (and one treasure value is missing), the panel whose read was
+    least sure takes the missing value. The final panel of a run ("debt paid", total past
+    10000) has a larger layout the reader cannot line up, so its total is rebuilt from the
+    previous one instead of read."""
+    from collections import Counter
+    where = {(key, i): n for n, (a, b, key, i) in enumerate(panels)}
+    for key, t in counts.items():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items or len(vals) != len(items) or None in vals:
+            continue
+        want = Counter(int(p) for _, p in items)
+        have = Counter(vals)
+        missing, extra = list((want - have).elements()), list((have - want).elements())
+        if len(missing) != 1 or len(extra) != 1:
+            continue
+        def doubt(i):
+            options, vs, _ = steps[where[(key, i)]]
+            sc = dict(zip(options, vs))
+            return sc.get(missing[0], -9) - sc.get(extra[0], -9)
+        i = max((i for i, v in enumerate(vals) if v == extra[0]), key=doubt)
+        prev = t["totals"][i] - vals[i] - t["bug_before"][i]
+        vals[i] = missing[0]
+        if t["totals"][i] >= 10000:
+            t["totals"][i] = prev + vals[i]
+        t["bug_before"][i] = max(0, t["totals"][i] - prev - vals[i])
+
+
+def _names_from_values(counts: dict) -> None:
+    """Make the collected treasures agree with the values read off the panels: each panel gets a
+    treasure of its value from the sublevel's list (keeping the earlier pick when it fits)."""
+    for t in counts.values():
+        vals, items = t.get("values"), t.get("items")
+        if not vals or not items:
+            continue
+        old = t.get("collected") or [None] * len(vals)
+        left = [list(x) for x in items]
+        picks: list = [None] * len(vals)
+        for i, v in enumerate(vals):                    # keep earlier picks that match the value
+            o = old[i] if i < len(old) else None
+            if o and o[1] == v:
+                k = next((j for j, x in enumerate(left) if x[0] == o[0].split(" or ")[0]), None)
+                if k is not None:
+                    picks[i] = o
+                    left.pop(k)
+        for i, v in enumerate(vals):
+            if picks[i] is None:
+                k = next((j for j, x in enumerate(left) if x[1] == v), None)
+                if k is not None:
+                    picks[i] = left.pop(k)
+        t["collected"] = picks
 
 
 def value_scores(g480s: list[np.ndarray], values: list[int], templates) -> np.ndarray:
@@ -550,16 +671,21 @@ def value_scores(g480s: list[np.ndarray], values: list[int], templates) -> np.nd
                 v = _norm(sl)
                 S[f, j, k] = [float(v @ templates[str(d)]) for d in range(10)]
         B[f] /= np.maximum(B[f, :, :1], 1e-6)         # relative to the ones digit (contrast varies)
+    # each digit at its own best shift: the font is proportional, so a narrow 1 between two
+    # digits ("110") sits a couple of pixels off a fixed grid and one shared shift misreads it
+    # a slot is empty if it is blank at some small shift (a digit is wider than the shift), and a
+    # leading digit is there if it shows at some shift
+    S, Bhi, Blo = S.max(axis=1), B.max(axis=1), B.min(axis=1)      # (frames, slots, 10), (frames, slots)
     out = np.zeros(len(values))
     for n, value in enumerate(values):
         digits = [int(c) for c in str(value)[::-1]][:3]
         L = len(digits)
-        s = sum(S[:, :, k, d] for k, d in enumerate(digits)) / L          # (frames, shifts)
+        s = sum(S[:, k, d] for k, d in enumerate(digits)) / L          # (frames,)
         if L < 3:
-            s = s - np.where(B[:, :, L] > VALUE_BLANK, 1.0, 0.0)
+            s = s - np.where(Blo[:, L] > VALUE_BLANK, 1.0, 0.0)
         if L >= 2:
-            s = s - np.where(B[:, :, L - 1] < VALUE_BLANK, 1.0, 0.0)
-        out[n] = float(np.mean(s.max(axis=1))) if nf else 0.0
+            s = s - np.where(Bhi[:, L - 1] < VALUE_BLANK, 1.0, 0.0)
+        out[n] = float(np.mean(s)) if nf else 0.0
     return out
 
 

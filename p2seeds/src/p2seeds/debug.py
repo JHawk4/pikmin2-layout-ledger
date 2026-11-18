@@ -152,7 +152,9 @@ def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Pat
     cv2.putText(head, f"{cal.cave.label} (score {cal.score:.2f}) entry near frame {frame} of {Path(video_path).name}",
                 (8, 18), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
     cv2.putText(head, note, (8, 38), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
-    img = cv2.vconcat([head, strip, plot])
+    # the detection page's card says all this already (and from the final result, which a header
+    # drawn here from one fit attempt could contradict), so its compact pictures have no header
+    img = cv2.vconcat([strip, plot] if compact else [head, strip, plot])
     out = Path(out or f"debug_{Path(video_path).stem}_{frame}.png")
     if compact and img.shape[1] > 1200:
         img = cv2.resize(img, (1200, int(img.shape[0] * 1200 / img.shape[1])), interpolation=cv2.INTER_AREA)

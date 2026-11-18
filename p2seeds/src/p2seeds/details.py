@@ -34,11 +34,33 @@ dominate) after removing a shared speed offset. Lower is better; about 1 per let
 under 6 and a gap of 15+. A seed can also be confirmed by its neighbours: consecutive sublevels' seeds sit a few
 hundred thousand steps apart in the generator, which almost never happens by chance.</li>
 </ul>
+<p><b>Letter seed</b> is the random number generator's state when the title's letters start falling; the <b>layout
+seed</b> is its state when the floor was generated, a fixed number of steps earlier, and is what CaveGen needs.</p>
 <p>Two pictures from the video show the floor as the sublevel starts: the <b>comedown</b>, the high, wide view behind
 the title while the pod comes down (often dim, so it is brightened), and the <b>landing view</b>, the first view once
 the pod has landed. The layout, drawn by CaveGen3, outlines both on the floor: the comedown in blue (the game holds
 this one still shot, nearly straight down, while the title is up) and the landing view in yellow, with an arrow for
 the way the pod faces, so the pictures and the layout should match.</p></details>"""
+
+
+def verdict(row: dict) -> str:
+    """Why the detection got its confidence, in a few words for next to the badge."""
+    n, sc, nxt = row.get("letters_measured") or 0, row.get("score"), row.get("runner_up_score")
+    conf, note = row.get("confidence"), row.get("note") or ""
+    if any(k in note for k in ("confirmed by", "found near", "just before")) and conf == "high":
+        return "confirmed by the neighbouring sublevels"
+    if conf == "high":
+        return f"{n} letters, a clear best seed"
+    if sc is None:
+        return note.split(",")[0] if note else "no seed found"
+    per = sc / max(1, n)
+    if n < 7:
+        return f"only {n} letters measured (needs 7+)"
+    if per >= 6:
+        return f"best seed fits loosely ({per:.1f} per letter, needs under 6)"
+    if nxt is not None and nxt - sc < 15:
+        return f"runner-up seed too close (gap {nxt - sc:.0f}, needs 15+)"
+    return "not confirmed by the neighbouring sublevels"
 
 
 def explain(row: dict) -> str:
@@ -50,7 +72,7 @@ def explain(row: dict) -> str:
         parts.append(f"fit {rms:.2f} px ({'clean' if rms < 0.2 else 'fair' if rms < 0.5 else 'poor'})")
     if sc is not None:
         parts.append(f"best seed scores {sc:g} ({sc / max(1, n):.1f} per letter)")
-        parts.append(f"next best {nxt:g}, a gap of {nxt - sc:.0f}" if nxt is not None else "no other seed came close")
+        parts.append(f"next best {nxt:g}, a gap of {nxt - sc:.0f}" if nxt is not None else "no runner-up seed")
     note = row.get("note") or ""
     if any(k in note for k in ("confirmed by", "found near", "just before")):
         parts.append("confirmed by the neighbouring sublevels' seeds")
@@ -102,9 +124,17 @@ def _brighten(img: np.ndarray) -> np.ndarray:
     return cv2.convertScaleAbs(img, alpha=255.0 / max(hi - lo, 1.0), beta=-lo * 255.0 / max(hi - lo, 1.0))
 
 
-def _figure(src: str, alt: str, caption: str, wide: bool = False) -> str:
-    return (f'<figure{" class=wide" if wide else ""}><img loading="lazy" src="{html.escape(src)}" '
-            f'alt="{html.escape(alt)}"><figcaption>{html.escape(caption)}</figcaption></figure>')
+def _figure(src: str, alt: str, caption: str, wide: bool = False, size: tuple[int, int] | None = None) -> str:
+    wh = f' width="{size[0]}" height="{size[1]}"' if size else ""
+    return (f'<figure{" class=wide" if wide else ""}><a href="{html.escape(src)}" target="_blank" rel="noopener">'
+            f'<img loading="lazy" src="{html.escape(src)}"{wh} alt="{html.escape(alt)}"></a>'
+            f'<figcaption>{html.escape(caption)}</figcaption></figure>')
+
+
+def _size(path: Path) -> tuple[int, int] | None:
+    """(width, height) of an image, so the page doesn't jump while lazy images load."""
+    im = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    return (im.shape[1], im.shape[0]) if im is not None else None
 
 
 def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
@@ -148,14 +178,16 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
                 pass
         pics = []
         if fall.exists():
-            pics.append(_figure(f"img/{fall.name}", "falling letters", "Falling letters, tracker boxes and the fitted fall", True))
+            pics.append(_figure(f"img/{fall.name}", "falling letters", "Falling letters: green boxes were used in the fit, "
+                                "orange ones were not; the plot below shows each letter's fall against its fitted curve. "
+                                "Click to enlarge.", True, _size(fall)))
         if come.exists():
-            pics.append(_figure(f"img/{come.name}", "comedown", "Comedown (behind the title, brightened)"))
+            pics.append(_figure(f"img/{come.name}", "comedown", "Comedown (behind the title, brightened)", size=(480, 360)))
         if land.exists():
-            pics.append(_figure(f"img/{land.name}", "landing view", "Landing view"))
+            pics.append(_figure(f"img/{land.name}", "landing view", "Landing view", size=(480, 360)))
         if outl.exists():
             pics.append(_figure(f"img/{outl.name}", "layout", "Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)"
-                                if views.cavegen3_exe() else "Layout: landing view (orange), pod facing (arrow)"))
+                                if views.cavegen3_exe() else "Layout: landing view (orange), pod facing (arrow)", size=_size(outl)))
         elif lay:
             pics.append(_figure(f"img/{lay.name}", "layout", "Layout"))
         entry = img / f"entry_{f}.jpg"
@@ -165,22 +197,34 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
                 if row.get("link") else e(row.get("time", "")))
         cards.append(f"""
 <section class="card {e(row['confidence'])}" id="{e(row['cave'])}-{row['sublevel'] or 0}">
-  <header><h2>{e(row['cave'])} {row['sublevel'] or '?'}</h2><span class="conf">{e(row['confidence'])}</span>
-  <span class="why">{e(explain(row))}</span></header>
+  <header><h2>{e(row['cave'])} {row['sublevel'] or '?'}</h2><span class="conf">{e(row['confidence'])}: {e(verdict(row))}</span></header>
+  <p class="why">{e(explain(row))}</p>
   <dl>
-    <dt>Video</dt><dd>{link}</dd>
+    <dt>Video</dt><dd>{link}{f' · <a href="judge.html#{e(row["cave"])}-{row["sublevel"]}">layout and luck</a>' if row.get("sublevel") else ""}</dd>
     <dt>Layout seed</dt><dd><code>{e(row.get('layout_seed') or '-')}</code></dd>
     <dt>Letter seed</dt><dd><code>{e(row.get('letter_seed') or '-')}</code></dd>
-    <dt>Letters</dt><dd>{row.get('letters_measured')} measured · fit {row.get('fit_rms_px')} px · score {row.get('score')} (next {row.get('runner_up_score')})</dd>
-    {f"<dt>Note</dt><dd>{e(note)}</dd>" if note else ""}
+    {f"<dt>How</dt><dd>{e(note)}</dd>" if note else ""}
   </dl>
   <div class="imgs">{''.join(pics)}</div>
 </section>""")
         if progress:
             progress(n + 1, len(entries), row)
-    who = ", ".join(p["name"] for p in meta.get("run", {}).get("players", [])) or out_dir.name
-    title = e(f"{who} - detection")
-    page = PAGE.format(title=title, summary=e(meta.get("summary", "")), help=SCORE_HELP, cards="".join(cards))
+    run = meta.get("run", {})
+    who = ", ".join(p["name"] for p in run.get("players", [])) or out_dir.name
+    t = run.get("time_seconds")
+    when = f" {int(t // 3600)}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}" if t else ""
+    title = e(f"{who}{when} · seed detection")
+    from collections import Counter
+    c = Counter(r["confidence"] for r in entries)
+    unsure = len(entries) - c["high"]
+    summary = (f"Seeds read with confidence on {c['high']} of {len(entries)} sublevels"
+               + (f" ({unsure} uncertain: " + ", ".join(f"{c[k]} {k}" for k in ("medium", "low", "none") if c[k]) + ")"
+                  if unsure else "") + ".")
+    filt = ('<label class="filter"><input type="checkbox" id="only-unsure"> Show only the uncertain sublevels</label>'
+            if unsure else "")
+    page = PAGE.format(title=title, summary=e(summary), help=SCORE_HELP, cards=filt + "".join(cards))
+    from . import theme
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="detection")
     path = out_dir / "report.html"
     path.write_text(page, encoding="utf-8")
     return path
@@ -207,12 +251,18 @@ dl {{ display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:
 .imgs {{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; }}
 figure {{ margin:0; }} figure img {{ display:block; max-width:100%; height:auto; max-height:320px; border-radius:4px; border:1px solid var(--line); }}
 figure.wide {{ flex-basis:100%; }} figure.wide img {{ max-height:none; width:100%; }}
-figcaption {{ color:var(--muted); font-size:12px; margin-top:3px; }}
+figcaption {{ color:var(--muted); font-size:12px; margin-top:3px; max-width:480px; }}
+.why {{ margin:6px 0 0; }} .card {{ scroll-margin-top:12px; }}
+.filter {{ display:flex; gap:6px; align-items:center; font-size:14px; margin:0 0 12px; }}
+body.only-unsure .card.high {{ display:none; }}
 code {{ font-size:14px; }} a {{ color:inherit; }}
 </style></head><body><main>
-<p><a href="../index.html">&larr; All runs</a> &middot; <a href="judge.html">Layouts and judge</a></p>
 <h1>{title}</h1>
 <div class="meta">{summary}</div>
 {help}
 {cards}
-</main></body></html>"""
+</main>
+<script>
+const only = document.getElementById('only-unsure');
+if (only) only.addEventListener('change', () => document.body.classList.toggle('only-unsure', only.checked));
+</script></body></html>"""

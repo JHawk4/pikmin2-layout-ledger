@@ -52,6 +52,15 @@ def _faster_than(row: dict) -> float:
     return 100.0 - row["judge_rank"]
 
 
+def _beats(f: float) -> str:
+    """'faster than 62% of layouts', with the ends said plainly."""
+    if f >= 99.5:
+        return "about the best of 1000 random layouts"
+    if f <= 0.5:
+        return "about the worst of 1000 random layouts"
+    return f"faster than {f:.0f}% of layouts"
+
+
 def _tone(delta: float | None) -> str:
     """Seconds against the median, negative = faster (as on splits): green, red, or neutral."""
     if delta is None:
@@ -82,12 +91,26 @@ def trusted(r: dict) -> bool:
     return r.get("confidence") == "high"
 
 
+_NAMES: dict | None = None
+
+
+def treasure_name(key: str) -> str:
+    """In-game English name of a treasure (from CaveGen3's name list), else the internal name."""
+    global _NAMES
+    if _NAMES is None:
+        try:
+            _NAMES = json.loads((Path(__file__).parent / "data" / "treasure_names.json").read_text(encoding="utf-8"))
+        except OSError:
+            _NAMES = {}
+    return _NAMES.get(key) or key.replace("_", " ")
+
+
 def _pokos(t: dict | None) -> str:
     """'280 pokos: dia a red (180), tape yellow (100)' for a sublevel's treasure record."""
     if not t or t.get("pokos") is None:
         return ""
     picks = [c for c in t.get("collected", []) if c]
-    names = ", ".join(f"{n.replace('_', ' ')} ({p})" for n, p in picks)
+    names = ", ".join(f"{treasure_name(n)} ({p})" for n, p in picks)
     bug = t.get("bug_pokos")
     extra = f" + {bug:g} from creatures" if bug else ""
     return f"{t['pokos']} pokos" + (f": {names}" if names else " (no treasure)") + extra
@@ -112,16 +135,17 @@ def chart_points(rows: list[dict], kind: str, tre: dict | None = None, actual: d
     return pts
 
 
-def _actual_html(a: dict | None) -> str:
+def _actual_html(a: dict | None, last: bool = False) -> str:
     if not a:
-        return ('<div class="verdict mid"><span class="lbl">Run</span><span class="muted small">not measured '
-                '(last sublevel of the cave, or no other runs)</span></div>')
-    parts = [f'took {a["took"]:.1f} s vs {a["median_took"]:.1f} s']
+        why = ("last floor of the cave, so there is no next entry screen to stop the clock" if last
+               else "no other high-confidence run of this sublevel to compare with")
+        return f'<div class="verdict mid"><span class="lbl">Runner</span><span class="muted small">Not timed: {why}.</span></div>'
+    rows = f'<dt>Time</dt><dd>{a["took"]:.1f} s <span class="muted">(median {a["median_took"]:.1f} s)</span></dd>'
     if a.get("pokos") is not None:
-        parts.append(f'{a["pokos"]} pokos vs {a["median_pokos"]:g}')
-    return (f'<div class="verdict {_tone(a["net"])}"><span class="lbl">Run</span><span class="big">{a["net"]:+.1f} s</span>'
+        rows += f'<dt>Pokos</dt><dd>{a["pokos"]} <span class="muted">(median {a["median_pokos"]:g})</span></dd>'
+    return (f'<div class="verdict {_tone(a["net"])}"><span class="lbl">Runner</span><span class="big">{a["net"]:+.1f} s</span>'
             f'<span>net vs median run</span></div>'
-            f'<p class="muted small">{"; ".join(parts)} (median of {a["n"]} runs)</p>')
+            f'<dl>{rows}</dl><p class="muted small">Net = time − pokos ÷ 2, against the median of {a["n"]} runs.</p>')
 
 
 def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None = None,
@@ -169,56 +193,59 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
         sub_judge = sum(_delta(r) for r in rs if "judge_score" in r and not r.get("judge_fixed") and trusted(r))
         sub_act = [actual[str(r["frame"])]["net"] for r in rs if str(r.get("frame")) in actual]
         cards = []
-        for r in rs:
+        for n, r in enumerate(rs):
             p = layout_for(r)
             img = (f'<button class="shot" aria-label="Enlarge {html.escape(label(r))} layout">'
-                   f'<img loading="lazy" src="{_img(p)}" alt="{html.escape(label(r))} layout"></button>'
+                   f'<img loading="lazy" src="img/{html.escape(p.name)}" alt="{html.escape(label(r))} layout"></button>'
                    if p else '<div class="shot empty">no render</div>')
             if r.get("judge_fixed"):
                 verdict = (f'<div class="verdict fixed"><span class="big">Fixed floor</span></div>'
-                           f'<p class="muted small">Every seed gives the same judge estimate '
-                           f'({r["judge_score"]:.1f} s), so the layout involves no luck.</p>')
+                           f'<p class="muted small">Every seed gives the same layout here '
+                           f'(judge {r["judge_score"]:.1f} s), so there is no luck to measure.</p>')
             elif "judge_score" in r:
                 f = _faster_than(r)
+                close = abs(_delta(r)) < 1.0
                 verdict = (f'<div class="verdict {_tone(_delta(r))}"><span class="lbl">Judge</span>'
-                           f'<span class="big">{_delta(r):+.1f} s</span><span>layout vs median</span></div>'
-                           f'<div class="meter" title="faster than {f:.0f}% of layouts"><span style="width:{f:.0f}%"></span></div>'
+                           f'<span class="big">{_delta(r):+.1f} s</span><span>layout vs median layout</span></div>'
+                           f'<div class="meter" title="{_beats(f)}"><span style="width:{f:.0f}%"></span></div>'
                            f'<dl><dt>Judge estimate</dt><dd>{r["judge_score"]:.1f} s</dd>'
                            f'<dt>Median layout</dt><dd>{r["judge_median"]:.1f} s</dd>'
-                           f'<dt>Faster than</dt><dd>{f:.0f}% of layouts</dd></dl>')
+                           f'<dt>Luck</dt><dd>{_beats(f)}</dd></dl>'
+                           + ('<p class="muted small">Most layouts here are within a second of each other.</p>' if close else ""))
             else:
                 verdict = '<p class="muted">CaveGen has no judge for this sublevel.</p>'
             if r.get("judge2_score") is not None and not r.get("judge_fixed"):
                 d2 = r["judge2_vs_median"]
                 skip = r.get("judge2_skip") or []
                 verdict += (f'<div class="verdict {_tone(d2)}"><span class="lbl">Judge2</span>'
-                            f'<span class="big">{d2:+.1f} s</span><span>layout vs median</span></div>'
-                            + (f'<p class="muted small">judge2 expects the runner to skip: {html.escape(", ".join(skip))}</p>'
-                               if skip else ""))
-            verdict += _actual_html(actual.get(str(r.get("frame"))))
+                            f'<span class="big">{d2:+.1f} s</span><span>layout vs median layout</span></div>'
+                            + (f'<p class="muted small">judge2 expects the runner to skip: '
+                               f'{html.escape(", ".join(treasure_name(x) for x in skip))}</p>' if skip else ""))
+            verdict += _actual_html(actual.get(str(r.get("frame"))), last=n == len(rs) - 1)
             pk = _pokos(tre.get(str(r.get("frame"))))
             body = img + verdict + (f'<p class="small">{html.escape(pk)}</p>' if pk else "")
-            conf = "" if trusted(r) else f' <span class="tag">{html.escape(r["confidence"])}</span>'
+            conf = "" if trusted(r) else ' <span class="tag">uncertain seed</span>'
             if not trusted(r):
-                body = (f'<p class="muted small hide-low">The seed was read at {html.escape(r["confidence"])} confidence, so its '
-                        f'layout, judge and pokos are left out. Tick "show lower-confidence reads" above to see them.</p>'
+                body = ('<p class="muted small hide-low">The seed could not be read with confidence, so this layout may be '
+                        'wrong; it is left out of every total. Tick "show uncertain seeds" above to see it anyway.</p>'
                         f'<div class="low-only">{body}</div>')
             link = (f'<a href="{html.escape(r["link"])}" target="_blank" rel="noopener">{html.escape(r["time"])}</a>'
                     if r.get("link") else html.escape(r.get("time", "")))
             cards.append(f'''<article class="card{"" if trusted(r) else " low"}" id="{r["cave"]}-{r["sublevel"]}">
   <header><h3>{html.escape(label(r))}</h3><code>{html.escape(r["layout_seed"])}</code>{conf}</header>
   {body}
-  <p class="muted small">Entered at {link} · <a href="{cg3_url(r)}" target="_blank" rel="noopener">open in CaveGen3</a></p>
+  <p class="muted small">Entered at {link} · <a href="{cg3_url(r)}" target="_blank" rel="noopener">open in CaveGen3</a>{"" if trusted(r) else " (may be wrong)"} · <a href="report.html#{r["cave"]}-{r["sublevel"] or 0}">how the seed was read</a></p>
 </article>''')
-        sections.append(f'''<section>
+        sections.append(f'''<section id="cave-{html.escape(cave)}">
   <h2>{html.escape(CAVE_NAMES.get(cave, cave))} <span class="muted">· {len(rs)} sublevels · judge {_num(sub_judge)}{f" · run {_num(sum(sub_act))} net" if sub_act else ""}</span></h2>
   <div class="grid">{"".join(cards)}</div>
 </section>''')
 
-    title = f"{runner} — layouts and judge report"
+    title = f"{runner}{f' {run_time}' if run_time else ''} · layouts & luck"
+    jump = "".join(f'<a href="#cave-{html.escape(c)}">{html.escape(c)}</a>' for c in dict.fromkeys(r["cave"] for r in rows))
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{html.escape(runner)} layout judge</title>
+<title>{html.escape(title)}</title>
 <style>
 :root {{ --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8;
         --good:#1f7a3a; --mid:#8a6a1f; --bad:#b42318; --goodbg:#e3f1e6; --midbg:#f3ecd9; --badbg:#f8e1df; --bar:#c9c9c2; }}
@@ -232,7 +259,12 @@ a {{ color:inherit; }} .muted {{ color:var(--muted); font-weight:400; }} .small 
 .lede {{ color:var(--muted); margin:0 0 20px; max-width:760px; }}
 .stats {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:10px; margin:18px 0; }}
 .stat {{ background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }}
-.stat b {{ display:block; font-size:22px; font-variant-numeric:tabular-nums; }} .stat span {{ color:var(--muted); font-size:13px; }}
+.stat b {{ display:block; font-size:24px; font-weight:700; font-variant-numeric:tabular-nums; }} .stat span {{ color:var(--muted); font-size:13px; }}
+@media (max-width:480px) {{ .stats {{ grid-template-columns:repeat(2,1fr); }} }}
+.jump {{ position:sticky; top:0; z-index:5; display:flex; flex-wrap:wrap; gap:4px; padding:6px 0; margin:10px 0; background:var(--bg); }}
+.jump a {{ font-size:13px; font-weight:600; text-decoration:none; padding:2px 10px; border-radius:999px;
+  border:1px solid var(--line); background:var(--card); }}
+section {{ scroll-margin-top:44px; }} .card {{ scroll-margin-top:48px; }}
 .verdict.fixed {{ background:var(--bg); color:var(--muted); }}
 .nav {{ font-size:14px; margin:0 0 14px; }}
 .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:14px; }}
@@ -265,25 +297,27 @@ dialog img {{ max-width:96vw; max-height:92vh; display:block; border-radius:6px;
 .note {{ font-size:13px; color:var(--muted); border-top:1px solid var(--line); margin-top:40px; padding-top:14px; max-width:820px; }}
 {charts.CSS}
 </style></head><body><main>
-{f'<p class="nav"><a href="{html.escape(home)}">← All runs</a></p>' if home else ""}
 <h1>{html.escape(title)}</h1>
 <p class="lede">Pay Off Debt{f", {html.escape(run_time)}" if run_time else ""}{f", {html.escape(run.get('date', ''))}" if run.get('date') else ""}
 {f' · <a href="{html.escape(run["weblink"])}" target="_blank" rel="noopener">speedrun.com</a>' if run.get("weblink") else ""}.
-Every sublevel's layout was rebuilt from the seed read off the video, then scored by CaveGen's <b>{html.escape(kind)}</b> judge:
-an estimate of how long the layout takes to clear, compared with 1000 random layouts of the same sublevel.</p>
+Every sublevel's layout was rebuilt from the seed read off the video and scored twice: by CaveGen's <b>{html.escape(kind)}</b> judge
+(an estimate of how long the layout takes to clear) and by <b>judge2</b>, CaveGen's judge re-tuned on these runs' real times.
+Both are shown against the median of 1000 random layouts of the same sublevel; <b>Runner</b> is what this run actually did,
+against the median run. Negative is faster, as on splits.</p>
 
-{f'''<label class="toggle"><input type="checkbox" id="show-low"> Show lower-confidence reads ({n_low} sublevel{"s" if n_low != 1 else ""};
+{f'''<label class="toggle"><input type="checkbox" id="show-low"> Show uncertain seeds ({n_low} sublevel{"s" if n_low != 1 else ""};
   never counted in the totals or the chart)</label>''' if n_low else ""}
 <div class="stats">
-  <div class="stat"><b>{len(judged)}</b><span>high-confidence random-layout sublevels{f" (+{n_fixed} fixed floors)" if n_fixed else ""}</span></div>
-  <div class="stat"><b>{_num(total_judge)}</b><span>judge: layouts vs median layouts</span></div>
-  {f'<div class="stat"><b>{_num(total_judge2)}</b><span>judge2 (refit): layouts vs median layouts</span></div>' if j2 else ""}
-  {f'<div class="stat"><b>{_num(total_actual)}</b><span>run: net vs median run ({len(measured)} sublevels)</span></div>' if measured else ""}
-  <div class="stat"><b>{avg_faster:.0f}%</b><span>average share of layouts beaten</span></div>
-  {f'<div class="stat"><b>{html.escape(label(best))}</b><span>luckiest: faster than {_faster_than(best):.0f}%</span></div>' if best else ""}
-  {f'<div class="stat"><b>{html.escape(label(worst))}</b><span>unluckiest: faster than {_faster_than(worst):.0f}%</span></div>' if worst else ""}
+  <div class="stat"><b>{_num(total_judge)}</b><span>Layout luck (judge), over {len(judged)} sublevels</span></div>
+  {f'<div class="stat"><b>{_num(total_judge2)}</b><span>Layout luck (judge2), over {len(j2)} sublevels</span></div>' if j2 else ""}
+  {f'<div class="stat"><b>{_num(total_actual)}</b><span>Runner vs field (net), over {len(measured)} sublevels</span></div>' if measured else ""}
+  <div class="stat"><b>{len(rows) - n_low} of {len(rows)}</b><span>seeds read with confidence{f" ({n_fixed} fixed floors)" if n_fixed else ""}{f"; {n_low} uncertain" if n_low else ""}</span></div>
+  <div class="stat"><b>{avg_faster:.0f}%</b><span>average share of random layouts beaten</span></div>
+  {f'<div class="stat"><b>{html.escape(label(best))}</b><span>luckiest: {_beats(_faster_than(best))}</span></div>' if best else ""}
+  {f'<div class="stat"><b>{html.escape(label(worst))}</b><span>unluckiest: {_beats(_faster_than(worst))}</span></div>' if worst else ""}
 </div>
 
+<nav class="jump" aria-label="Caves">{jump}</nav>
 {chart}
 <p class="legend muted small">Each dot is this run's layout; the grey bar spans the 5th to 95th percentile of 1000 random
 layouts, so a dot near or past the end of its bar is a big swing. Hover for details; click to jump to the layout.</p>
@@ -292,7 +326,7 @@ layouts, so a dot near or past the end of its bar is a big swing. Hover for deta
 
 <p class="note">The judge is CaveGen's heuristic (walking, carrying and fighting estimates for the PoD route), not a
 measured time, so treat the seconds as relative luck rather than exact savings. As on splits, negative means faster
-than the median: green is good, red is bad. "Run" is what the runner actually did on the sublevel, measured from one
+than the median: green is good, red is bad. "Runner" is what the runner actually did on the sublevel, measured from one
 entry screen to the next, against the median of the runs on this site, counting two pokos as one second. Only seeds read at high confidence count anywhere on this page; lower-confidence reads (dashed cards) are
 hidden unless you ask for them, and are never added to the totals.</p>
 </main>
@@ -314,5 +348,7 @@ dlg.addEventListener('click', () => dlg.close());
 <script>{charts.TOOLTIP_JS}</script>
 </body></html>'''
     dest = out_dir / "judge.html"
+    from . import theme
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge")
     dest.write_text(page, encoding="utf-8")
     return dest

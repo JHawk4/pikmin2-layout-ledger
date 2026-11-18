@@ -7,6 +7,8 @@ light and dark themes swap in one place. Every mark that carries a value has a
 
 from __future__ import annotations
 
+import json
+
 import html
 import math
 
@@ -14,6 +16,9 @@ SERIES = ["--series-1", "--series-2", "--series-3", "--series-4", "--series-5",
           "--series-6", "--series-7", "--series-8"]
 
 CSS = """
+.cumul .brush-area { cursor:crosshair; touch-action:none; }
+.cumul .sortval { font-size:10px; }
+.cumul .brush-read { font-size:12px; font-weight:600; }
 .viz-root { --surface-1:#fcfcfb; --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#8a8984; --grid:#e6e5e0;
   --range:#d4d3cd; --good-mark:#0ca30c; --bad-mark:#d03b3b; --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
   --series-5:#e87ba4; --series-6:#008300; --series-7:#6250d6; --series-8:#e34948; }
@@ -306,11 +311,13 @@ def scatter_chart(points: list[tuple], title: str, x_label: str, y_label: str,
 def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title: str, subtitle: str) -> str:
     """Cumulative regression chart.
 
-    points: (sum x^2, sum x*y, tip, href) after each observation in sort order.
+    points: (sum x^2, sum x*y, tip, href[, label]) after each observation in sort order; label is
+            the play's value of the sort (shown under the x axis).
     band:   (sum x^2, low, high) pointwise 95% band around the straight line y = beta * x.
     A straight walk along the line means the slope is the same throughout this ordering; a
-    bend that leaves the band means the slope differs in part of it."""
-    W, H, L, R, T, B = 460, 300, 52, 12, 40, 36
+    bend that leaves the band means the slope differs in part of it. Dragging across the chart
+    shows the slope of the selected stretch (the change in Σxy over the change in Σx²)."""
+    W, H, L, R, T, B = 460, 320, 52, 12, 40, 56
     xs = [0.0] + [p[0] for p in points]
     ys = [0.0] + [p[1] for p in points] + [b[1] for b in band] + [b[2] for b in band]
     xt = nice_ticks(0, max(xs) or 1, 4)
@@ -325,7 +332,22 @@ def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title:
                    f'<text x="{L - 6}" y="{y(t) + 4:.1f}" text-anchor="end">{t:g}</text>')
     for t in xt:
         out.append(f'<text x="{x(t):.1f}" y="{H - B + 14}" text-anchor="middle">{t:g}</text>')
-    out.append(f'<text x="{(L + W - R) / 2:.0f}" y="{H - 4}" text-anchor="middle">cumulative prediction² (s²)</text>')
+    # the sort's own values along the bottom, at a few evenly spaced plays
+    labels = [p[4] if len(p) > 4 else None for p in points]
+    if any(labels):
+        n = len(points)
+        last = -99.0
+        for k in sorted({round(i * (n - 1) / 5) for i in range(6)}):
+            if labels[k] is None:
+                continue
+            px = x(points[k][0])
+            if px - last < 52:
+                continue
+            last = px
+            out.append(f'<line class="grid" x1="{px:.1f}" x2="{px:.1f}" y1="{H - B + 18}" y2="{H - B + 22}"/>'
+                       f'<text class="sortval" x="{px:.1f}" y="{H - B + 32}" text-anchor="middle">{_esc(labels[k])}</text>')
+    out.append(f'<text x="{(L + W - R) / 2:.0f}" y="{H - 4}" text-anchor="middle">cumulative prediction² (s²) · '
+               f'drag to measure a stretch</text>')
     out.append(f'<text x="12" y="{(T + H - B) / 2:.0f}" transform="rotate(-90 12 {(T + H - B) / 2:.0f})" '
                f'text-anchor="middle">cumulative prediction × actual (s²)</text>')
     if band:
@@ -334,13 +356,48 @@ def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title:
         out.append(f'<polygon points="{" ".join(poly)}" fill="var(--range)" fill-opacity=".55"/>')
     out.append(f'<line x1="{x(0):.1f}" y1="{y(0):.1f}" x2="{x(xs[-1]):.1f}" y2="{y(beta * xs[-1]):.1f}" '
                f'stroke="var(--ink-3)" stroke-width="1.5" stroke-dasharray="5 4"/>')
+    # the drag target sits under the path and the dots, so hovering a dot still shows its tooltip
+    out.append(f'<rect class="brush-area" x="{L}" y="{T}" width="{W - R - L}" height="{H - B - T}" fill="transparent"/>'
+               f'<rect class="brush" x="0" y="{T}" width="0" height="{H - B - T}" fill="var(--series-4)" fill-opacity=".18" '
+               f'pointer-events="none"/>')
     d = f"M{x(0):.1f},{y(0):.1f} " + " ".join(f"L{x(p[0]):.1f},{y(p[1]):.1f}" for p in points)
-    out.append(f'<path d="{d}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/>')
-    for px, py, tip, href in points:
-        hit = f'<circle class="hit" tabindex="0" cx="{x(px):.1f}" cy="{y(py):.1f}" r="7" data-tip="{_esc(tip)}"/>'
-        out.append(f'<a href="{_esc(href)}" target="_blank" rel="noopener">{hit}</a>' if href else hit)
+    out.append(f'<path d="{d}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" pointer-events="none"/>')
+    for p in points:
+        px, py, tip, href = p[:4]
+        hit = f'<circle class="hit" tabindex="-1" cx="{x(px):.1f}" cy="{y(py):.1f}" r="7" data-tip="{_esc(tip)}"/>'
+        out.append(f'<a href="{_esc(href)}" target="_blank" rel="noopener" tabindex="-1">{hit}</a>' if href else hit)
+    out.append(f'<text class="brush-read" x="{W - R}" y="{T + 14}" text-anchor="end"></text>')
     out.append("</svg>")
-    return f'<div class="chart viz-root">{"".join(out)}</div>'
+    data = [[round(x(0), 1), 0, 0, ""]] + [[round(x(p[0]), 1), round(p[0], 2), round(p[1], 2), labels[i] or ""]
+                                           for i, p in enumerate(points)]
+    return (f'<div class="chart viz-root cumul" data-pts="{_esc(json.dumps(data))}" data-beta="{beta:.4f}">'
+            f'{"".join(out)}</div>')
+
+
+# Dragging across a cumulative chart: the slope of the selected stretch of plays.
+BRUSH_JS = """
+document.querySelectorAll('.cumul').forEach(box => {
+  const svg = box.querySelector('svg'), area = svg.querySelector('.brush-area'), brush = svg.querySelector('.brush');
+  const read = svg.querySelector('.brush-read'), pts = JSON.parse(box.dataset.pts);
+  const toX = e => { const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+                     return p.matrixTransform(svg.getScreenCTM().inverse()).x; };
+  const near = px => { let k = 0; pts.forEach((q, i) => { if (Math.abs(q[0] - px) < Math.abs(pts[k][0] - px)) k = i; }); return k; };
+  let x0 = null;
+  const show = (a, b) => {
+    let i = near(Math.min(a, b)), j = near(Math.max(a, b));
+    brush.setAttribute('x', pts[i][0]); brush.setAttribute('width', Math.max(0, pts[j][0] - pts[i][0]));
+    if (j <= i) { read.textContent = ''; return; }
+    const sxx = pts[j][1] - pts[i][1], sxy = pts[j][2] - pts[i][2];
+    const from = pts[i + 1][3], to = pts[j][3];
+    read.textContent = (from || to ? `${from} to ${to}: ` : '') + `${j - i} plays, slope ` +
+      (sxx > 0 ? (sxy / sxx).toFixed(2) : '–') + ` (all ${(+box.dataset.beta).toFixed(2)})`;
+  };
+  area.addEventListener('pointerdown', e => { x0 = toX(e); area.setPointerCapture(e.pointerId); show(x0, x0); });
+  area.addEventListener('pointermove', e => { if (x0 !== null) show(x0, toX(e)); });
+  area.addEventListener('pointerup', e => { if (x0 !== null) { const x1 = toX(e);
+    if (Math.abs(x1 - x0) < 3) { brush.setAttribute('width', 0); read.textContent = ''; } x0 = null; } });
+});
+"""
 
 
 def dot_chart(categories: list[str], series: list[dict], title: str, y_label: str) -> str:

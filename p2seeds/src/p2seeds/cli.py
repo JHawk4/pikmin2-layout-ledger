@@ -43,14 +43,27 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
     events = detect(video, feed, start=start, stop=stop, progress=lambda i, n: log(f"  scanning {100 * i / n:4.1f}%"))
     log(f"{len(events)} candidate entry screens")
 
-    results = []
+    results, rejected = [], []
+
+    def show(r, e):
+        seed = f"0x{r.layout_seed:08X}" if r.layout_seed is not None else "-"
+        sub = r.digit_value if r.digit_value is not None else "?"
+        log(f"  {r.settled_frame or e.first:>7} {r.cave_id or '-':<4} {sub!s:<2} {r.confidence:<6} {seed} {r.note}")
+
     for e in events:
         for r in analyze_event(video, feed, e):
-            seed = f"0x{r.layout_seed:08X}" if r.layout_seed is not None else "-"
-            sub = r.digit_value if r.digit_value is not None else "?"
-            log(f"  {r.settled_frame or e.first:>7} {r.cave_id or '-':<4} {sub!s:<2} {r.confidence:<6} {seed} {r.note}")
-            if r.cave_id:
+            show(r, e)
+            (results if r.cave_id else rejected).append(r)
+    # second pass: on blurry captures a whole cave can match just under the threshold
+    from .analyze import rescue_caves
+    for r0, cave in rescue_caves(rejected + [r for r in results if r.near], results):
+        for r in analyze_event(video, feed, r0.event, only=cave):
+            if r.cave_id and not any(x.cave_id == r.cave_id and abs((x.settled_frame or 0) - (r.settled_frame or 0)) < 90
+                                     for x in results):
+                r.note = ", ".join(x for x in (r.note, "cave name matched weakly (blurry capture)") if x)
+                show(r, r0.event)
                 results.append(r)
+    results.sort(key=lambda r: r.settled_frame or r.event.first)
 
     # one entry can yield two events (before/after a stutter); keep the first of identical seeds
     dedup = []
