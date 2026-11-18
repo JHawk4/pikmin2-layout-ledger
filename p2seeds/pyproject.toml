@@ -24,4 +24,4 @@ p2seeds = "p2seeds.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-p2seeds = ["data/digits/*.png"]
+p2seeds = ["data/digits/*.png", "data/*.json", "data/panel/*"]

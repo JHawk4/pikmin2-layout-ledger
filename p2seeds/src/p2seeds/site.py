@@ -87,7 +87,14 @@ def _mode(values):
     return best if vals.count(best) * 2 > len(vals) else None    # a clear majority only
 
 
-POKOS_PER_SECOND = 2.0     # Pay Off Debt: two extra pokos are worth one second
+POKOS_PER_SECOND = 2.0
+
+
+def median_pokos(values) -> int | None:
+    """The median of some poko counts, rounded half up to a whole poko (a median of two runs
+    can fall between them, and half a poko is not a thing)."""
+    vals = [v for v in values if v is not None]
+    return int(np.floor(float(np.median(vals)) + 0.5)) if vals else None     # Pay Off Debt: two extra pokos are worth one second
 
 
 def actuals(runs: list[dict]) -> list[dict]:
@@ -113,7 +120,7 @@ def actuals(runs: list[dict]) -> list[dict]:
             continue
         med_t = float(np.median([p[2] for p in ps]))
         pk = [p[3] for p in ps if p[3] is not None]
-        med_p = float(np.median(pk)) if pk else None
+        med_p = median_pokos(pk)
         for i, frame, took, pokos in ps:
             net = took - med_t
             if runs[i]["kind"] == "pod" and pokos is not None and med_p is not None:
@@ -173,6 +180,7 @@ def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -
                     "spread": (a["judge2_hi"] - a["judge2_lo"] if key == "judge2"
                                else float(np.percentile(ref, 95) - np.percentile(ref, 5)) if ref is not None else 0.0),
                     "treasures": t["treasures"] if t else None,
+                    "creatures": t.get("creature_cap") if t else None,
                 })
     # plain-time plays that followed another route (a different number of treasures) are left out
     by_sub: dict[str, list[dict]] = {}
@@ -228,7 +236,7 @@ def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -
         rs = [row for row in rows if row["sub"] == sub]
         pk = [row["pokos"] for row in rs if row["pokos"] is not None]
         med[sub] = (float(np.median([row["actual"] for row in rs])), float(np.median([row["cost"] for row in rs])),
-                    float(np.median(pk)) if pk else None)
+                    median_pokos(pk))
 
     def tip(row):
         m_took, m_cost, m_pk = med[row["sub"]]
@@ -274,13 +282,18 @@ def outliers(cals: list[dict]) -> dict:
     return flagged or {}
 
 
-SORTS = [
-    ("prediction", "Sorted by predicted time saved", lambda r: r["x"], "low to high"),
-    ("size", "Sorted by size of the prediction", lambda r: abs(r["x"]), "small to large swings"),
-    ("spread", "Sorted by how variable the sublevel is", lambda r: r["spread"], "5th–95th spread, low to high"),
-    ("length", "Sorted by sublevel length", lambda r: r["median"] or 0, "median judge time, short to long"),
-    ("order", "Sorted by game order", lambda r: r["order"], "cave and sublevel"),
-    ("runner", "Sorted by runner", lambda r: (r["run"], r["order"]), "one runner after another"),
+SORTS = [   # (key, title, sort key, how, label of a play's sort value for the x axis)
+    ("prediction", "Sorted by predicted time saved", lambda r: r["x"], "low to high", lambda r: f"{r['x']:+.0f} s"),
+    ("size", "Sorted by size of the prediction", lambda r: abs(r["x"]), "small to large swings", lambda r: f"{abs(r['x']):.0f} s"),
+    ("spread", "Sorted by how variable the sublevel is", lambda r: r["spread"], "5th–95th spread, low to high",
+     lambda r: f"{r['spread']:.0f} s"),
+    ("length", "Sorted by sublevel length", lambda r: r["median"] or 0, "median judge time, short to long",
+     lambda r: f"{r['median'] or 0:.0f} s"),
+    ("creatures", "Sorted by creature pokos on offer", lambda r: r.get("creatures") or 0,
+     "most pokos the layout's creatures can give, low to high", lambda r: f"{r.get('creatures') or 0} pk"),
+    ("order", "Sorted by game order", lambda r: r["order"], "cave and sublevel", lambda r: r["sub"]),
+    ("runner", "Sorted by runner", lambda r: (r["run"], r["order"]), "one runner after another",
+     lambda r: r["runner"].split()[0]),
 ]
 
 
@@ -337,25 +350,36 @@ def _calibration_extras(cal: dict) -> tuple[str, str]:
     if not cal.get("rows"):
         return ex_table, ""
     curves, findings = [], []
-    for key, title, fn, how in SORTS:
+    bends = []
+    for key, title, fn, how, lab in SORTS:
         c = cumulative(cal["rows"], cal["slope"], fn)
-        pts = [(sxx, sxy, f"{cal['tip'](r)}\nrunning totals: Σx² {sxx:,.0f}, Σxy {sxy:,.0f}", r["link"])
+        pts = [(sxx, sxy, f"{cal['tip'](r)}\nrunning totals: Σx² {sxx:,.0f}, Σxy {sxy:,.0f}", r["link"], lab(r))
                for sxx, sxy, r in c["points"]]
+        if c["p"] < 0.05:
+            bends.append(title)
         verdict = ("<b>significant bend</b>" if c["p"] < 0.01 else "possible bend" if c["p"] < 0.05
                    else "no significant bend")
         where = "" if c["p"] >= 0.05 else f", largest around {html.escape(c['worst']['sub'])} ({html.escape(c['worst']['runner'])})"
         curves.append(charts.cumulative_chart(pts, c["band"], cal["slope"], title,
                                               f"{how} · max deviation {c['stat']:.2f}, p = {c['p']:.2f}"))
         findings.append(f"<li>{html.escape(title)}: {verdict} (p = {c['p']:.3f}){where}</li>")
-    section = f'''<h3>Is the slope the same everywhere?</h3>
+    plain = ("No sign that the judge is better or worse for any cave, runner or layout size."
+             if not bends else "The judge may be off by a different amount in places: " + "; ".join(bends).lower() + ".")
+    section = f'''<h3 id="consistency">Is the judge equally right everywhere?</h3>
+<p>{plain}</p>
+<details><summary>Show the checks</summary>
 <p>Each chart walks through the same plays in a different order, adding up prediction² along the bottom and
 prediction × actual up the side, so the slope of the walk so far is the regression slope over those plays. If the
 judge is off by the same proportion everywhere, the walk follows the dashed line and stays inside the grey 95% band.
 A bend that leaves the band shows where the slope differs: for example, a steeper end in "size" would mean big
-predicted swings are more reliable than small ones. The test allows each play its own noise level.</p>
+predicted swings are more reliable than small ones. The test allows each play its own noise level. Under each chart
+are the sort's values; drag across a chart to see the slope of just that stretch.</p>
 <ul class="findings">{"".join(findings)}</ul>
-<div class="curves">{"".join(curves)}</div>'''
+<div class="curves">{"".join(curves)}</div></details>'''
     return ex_table, section
+
+
+ODD_POKOS = 150      # a difference from the median run this large is flagged in the pokos grid
 
 
 def pokos_section(runs: list[dict]) -> str:
@@ -383,7 +407,7 @@ def pokos_section(runs: list[dict]) -> str:
     cats = sorted({c for v in per_run.values() for c in v},
                   key=lambda c: (order.get(c.split()[0], 99), int(c.split()[1])))
     # the median run on each sublevel is the expected baseline
-    median = {c: float(np.median([v[c][0] for v in per_run.values() if c in v])) for c in cats}
+    median = {c: median_pokos([v[c][0] for v in per_run.values() if c in v]) for c in cats}
     series = []
     for i, v in per_run.items():
         rel = {c: (p - median[c], f"{p - median[c]:+g} pokos vs the median ({p} vs {median[c]:g})\n{tip.split(chr(10), 1)[1]}", href)
@@ -406,12 +430,14 @@ def pokos_section(runs: list[dict]) -> str:
             if d == 0:
                 cells.append(f"<td class='num muted' data-tip='{html.escape(chr(10).join([f'{p} pokos (the median)', tip.split(chr(10), 1)[1]]))}'>0</td>")
                 continue
+            odd = abs(d) > ODD_POKOS
             mark = "--good-mark" if d > 0 else "--bad-mark"
             pct = 18 + 52 * min(1.0, abs(d) / big)
-            text = f"{d:+g}"
+            text = f"{d:+g}" + ("<sup title='unusually large: check the video'>?</sup>" if odd else "")
             if href:
                 text = f"<a href='{html.escape(href)}' target='_blank' rel='noopener'>{text}</a>"
-            tipx = f"{d:+g} pokos vs the median ({p} vs {median[c]:g})" + chr(10) + tip.split(chr(10), 1)[1]
+            tipx = (f"{d:+g} pokos vs the median ({p} vs {median[c]:g})" + chr(10) + tip.split(chr(10), 1)[1]
+                    + (chr(10) + "Unusually large: a skipped or extra treasure, or a misread; check the video." if odd else ""))
             cells.append(f"<td class='num heat' tabindex='0' style='background:color-mix(in srgb, var({mark}) {pct:.0f}%, transparent)' "
                          f"data-tip='{html.escape(tipx)}'>{text}</td>")
         tot = sum(v[c][0] - median[c] for c in v)
@@ -419,15 +445,15 @@ def pokos_section(runs: list[dict]) -> str:
         rows.append(f"<tr><td>{html.escape(runs[i]['runner'])}</td><td class='num {tone}-text'><b>{tot:+g}</b></td>{''.join(cells)}</tr>")
     hidden = (f" {same} other sublevel{'s' if same != 1 else ''}, where every run got the median, "
               f"{'are' if same != 1 else 'is'} left out.") if same else ""
-    return f'''<h2>Pokos by sublevel</h2>
-<p>Pokos collected on each sublevel (Pay Off Debt runs), from treasures and from creatures, against the median run on the same sublevel,
-the expected baseline. Each row is a run, each column a sublevel where at least one run differs from the median (the
-median is under the name). Green cells collected more than usual, red cells fewer; a darker cell is a bigger
-difference, and a dot means the sublevel was not read.{hidden} Each treasure collected shows a panel with its value;
+    return f'''<h2 id="pokos">Pokos by sublevel</h2>
+<p>Pokos per sublevel against the median run (the median is under each sublevel's name). Green = more, red = fewer,
+· = not read, ? = an unusually large difference worth checking. Hover a cell for the treasures; click it to open the video.</p>
+<details><summary>How the pokos are counted</summary><p class="muted small">Each row is a run, each column a sublevel where at
+least one run differs from the median.{hidden} Each treasure collected shows a panel with its value;
 the panels are counted in the video and matched to the treasures CaveGen places on that layout. Each panel also shows
 the run's running Total, so pokos from creatures are whatever the Total rose by beyond the treasure; they are shared
 among the cave sublevels between the two panels by time spent in each (never the surface, and treasures picked up on
-the surface count toward no sublevel). Hover a cell for the treasures; click the number to open the video.</p>
+the surface count toward no sublevel).</p></details>
 <div class="tablewrap viz-root"><table class="heatgrid">
 <thead><tr><th>Run</th><th class='num'>Total vs median</th>{head}</tr></thead><tbody>{"".join(rows)}</tbody>
 </table></div>'''
@@ -501,7 +527,14 @@ def build(root: str | Path = "data/output") -> Path:
             f"<tr><td>{html.escape(row['sub'])}</td><td>{html.escape(row['runner'])}</td>"
             f"<td>{_link(row['link'], row['time'] or 'video')}</td><td class='num'>{row['y']:+.1f} s</td></tr>"
             for row in sorted(out.values(), key=lambda r: -abs(r["y"])))
-        cal_text = (f"<p>Over <b>{cal['n']}</b> sublevel plays ({cal['sublevels']} sublevels seen in at least two runs), "
+        def plain(k, c):
+            pct = round(abs(c["slope"] - 1) * 100)
+            if pct < 8:
+                return f"{names[k]} is right on average: a layout it calls 10 s faster really is about 10 s faster"
+            return (f"{names[k]} {'overstates' if c['slope'] < 1 else 'understates'} the differences between layouts "
+                    f"by about {pct}% (a layout it calls 10 s faster is about {10 * c['slope']:.0f} s faster)")
+        lead = "<p class='lead'>" + "; ".join(plain(k, c) for k, c in cals.items() if c.get("points")) + ".</p>"
+        cal_text = lead + (f"<p>Over <b>{cal['n']}</b> sublevel plays ({cal['sublevels']} sublevels seen in at least two runs), "
                     f"each second a judge predicts should be worth one second of {'net' if cal['net'] else 'real'} time. "
                     f"The slope is what it is actually worth (1 = calibrated, below 1 = the judge overstates differences "
                     f"between layouts); R² is the share of the runs' differences a judge explains taking its seconds at face value.</p>"
@@ -509,9 +542,9 @@ def build(root: str | Path = "data/output") -> Path:
                     f"<th class='num'>Correlation</th><th class='num'>R² (slope 1)</th></tr></thead><tbody>{cmp_rows}</tbody></table></div>"
                     + (f"<p>The outcome is <b>net time</b>: seconds minus pokos ÷ 2. The CaveGen judge on plain time would have slope "
                        f"{cal['time_only'][0]:.2f} (correlation {cal['time_only'][2]:.2f}).</p>" if cal["net"] else "")
-                    + (f"<details><summary>{len(out)} play{'s' if len(out) != 1 else ''} left out as likely mistakes</summary>"
+                    + (f"<details><summary>{len(out)} play{'s' if len(out) != 1 else ''} left out as unusual</summary>"
                        f"<p class='muted small'>More than {OUTLIER_Z:g} robust standard deviations off under every judge, so no layout "
-                       f"judge explains them (a death, a lost treasure, a misplay). Check them in the video.</p>"
+                       f"judge explains them (a skipped treasure, a death, a misplay). Check them in the video.</p>"
                        f"<div class='tablewrap'><table><thead><tr><th>Sublevel</th><th>Runner</th><th>Video</th>"
                        f"<th class='num'>Run vs others</th></tr></thead><tbody>{out_rows}</tbody></table></div></details>" if out else ""))
     else:
@@ -531,11 +564,21 @@ def build(root: str | Path = "data/output") -> Path:
         run_total = sum(v["net"] for v in act.values()) if act else None
         high = sum(1 for x in e if x.get("confidence") == "high")
         link = r["run"].get("weblink")
-        tag = "former WR" if r["run"].get("series") == "wr" else str(r["run"].get("place", ""))
-        trs.append(f'<tr><td>{tag}</td><td><a href="{html.escape(r["slug"])}/judge.html">'
-                   f'{html.escape(r["player"])}</a></td><td>{_fmt_time(r["run"].get("time_seconds"))}</td>'
-                   f'<td>{html.escape(r["run"].get("date", ""))}</td><td>{html.escape(r["run"].get("platform", ""))}</td>'
-                   f'<td class="num">{len(e)}</td><td class="num">{high}</td><td class="num">{judge_report._num(judge_total)}</td><td class="num">{judge_report._num(judge2_total)}</td><td class="num">{judge_report._num(run_total)}</td>'
+        wr = r["run"].get("series") == "wr"
+        rank = "" if wr else str(r["run"].get("place", ""))
+        nj = sum(1 for x in e if judge_report.trusted(x) and "judge_score" in x and not x.get("judge_fixed"))
+
+        def sv(x):
+            return "" if x is None else f"{x:.3f}"
+        trs.append(f'<tr><td class="num" data-v="{html.escape(rank or "99")}">{html.escape(rank)}</td>'
+                   f'<td class="sticky"><a href="{html.escape(r["slug"])}/judge.html">{html.escape(r["player"])}</a>'
+                   f'{" <span class=badge>former WR</span>" if wr else ""}</td>'
+                   f'<td data-v="{r["run"].get("time_seconds") or 0}">{_fmt_time(r["run"].get("time_seconds"))}</td>'
+                   f'<td class="num" data-v="{sv(judge_total)}">{judge_report._num(judge_total)}</td>'
+                   f'<td class="num" data-v="{sv(judge2_total)}">{judge_report._num(judge2_total)}</td>'
+                   f'<td class="num" data-v="{sv(run_total)}">{judge_report._num(run_total)}</td>'
+                   f'<td class="num{" weak" if high < 0.9 * len(e) else ""}" data-v="{high / max(1, len(e)):.3f}">{high} of {len(e)}</td>'
+                   f'<td>{html.escape(r["run"].get("date", ""))}</td>'
                    f'<td><a href="{html.escape(r["slug"])}/report.html">detection</a>'
                    f'{f" · <a href={chr(34)}{html.escape(link)}{chr(34)} target=_blank rel=noopener>speedrun.com</a>" if link else ""}</td></tr>')
 
@@ -544,7 +587,7 @@ def build(root: str | Path = "data/output") -> Path:
                         for a, b, c, d, s in table_rows)
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Pikmin 2 run seeds</title>
+<title>P2 VOD Seeds · layout luck in Pikmin 2 Pay Off Debt runs</title>
 <style>
 :root {{ --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8; --good:#1f7a3a; --bad:#b42318; }}
 @media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{ --bg:#161614; --fg:#ececea; --muted:#9a9a94;
@@ -572,28 +615,53 @@ h3 {{ font-size:16px; margin:28px 0 6px; }} .findings {{ font-size:14px; }}
 details {{ margin:10px 0 0; }} summary {{ cursor:pointer; color:var(--muted); font-size:14px; }}
 details .tablewrap {{ max-height:360px; overflow:auto; margin-top:8px; }}
 code {{ font:13px ui-monospace,Consolas,monospace; }}
+.lead {{ font-size:16px; }} .intro {{ max-width:820px; }} .legend-list {{ margin:6px 0 14px; padding-left:18px; max-width:820px; }}
+.badge {{ font-size:11px; font-weight:700; color:var(--sun); border:1px solid var(--sun); border-radius:999px; padding:0 6px; margin-left:4px; }}
+th[data-sort] {{ cursor:pointer; user-select:none; }} th[data-sort]:hover {{ color:var(--fg); }}
+th[aria-sort="ascending"]::after {{ content:" ▲"; }} th[aria-sort="descending"]::after {{ content:" ▼"; }}
+td.weak {{ color:var(--bad); }}
+@media (max-width:640px) {{ td.sticky, th.sticky {{ position:sticky; left:0; background:var(--card); z-index:1; }} }}
 {charts.CSS}
 </style></head><body><main>
-<h1>Pikmin 2 run seeds</h1>
-<p class="muted">Sublevel seeds recovered from speedrun videos, with every layout scored by CaveGen's judge.
-Open a run for its layouts and per-sublevel luck.</p>
+<h1>How lucky were the layouts?</h1>
+<p class="intro">Every cave sublevel's layout is set by the game's random number generator. This site reads that seed from
+the falling title letters in each Pay Off Debt run's video, rebuilds the exact layout, and asks how lucky the layouts were
+and how much time the runner actually saved.</p>
+<ul class="legend-list muted">
+<li><b>Layout luck</b>: seconds the run's layouts should save against a typical layout of the same sublevels, by CaveGen's
+judge and by judge2 (CaveGen's judge re-tuned on these runs' real times).</li>
+<li><b>Runner vs field</b>: seconds the runner actually saved against the median run on the same sublevels, counting every
+2 pokos as 1 second.</li>
+<li>Negative is faster, as on splits. <b>Seeds read</b> is how many sublevels' seeds were read with confidence; only those count.
+Click a column to sort; open a runner for their layouts.</li>
+</ul>
 
-<div class="tablewrap"><table>
-<thead><tr><th>Board</th><th>Runner</th><th>Time</th><th>Date</th><th>Platform</th><th class="num">Sublevels</th>
-<th class="num">High conf.</th><th class="num">Judge (layouts)</th><th class="num">judge2</th><th class="num">Run (net)</th><th>Pages</th></tr></thead>
+<div class="tablewrap"><table id="runs">
+<thead><tr><th class="num" data-sort>Rank</th><th class="sticky" data-sort>Runner</th><th data-sort>Time</th>
+<th class="num" data-sort title="Seconds the layouts should save vs typical layouts, by CaveGen's judge">Layout luck (judge)</th>
+<th class="num" data-sort title="Seconds the layouts should save vs typical layouts, by judge2">Layout luck (judge2)</th>
+<th class="num" data-sort title="Seconds actually saved vs the median run, time minus pokos ÷ 2">Runner vs field (net)</th>
+<th class="num" data-sort title="Sublevels whose seed was read with confidence">Seeds read</th>
+<th data-sort>Date</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
+<script>
+(() => {{
+  const t = document.getElementById('runs'), body = t.tBodies[0];
+  t.querySelectorAll('th[data-sort]').forEach((th, i) => th.addEventListener('click', () => {{
+    const col = [...th.parentNode.children].indexOf(th), up = th.getAttribute('aria-sort') !== 'ascending';
+    t.querySelectorAll('th').forEach(x => x.removeAttribute('aria-sort'));
+    th.setAttribute('aria-sort', up ? 'ascending' : 'descending');
+    const key = r => {{ const c = r.children[col]; const v = c.dataset.v ?? c.textContent.trim();
+      return v === '' ? NaN : (isNaN(+v) ? v : +v); }};
+    [...body.rows].sort((a, b) => {{ const x = key(a), y = key(b);
+      if (typeof x === 'number' && typeof y === 'number') return (isNaN(x) - isNaN(y)) || (up ? x - y : y - x);
+      return up ? String(x).localeCompare(String(y)) : String(y).localeCompare(String(x)); }})
+      .forEach(r => body.appendChild(r));
+  }}));
+}})();
+</script>
 
-<h2>Seed order</h2>
-<p>Each seed's position in the game's random number sequence, counted from the run's first seed. The RNG only moves
-forward, so every line should climb steadily; a point off its line, or a break, marks a doubtful seed.</p>
-{order_chart}
-<details><summary>Show as a table</summary><div class="tablewrap"><table>
-<thead><tr><th>Runner</th><th>Video time</th><th>Sublevel</th><th>Letter seed</th><th class="num">RNG steps</th></tr></thead>
-<tbody>{data_rows}</tbody></table></div></details>
-
-{pokos_html}
-
-<h2>Is the judge calibrated?</h2>
+<h2 id="calibration">Do the judges predict real times?</h2>
 <p>Each sublevel's real time is measured from the video: from its entry screen to the next sublevel's entry screen
 (so each cave's last sublevel is left out). Both the judge's estimate and the real time are compared within the same
 sublevel across runs, after removing each runner's overall pace. For Pay Off Debt the outcome counts pokos too, at
@@ -604,11 +672,25 @@ layout, so its judge score would be noise. Hover a point for its seed and pokos;
 {cal_chart}
 {ex_table}
 {curve_html}
+
+{pokos_html}
+
+<h2 id="seed-order">Seed order</h2>
+<p>A check on the seed reading: each seed's position in the game's random number sequence, counted from the run's first
+seed. The RNG only moves forward, so every line should climb steadily; a point off its line marks a doubtful seed.</p>
+<details><summary>Show the chart and the table</summary>
+{order_chart}
+<div class="tablewrap"><table>
+<thead><tr><th>Runner</th><th>Video time</th><th>Sublevel</th><th>Letter seed</th><th class="num">RNG steps</th></tr></thead>
+<tbody>{data_rows}</tbody></table></div></details>
 </main>
 <script>{charts.TOOLTIP_JS}</script>
+<script>{charts.BRUSH_JS}</script>
 </body></html>'''
+    from . import theme
     dest = root / "index.html"
-    dest.write_text(page, encoding="utf-8")
+    dest.write_text(theme.apply(page, prefix="", active="runs"), encoding="utf-8")
+    (root / "suggest.html").write_text(theme.apply(theme.suggest_page(), prefix="", active="suggest"), encoding="utf-8")
     return dest
 
 
@@ -627,6 +709,8 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> 
         shutil.rmtree(out, onexc=writable)
     out.mkdir(parents=True)
     shutil.copy2(root / "index.html", out / "index.html")
+    if (root / "suggest.html").exists():
+        shutil.copy2(root / "suggest.html", out / "suggest.html")
     (out / ".nojekyll").write_text("")          # serve files as they are (no Jekyll processing)
     for run in sorted(p for p in root.iterdir() if (p / "judge.html").exists()):
         dest = out / run.name
