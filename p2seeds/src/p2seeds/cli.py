@@ -56,9 +56,10 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
             (results if r.cave_id else rejected).append(r)
     # second pass: on blurry captures a whole cave can match just under the threshold
     from .analyze import rescue_caves
-    for r0, cave in rescue_caves(rejected, results):
+    for r0, cave in rescue_caves(rejected + [r for r in results if r.near], results):
         for r in analyze_event(video, feed, r0.event, only=cave):
-            if r.cave_id:
+            if r.cave_id and not any(x.cave_id == r.cave_id and abs((x.settled_frame or 0) - (r.settled_frame or 0)) < 90
+                                     for x in results):
                 r.note = ", ".join(x for x in (r.note, "cave name matched weakly (blurry capture)") if x)
                 show(r, r0.event)
                 results.append(r)

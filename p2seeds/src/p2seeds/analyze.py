@@ -185,7 +185,10 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
             return [EventResult(event, cave_score=cal.score, best_cave=cal.cave.cavegen, best_margin=margin, near=near,
                                 note=f"cave name not recognized (best {cal.cave.cavegen} {cal.score:.2f}, margin {margin:.2f})")]
         return [EventResult(event, note="no text found")]
-    return [_analyze_entry(video, feed, event, frames, start, *e, search_kw=search_kw) for e in entries]
+    out = [_analyze_entry(video, feed, event, frames, start, *e, search_kw=search_kw) for e in entries]
+    for r in out:
+        r.near = near          # a weak title can sit next to a recognized one (a very short floor)
+    return out
 
 
 def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=None) -> EventResult:
