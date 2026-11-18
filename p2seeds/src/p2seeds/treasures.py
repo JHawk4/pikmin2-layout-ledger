@@ -160,7 +160,8 @@ DIGITS_DIR = Path(__file__).parent / "data" / "panel"
 HELPER_SRC = Path(__file__).resolve().parents[2] / "java" / "SublevelItems.java"
 VALUE_ROWS = (258, 283)      # at 480x360
 LAST_DIGIT_X, DIGIT_PITCH, DIGIT_W = 326.0, 25.0, 24
-VALUE_BLANK = 40.0           # Value slot blankness: empty <= ~33, digit >= ~43
+VALUE_BLANK = 0.38           # Value slot blankness relative to the ones digit's (always a digit): empty
+                             # slots measure 0.18-0.31, a thin leading 1 0.45+, on colour and grey captures
 
 
 def _digit_templates() -> dict[str, np.ndarray]:
@@ -197,10 +198,11 @@ def value_score(g480: np.ndarray, value: int, templates) -> float:
         s /= len(digits)
         # the number's length is clear from whether the next slot is empty: an empty slot scores
         # at most ~33 on blankness, a digit at least ~43 (measured on 60 hand-read panels)
-        nxt = _blankness(_slot(g480, len(digits), dx))
+        ref = max(_blankness(_slot(g480, 0, dx)), 1e-6)
+        nxt = _blankness(_slot(g480, len(digits), dx)) / ref
         if len(digits) < 3 and nxt > VALUE_BLANK:
             s -= 1.0                                    # a digit where the candidate has none
-        if len(digits) >= 2 and _blankness(_slot(g480, len(digits) - 1, dx)) < VALUE_BLANK:
+        if len(digits) >= 2 and _blankness(_slot(g480, len(digits) - 1, dx)) / ref < VALUE_BLANK:
             s -= 1.0                                    # the candidate's leading digit is not there
         best = max(best, s)
     return best
@@ -211,6 +213,7 @@ def value_score(g480: np.ndarray, value: int, templates) -> float:
 # ("bug pokos") came in since the previous panel. Same font as the Value; fitted on known totals.
 TOTAL_ROW, TOTAL_LAST_X, TOTAL_PITCH = 287, 325.0, 24.0
 TOTAL_BLANK = 55.0           # blankness below this: no digit in the slot (digits score 60+, empty box ~30)
+SLOT_JITTER = (-2, -1, 0, 1, 2)   # px each digit slot may shift on its own
 
 
 def _total_slot(g480: np.ndarray, k: int, dx: float = 0.0) -> np.ndarray:
@@ -281,12 +284,14 @@ def _total_slots(g480s: list[np.ndarray], templates) -> tuple[np.ndarray, np.nda
     """Per slot (right to left, 4 slots): mean digit scores (4 x 10) and mean blankness."""
     sc = np.zeros((4, 10))
     bl = np.zeros(4)
+    tmat = np.stack([templates[str(d)] for d in range(10)])
     for g in g480s:
         for k in range(4):
-            sl = _total_slot(g, k)
-            bl[k] += _blankness(sl)
-            v = _norm(sl)
-            sc[k] += [float(v @ templates[str(d)]) for d in range(10)]
+            # each digit at its best small shift: captures stretch the panel a little differently,
+            # and 2 px off is enough to read a 0 as a 7 (the run-wide alignment can't fix the pitch)
+            ss = [_total_slot(g, k, dx) for dx in SLOT_JITTER]
+            bl[k] += max(_blankness(s) for s in ss)
+            sc[k] += np.max([tmat @ _norm(s) for s in ss], axis=0)
     return sc / max(1, len(g480s)), bl / max(1, len(g480s))
 
 
@@ -544,6 +549,7 @@ def value_scores(g480s: list[np.ndarray], values: list[int], templates) -> np.nd
                 B[f, j, k] = _blankness(sl)
                 v = _norm(sl)
                 S[f, j, k] = [float(v @ templates[str(d)]) for d in range(10)]
+        B[f] /= np.maximum(B[f, :, :1], 1e-6)         # relative to the ones digit (contrast varies)
     out = np.zeros(len(values))
     for n, value in enumerate(values):
         digits = [int(c) for c in str(value)[::-1]][:3]

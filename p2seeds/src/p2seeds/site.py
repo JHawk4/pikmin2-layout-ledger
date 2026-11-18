@@ -222,13 +222,26 @@ def calibration(runs: list[dict], key: str = "judge", drop: set | None = None) -
         row["x"], row["y"] = float(a), float(b)
     any_net = any(row["net"] for row in rows)
 
+    # medians of the plays of each sublevel, so the tooltip can say "vs median" for everything
+    med = {}
+    for sub in {row["sub"] for row in rows}:
+        rs = [row for row in rows if row["sub"] == sub]
+        pk = [row["pokos"] for row in rs if row["pokos"] is not None]
+        med[sub] = (float(np.median([row["actual"] for row in rs])), float(np.median([row["cost"] for row in rs])),
+                    float(np.median(pk)) if pk else None)
+
     def tip(row):
-        lines = [f"run {row['y']:+.1f} s{' net' if row['net'] else ''} · judge {row['x']:+.1f} s",
+        m_took, m_cost, m_pk = med[row["sub"]]
+        jm = row["judge"] - row["median"] if row.get("median") is not None else None
+        lines = [f"run {row['y']:+.1f} s{' net' if row['net'] else ''} · judge {row['x']:+.1f} s  (after runner pace)",
                  f"{row['sub']} · {row['runner']} · {row['time']}",
                  f"layout seed {row['seed']}",
-                 f"judge {row['judge']:.1f} s, took {row['actual']:.1f} s"]
+                 (f"judge: layout {jm:+.1f} s vs the median layout" if jm is not None else "judge: no median"),
+                 f"runner: took {row['actual'] - m_took:+.1f} s vs the median run here"
+                 + (f", net {row['cost'] - m_cost:+.1f} s" if row["net"] else "")]
         if row["pokos"] is not None:
-            lines.append(f"{row['pokos']} pokos" + (f": {row['names']}" if row["names"] else ""))
+            vs = f" ({row['pokos'] - m_pk:+g} vs median)" if m_pk is not None else ""
+            lines.append(f"{row['pokos']} pokos{vs}" + (f": {row['names']}" if row["names"] else ""))
         return "\n".join(lines)
 
     pts = [(row["x"], row["y"], tip(row), row["link"], row["img"]) for row in rows]
@@ -605,7 +618,13 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> 
     import shutil
     root, out = Path(root), Path(out)
     if out.exists():
-        shutil.rmtree(out)
+        import os
+        import stat
+
+        def writable(func, path, _exc):          # git's pack files are read-only on Windows
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        shutil.rmtree(out, onexc=writable)
     out.mkdir(parents=True)
     shutil.copy2(root / "index.html", out / "index.html")
     (out / ".nojekyll").write_text("")          # serve files as they are (no Jekyll processing)

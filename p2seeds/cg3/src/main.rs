@@ -73,7 +73,13 @@ fn answer(data: &GameData, req: &Value) -> Result<Value, String> {
     // every creature on the layout and what it is worth: the most pokos creatures can give here
     let creature_pokos: i64 = teki.iter().map(|(n, c)| teki_pokos(n) * c).sum();
     let teki: Vec<Value> = teki.iter().map(|(n, c)| json!({ "name": n, "count": c, "pokos": teki_pokos(n) })).collect();
-    Ok(json!({ "score": judge.judge(&layout), "items": items, "teki": teki, "creature_pokos": creature_pokos }))
+    // the pod: where the captain lands and which way the camera faces (degrees)
+    let ship = layout.ship.map(|i| {
+        let sp = &layout.spawnpoints[i as usize];
+        json!({ "x": sp.pos.x(), "z": sp.pos.z(), "angle": sp.angle })
+    });
+    Ok(json!({ "score": judge.judge(&layout), "items": items, "teki": teki, "creature_pokos": creature_pokos,
+               "ship": ship }))
 }
 
 fn main() {

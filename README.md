@@ -59,6 +59,17 @@ cargo build --release --manifest-path p2seeds/cg3/Cargo.toml --target-dir data/b
 ```
 
 ```bash
+# detection page per run -> data/output/<run>/report.html: tracking pictures, the comedown and landing
+# views from the video, and the layout with both views outlined (drawn by CaveGen3's command line,
+# from $P2SEEDS_CAVEGEN3 or data/build/cavegen3/cavegen3.exe)
+.venv/Scripts/python -m p2seeds details data/output/01_JackDraz_mewq470m
+
+# after improving the detector: re-run a finished run's sublevels that are not high confidence,
+# keeping new high seeds that chain with a neighbour (then judge, treasures and details again)
+.venv/Scripts/python -m p2seeds redo data/output/01_JackDraz_mewq470m
+```
+
+```bash
 # landing page over every judged run -> data/output/index.html (and refreshes each run's judge.html)
 .venv/Scripts/python -m p2seeds site
 ```
