@@ -17,6 +17,9 @@ from .video import Video
 
 MIN_CAVE_SCORE = 0.38      # name-match score below this means "not an entry screen"
 MIN_CAVE_MARGIN = 0.12     # and the best cave must beat the second best by this much
+RESCUE_SCORE = 0.33        # second pass on blurry captures: a Pay Off Debt cave the run is still
+RESCUE_MARGIN = 0.06       # missing sublevels of may match this weakly (stray screens that score
+                           # this well match Dream Den or Sublevel Cave, not run caves)
 MIN_CAVE_SCORE_JA = 0.48   # short Japanese names match random text up to ~0.40; true ones score ~0.6
 FALL_LEAD = 110            # frames before a settled run starts that may contain the fall
 FALL_TAIL = 40             # and after (late bounces)
@@ -45,6 +48,8 @@ class EventResult:
     sublevel_source: str = ""
     lang: str = "en"
     num_chars: int = 0
+    best_cave: str | None = None   # for an unrecognized screen: its best (rejected) match and margin
+    best_margin: float = 0.0
 
 
 def entry_runs(frames: list[np.ndarray], min_len: int = 6) -> list[tuple[int, int]]:
@@ -131,10 +136,12 @@ def split_digits(crop: np.ndarray | None) -> list[np.ndarray]:
     return out
 
 
-def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None = None) -> list[EventResult]:
+def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None = None,
+                  only: str | None = None) -> list[EventResult]:
     """All sublevel entries inside one candidate window (usually one, sometimes two
     when consecutive entries are only seconds apart). Unrecognized windows yield a
-    single result with a note."""
+    single result with a note. With `only` (a cave id), only that cave is accepted, at the
+    weaker RESCUE thresholds: the second pass for blurry captures (see rescue_caves)."""
     start = max(0, event.first - 150)
     stop = min(video.frame_count, event.last + 30)
     frames = [feed.crop(g) for g in video.frames(start, stop)]
@@ -153,7 +160,12 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
         cal = calibrate(frames[k])
         margin = cal.score - (cal.runner_up[1] if cal.runner_up else 0.0) if cal else 0.0
         min_score = MIN_CAVE_SCORE_JA if cal is not None and cal.cave.lang == "ja" else MIN_CAVE_SCORE
-        if cal is None or cal.score < min_score or margin < MIN_CAVE_MARGIN:
+        min_margin = MIN_CAVE_MARGIN
+        if only is not None:
+            min_score, min_margin = RESCUE_SCORE, RESCUE_MARGIN
+            if cal is not None and cal.cave.cavegen != only:
+                cal = None
+        if cal is None or cal.score < min_score or margin < min_margin:
             if cal and (best_reject is None or cal.score > best_reject[0].score):
                 best_reject = (cal, margin)
             continue
@@ -166,7 +178,7 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
     if not entries:
         if best_reject:
             cal, margin = best_reject
-            return [EventResult(event, cave_score=cal.score,
+            return [EventResult(event, cave_score=cal.score, best_cave=cal.cave.cavegen, best_margin=margin,
                                 note=f"cave name not recognized (best {cal.cave.cavegen} {cal.score:.2f}, margin {margin:.2f})")]
         return [EventResult(event, note="no text found")]
     return [_analyze_entry(video, feed, event, frames, start, *e, search_kw=search_kw) for e in entries]
@@ -407,3 +419,20 @@ def _confidence(cands: list[Candidate]) -> str:
     if n_meas >= 7 and per < 6 and gap > 15:
         return "medium"
     return "low"
+
+
+POD_CAVES = ("EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK")
+
+
+def rescue_caves(rejected: list[EventResult], found: list[EventResult]) -> list[tuple[EventResult, str]]:
+    """Unrecognized screens worth a second look: the best match is a Pay Off Debt cave the run
+    has not found all sublevels of yet, at RESCUE_SCORE / RESCUE_MARGIN. On blurry captures every
+    cave name matches weakly and a whole cave can fall just under the normal threshold."""
+    from .caves import CAVES_EN
+    total = {c.cavegen: c.sublevels for c in CAVES_EN}
+    have: dict[str, int] = {}
+    for r in found:
+        have[r.cave_id] = have.get(r.cave_id, 0) + 1
+    return [(r, r.best_cave) for r in rejected
+            if r.best_cave in POD_CAVES and have.get(r.best_cave, 0) < total.get(r.best_cave, 0)
+            and r.cave_score >= RESCUE_SCORE and r.best_margin >= RESCUE_MARGIN]
