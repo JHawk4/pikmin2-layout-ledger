@@ -307,18 +307,25 @@ def total_score(sc: np.ndarray, bl: np.ndarray, total: int) -> float:
     return s
 
 
-_ALL = np.arange(10000)
+# The last treasure can take the total past the 10000 debt (e.g. 9895 + 100 = 10005). The fifth
+# digit's slot sits where the panel's "0x" label is, so it is not read: a total of 10000 or more
+# is scored on its last four digits with a small cost (OVER_10K), and the sequence decides
+# (totals never go down, so "0005" after 9895 can only be 10005).
+NT = 11000
+OVER_10K = 0.15
+_ALL = np.arange(NT)
 _DIG = np.stack([(_ALL // 10 ** k) % 10 for k in range(4)])          # digit k (right to left) of each total
 _LEN = np.where(_ALL >= 1000, 4, np.where(_ALL >= 100, 3, np.where(_ALL >= 10, 2, 1)))
 
 
 def _total_scores(sc: np.ndarray, bl: np.ndarray) -> np.ndarray:
-    """total_score for every total 0..9999 at once."""
-    s = np.zeros(10000)
+    """total_score for every total 0..NT-1 at once."""
+    s = np.zeros(NT)
     for k in range(4):
         used = _LEN > k
         s += np.where(used, sc[k][_DIG[k]], 0.0)
         s -= np.where(~used & (bl[k] > TOTAL_BLANK) & (k < 3), 0.3 * _LEN, 0.0)   # (mean below is over _LEN)
+    s[10000:] -= OVER_10K
     return s                      # summed: each digit is evidence (a 4-digit total outweighs a 3-digit value)
 
 
@@ -327,7 +334,7 @@ def read_totals(out_dir: Path, progress=None) -> dict:
 
     The Total after a panel is the previous Total + this panel's Value + whatever came from
     enemies since (never negative). All panels are decoded together (dynamic programming over
-    the total, 0..9999): each panel scores its Value among the treasures CaveGen placed on the
+    the total, 0..NT-1): each panel scores its Value among the treasures CaveGen placed on the
     sublevel and its Total digit by digit, and each unexplained poko costs BUG_PENALTY, so the
     whole sequence that fits the digits best wins. Adds to each treasures.json entry, per panel:
     "values", "totals" and "bug_before" (pokos since the previous panel beyond its treasure)."""
@@ -349,7 +356,7 @@ def read_totals(out_dir: Path, progress=None) -> dict:
         # the treasures CaveGen placed on the sublevel; on the surface (or without a seed) any value
         options = sorted({int(x[1]) for x in counts[key].get("items") or []}) or list(range(1, 1000))
         vs = value_scores(gs, options, templates) if gs else np.zeros(len(options))
-        ts = _total_scores(*_total_slots(gs, ttemplates)) if gs else np.zeros(10000)
+        ts = _total_scores(*_total_slots(gs, ttemplates)) if gs else np.zeros(NT)
         steps.append((options, vs, ts))
         if progress:
             progress(n + 1, len(panels), key, None)
@@ -358,7 +365,7 @@ def read_totals(out_dir: Path, progress=None) -> dict:
     # more than they are worth: a bug beyond the cap of the cave sublevels between the two
     # panels costs OVER_CAP as well (a misread Value or Total is then the likelier story).
     windows = {k: (v["window"], v.get("creature_cap")) for k, v in counts.items() if v.get("window")}
-    prev = np.full(10000, -np.inf)
+    prev = np.full(NT, -np.inf)
     prev[0] = 0.0
     back = []
     prev_end = 0
@@ -378,12 +385,12 @@ def read_totals(out_dir: Path, progress=None) -> dict:
         over = C - OVER_CAP > W
         start_score = np.where(over, C - OVER_CAP, W)
         start_idx = np.where(over, Cidx, Widx)
-        cur = np.full(10000, -np.inf)
-        choice = np.zeros(10000, int)
-        best_prev = np.zeros(10000, int)
+        cur = np.full(NT, -np.inf)
+        choice = np.zeros(NT, int)
+        best_prev = np.zeros(NT, int)
         for j, val in enumerate(options):
             x = _ALL - val                        # the total before this treasure and its creatures
-            xc = np.clip(x, 0, 9999)
+            xc = np.clip(x, 0, NT - 1)
             cand = np.where(x >= 0, start_score[xc] - BUG_PENALTY * xc, -np.inf) + vs[j] + ts
             better = cand > cur
             cur = np.where(better, cand, cur)
