@@ -11,7 +11,7 @@ from __future__ import annotations
 import html
 import re
 
-SITE = "P2 VOD Seeds"
+SITE = "Pikmin 2 Layout Ledger"
 
 LOGO = ('<svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true">'
         '<path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
@@ -75,7 +75,7 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
 FOOTER = ('<footer class="site-footer">Layouts, pictures, treasures and the judge from '
           '<a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from '
           '<a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. '
-          'Source: <a href="https://github.com/JHawk4/p2-vod-seeds">github.com/JHawk4/p2-vod-seeds</a>.</footer>')
+          'Source: <a href="https://github.com/JHawk4/pikmin2-layout-ledger">github.com/JHawk4/pikmin2-layout-ledger</a>.</footer>')
 
 # The suggestion box remembers which page it was opened from (the hidden "page" field).
 NAV_JS = """<script>
@@ -129,7 +129,7 @@ It goes privately to the site's maker (through a Google Form) and is not publish
 const form = document.getElementById('suggest'), status = document.getElementById('suggest-status');
 form.addEventListener('submit', async (e) => {{
   e.preventDefault();
-  document.getElementById('suggest-page').value = 'p2-vod-seeds/' + (new URLSearchParams(location.search).get('from') || '');
+  document.getElementById('suggest-page').value = 'pikmin2-layout-ledger/' + (new URLSearchParams(location.search).get('from') || '');
   const button = form.querySelector('button'); button.disabled = true; status.textContent = 'Sending…';
   try {{
     // Google Forms doesn't allow reading the reply, so a sent request counts as success.

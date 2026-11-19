@@ -1,4 +1,6 @@
-# p2-vod-seeds
+# Pikmin 2 Layout Ledger
+
+A ledger of layout luck, time saved and pokos for Pikmin 2 Pay Off Debt speedruns (formerly `p2-vod-seeds`).
 
 Recover the RNG seed, and so the exact CaveGen layout, of every story-mode
 sublevel in a Pikmin 2 speedrun video. Works offline on recorded VODs only.
@@ -93,7 +95,7 @@ violin per sublevel), and what the runner did against the median run, net of pok
 
 ## Published site
 
-The report site is at https://jhawk4.github.io/p2-vod-seeds/. To update it after `p2seeds site`:
+The report site is at https://jhawk4.github.io/pikmin2-layout-ledger/. To update it after `p2seeds site`:
 
 ```bash
 .venv/Scripts/python -m p2seeds publish

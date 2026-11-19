@@ -920,16 +920,16 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
 <tbody>{data_rows}</tbody></table></div></details>
 '''
     from . import theme
-    pages = [("index.html", "runs", "P2 VOD Seeds · layout luck in Pikmin 2 Pay Off Debt runs", index, ""),
-             ("layouts.html", "layouts", "P2 VOD Seeds · layouts by run", picker(picks, "layouts"), ""),
-             ("detection.html", "detection", "P2 VOD Seeds · seed detection by run", picker(picks, "detection"), ""),
-             ("timesave.html", "timesave", "P2 VOD Seeds · time saved by sublevel", timesave_page(runs, acts),
+    pages = [("index.html", "runs", "Pikmin 2 Layout Ledger · layout luck in Pikmin 2 Pay Off Debt runs", index, ""),
+             ("layouts.html", "layouts", "Pikmin 2 Layout Ledger · layouts by run", picker(picks, "layouts"), ""),
+             ("detection.html", "detection", "Pikmin 2 Layout Ledger · seed detection by run", picker(picks, "detection"), ""),
+             ("timesave.html", "timesave", "Pikmin 2 Layout Ledger · time saved by sublevel", timesave_page(runs, acts),
               f"<script>{TIMESAVE_JS}</script>"),
-             ("accuracy.html", "accuracy", "P2 VOD Seeds · does the judge predict real times?", accuracy,
+             ("accuracy.html", "accuracy", "Pikmin 2 Layout Ledger · does the judge predict real times?", accuracy,
               f"<script>{charts.BRUSH_JS}</script><script>{charts.SCATTER_JS}</script>"),
-             ("pokos.html", "pokos", "P2 VOD Seeds · pokos by sublevel", pokos_html.replace('<h2 id="pokos">', '<h1 id="pokos">', 1)
+             ("pokos.html", "pokos", "Pikmin 2 Layout Ledger · pokos by sublevel", pokos_html.replace('<h2 id="pokos">', '<h1 id="pokos">', 1)
               .replace("Pokos by sublevel</h2>", "Pokos by sublevel</h1>", 1), ""),
-             ("seeds.html", "seeds", "P2 VOD Seeds · seed order check", seeds, "")]
+             ("seeds.html", "seeds", "Pikmin 2 Layout Ledger · seed order check", seeds, "")]
     for name, active, title, body, scripts in pages:
         page = head.replace("@TITLE@", html.escape(title)) + body + tail.replace("@SCRIPTS@", scripts)
         (root / name).write_text(theme.apply(page, prefix="", active=active), encoding="utf-8")
