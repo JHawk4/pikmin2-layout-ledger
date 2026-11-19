@@ -60,10 +60,11 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
     pages `run` names it and its two pages appear in the navigation."""
     links = [("runs", f"{prefix}index.html", "All runs")]
     if run:
-        links += [("judge", "judge.html", "Layouts &amp; luck"), ("detection", "report.html", "Seed detection")]
+        links += [("judge", "judge.html", "Layouts"), ("detection", "report.html", "Seed detection")]
     else:
-        links += [("accuracy", "accuracy.html", "Judge accuracy"), ("pokos", "pokos.html", "Pokos"),
-                  ("seeds", "seeds.html", "Seed check")]
+        links += [("layouts", "layouts.html", "Layouts"), ("detection", "detection.html", "Detection"),
+                  ("timesave", "timesave.html", "Time saved"), ("pokos", "pokos.html", "Pokos"),
+                  ("accuracy", "accuracy.html", "Judge accuracy"), ("seeds", "seeds.html", "Seed check")]
     links.append(("suggest", f"{prefix}suggest.html", "Suggestion box"))
     nav = "".join(f'<a href="{href}"{" aria-current=page" if key == active else ""}'
                   f'{" class=nav-suggest" if key == "suggest" else ""}>{label}</a>' for key, href, label in links)
@@ -71,7 +72,8 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
             f'<nav class="site-nav">{nav}</nav></header>')
 
 
-FOOTER = ('<footer class="site-footer">Layouts by <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a> and '
+FOOTER = ('<footer class="site-footer">Layouts, treasures and the judge from '
+          '<a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; layout pictures drawn by '
           '<a href="https://github.com/JHawk4/CaveGen">CaveGen</a>; runs from '
           '<a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. '
           'Source: <a href="https://github.com/JHawk4/p2-vod-seeds">github.com/JHawk4/p2-vod-seeds</a>.</footer>')

@@ -4,7 +4,10 @@
   data/output/accuracy.html            does the judge predict real times (calibration)
   data/output/pokos.html               pokos per sublevel against the median run
   data/output/seeds.html               seed-order check
-  data/output/<run>/judge.html         layouts and luck for one run
+  data/output/layouts.html             pick a run's layouts page
+  data/output/detection.html           pick a run's seed detection page
+  data/output/timesave.html            every run's time per sublevel, raw or beyond the layout
+  data/output/<run>/judge.html         layouts and luck for one run (run_page; judge_report for other categories)
 
 Seed order: each detected letter seed is located in the RNG sequence relative to
 the run's first one (how many RNG steps after it). Over a run that number must
@@ -26,7 +29,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import alt_layouts, cavegen, charts, judge2, judge_report, luck, rng, treasures
+from . import cavegen, charts, judge2, judge_report, luck, rng, run_page, treasures
 
 STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "SC", "CoC", "HoH", "DD"]
 
@@ -413,6 +416,120 @@ are the sort's values; drag across a chart to see the slope of just that stretch
     return ex_table, section
 
 
+ADD_RUN_NOTE = ('<p class="muted">Missing a run, or want one added? Share its video or speedrun.com link in the '
+                '<a href="suggest.html">suggestion box</a>.</p>')
+
+
+def _pct(p: dict) -> str:
+    return "" if p["pct"] is None else f'{p["pct"]:.0f}%'
+
+
+def picker(picks: list[dict], what: str) -> str:
+    """A landing page that lists the runs, each linking to its layouts or detection page."""
+    layouts = what == "layouts"
+    href = "judge.html" if layouts else "report.html"
+    trs = []
+    for p in picks:
+        rank = "former WR" if p["wr"] else p["rank"]
+        extra = ((f'<td class="num">{judge_report._num(p["luck"])}</td>'
+                  f'<td class="num">{_pct(p)}</td>'
+                  f'<td class="num">{judge_report._num(p["runner"])}</td>') if layouts else
+                 f'<td class="num{" weak" if p["high"] < 0.9 * p["n"] else ""}">{p["high"]} of {p["n"]}</td>')
+        trs.append(f'<tr><td class="num">{html.escape(rank)}</td>'
+                   f'<td class="sticky"><a href="{html.escape(p["slug"])}/{href}"><b>{html.escape(p["player"])}</b></a></td>'
+                   f'<td>{_fmt_time(p["time"])}</td>{extra}<td>{html.escape(p["date"])}</td></tr>')
+    if layouts:
+        title, intro = "Layouts", ("Pick a run to see every layout it got: how lucky each one was against 1000 random layouts "
+                                   "of the same sublevel, what the runner did with it, and the pictures.")
+        cols = ('<th class="num">Layout luck</th><th class="num">Luck percentile</th>'
+                '<th class="num">Runner vs field</th>')
+    else:
+        title, intro = "Seed detection", ("Pick a run to see how each sublevel's seed was read from the falling title "
+                                          "letters, how sure the reading is, and the pictures behind it.")
+        cols = '<th class="num">Seeds read</th>'
+    return f'''
+<h1>{title}</h1>
+<p class="intro">{intro}</p>
+<div class="tablewrap"><table>
+<thead><tr><th class="num">Rank</th><th class="sticky">Runner</th><th>Time</th>{cols}<th>Date</th></tr></thead>
+<tbody>{"".join(trs)}</tbody></table></div>
+{ADD_RUN_NOTE}
+'''
+
+
+def timesave_page(runs: list[dict], acts: list[dict]) -> str:
+    """Every Pay Off Debt run against the median run, per sublevel: raw, or beyond what the layout gave."""
+    order = {c: k for k, c in enumerate(STORY_ORDER)}
+    per_run = {}
+    for i, r in enumerate(runs):
+        if r["kind"] != "pod" or not acts[i]:
+            continue
+        entries = {str(e["frame"]): e for e in r["entries"]}
+        vals = {}
+        for frame, a in acts[i].items():
+            e = entries.get(frame, {})
+            vals[f'{e.get("cave")} {e.get("sublevel")}'] = (a, e)
+        per_run[i] = vals
+    if not per_run:
+        return ""
+    cats = sorted({c for v in per_run.values() for c in v}, key=lambda c: (order.get(c.split()[0], 99), int(c.split()[1])))
+    # keep the usual route: sublevels most runs played
+    cats = [c for c in cats if sum(c in v for v in per_run.values()) >= len(per_run) / 2]
+    allv = [abs(a[k]) for v in per_run.values() for c in cats if c in v for a in (v[c][0],) for k in ("raw", "net")]
+    big = float(np.percentile(allv, 95)) if allv else 1.0
+
+    def cell(a, e, k, sub, runner):
+        val = a[k]
+        tip = (f"{sub} · {runner} · {e.get('time', '')}\n"
+               f"took {a['took']:.1f} s (median run {a['median_took']:.1f} s)"
+               + (f"\n{a['pokos']} pokos (median run {a['median_pokos']:g})" if a.get("pokos") is not None and a.get("median_pokos") is not None else "")
+               + f"\nvs the median run: {a['raw']:+.1f} s net of pokos"
+               + (f"\nlayout vs the median run's: {a['expected']:+.1f} s by the judge" if a.get("expected") else "")
+               + f"\nbeyond the layout: {a['net']:+.1f} s")
+        mark = "--good-mark" if val < 0 else "--bad-mark"
+        pct = 0 if abs(val) < 0.5 else 15 + 55 * min(1.0, abs(val) / (big or 1))
+        text = f"{val:+.0f}"
+        if e.get("link"):
+            text = f"<a href='{html.escape(e['link'])}' target='_blank' rel='noopener'>{text}</a>"
+        return (f"<td class='num heat' tabindex='0' style='background:color-mix(in srgb, var({mark}) {pct:.0f}%, transparent)' "
+                f"data-tip='{html.escape(tip)}'>{text}</td>")
+
+    tables = []
+    for k, label in (("net", "beyond the layout"), ("raw", "vs the median run")):
+        head = "".join(f"<th class='num'>{html.escape(c)}</th>" for c in cats)
+        trs = []
+        for i, v in sorted(per_run.items(), key=lambda kv: sum(a[k] for a, _ in kv[1].values() if a)):
+            cells = [cell(*v[c], k, c, runs[i]["runner"]) if c in v else "<td class='num muted' title='not timed'>–</td>"
+                     for c in cats]
+            tot = sum(v[c][0][k] for c in cats if c in v)
+            tone = "good" if tot < 0 else "bad" if tot > 0 else "mid"
+            trs.append(f"<tr><td><a href='{html.escape(runs[i]['slug'])}/judge.html'>{html.escape(runs[i]['runner'])}</a></td>"
+                       f"<td class='num {tone}-text'><b>{tot:+.0f}</b></td>{''.join(cells)}</tr>")
+        tables.append(f"<div class='tablewrap ts' data-kind='{k}'{'' if k == 'net' else ' hidden'}><table class='heatgrid'>"
+                      f"<thead><tr><th>Run</th><th class='num'>Total</th>{head}</tr></thead>"
+                      f"<tbody>{''.join(trs)}</tbody></table></div>")
+    return f'''
+<h1>Time saved by sublevel</h1>
+<p>Seconds each run gained or lost on each sublevel against the median run on this site, counting 2 pokos as 1 second.
+Negative (green) is faster. Hover a cell for the details; click it to open the video there.</p>
+<fieldset class="ts-pick"><legend class="muted">Show</legend>
+<label><input type="radio" name="ts" value="net" checked> <b>The runner beyond the layout</b>: the judge's difference between
+this layout and the median run's is taken out, so it shows execution, not luck</label>
+<label><input type="radio" name="ts" value="raw"> <b>Against the median run</b>: the plain difference, layout luck included</label>
+</fieldset>
+{"".join(tables)}
+<p class="muted small">Runs are sorted by their total, fastest first. Only the usual route's sublevels are shown; – = not
+timed (an uncertain seed, or the last sublevel's results screen was not found).</p>
+{ADD_RUN_NOTE}
+'''
+
+
+TIMESAVE_JS = """
+document.querySelectorAll('input[name=ts]').forEach(i => i.addEventListener('change', () => {
+  document.querySelectorAll('.ts').forEach(t => { t.hidden = t.dataset.kind !== i.value; }); }));
+"""
+
+
 ODD_POKOS = 150      # a difference from the median run this large is flagged in the pokos grid
 
 
@@ -527,9 +644,12 @@ def build(root: str | Path = "data/output") -> Path:
     key0 = "judge2" if any(x.get("judge2_score") is not None for r in runs for x in r["entries"]) else "judge"
     acts = actuals(runs, slope=calibration(runs, key0).get("slope", 1.0))
     for r, a in zip(runs, acts):
-        judge_report.write_page(r["dir"], home="../index.html", actual=a)
         if r["kind"] == "pod":
-            alt_layouts.write(r["dir"], actual=a)
+            run_page.write(r["dir"], actual=a)
+        else:
+            judge_report.write_page(r["dir"], home="../index.html", actual=a)
+        for old in ("judge_a.html", "judge_b.html", "judge_c.html"):      # the retired drafts
+            (r["dir"] / old).unlink(missing_ok=True)
 
     # seed order chart
     series, table_rows = [], []
@@ -654,7 +774,7 @@ def build(root: str | Path = "data/output") -> Path:
             subtitle=f"grey: random runs, one random layout of each of the {len(every)} sublevels with layout luck · "
                      f"dots: the runs on this site (hollow = some sublevels not read, or another route)")
 
-    trs = []
+    trs, picks = [], []
     for r, (judged, judge2_total, pct) in zip(runs, lucks):
         e = [x for x in r["entries"] if x.get("cave")]
         act = acts[runs.index(r)]
@@ -666,6 +786,9 @@ def build(root: str | Path = "data/output") -> Path:
 
         def sv(x):
             return "" if x is None else f"{x:.3f}"
+        picks.append({"rank": rank, "wr": wr, "player": r["player"], "slug": r["slug"], "time": r["run"].get("time_seconds"),
+                      "date": r["run"].get("date", ""), "luck": judge2_total if judged else None, "pct": pct,
+                      "runner": run_total, "high": high, "n": len(e)})
         trs.append(f'<tr><td class="num" data-v="{html.escape(rank or "99")}">{html.escape(rank)}</td>'
                    f'<td class="sticky"><a href="{html.escape(r["slug"])}/judge.html">{html.escape(r["player"])}</a>'
                    f'{" <span class=badge>former WR</span>" if wr else ""}</td>'
@@ -716,6 +839,9 @@ code {{ font:13px ui-monospace,Consolas,monospace; }}
 th[data-sort] {{ cursor:pointer; user-select:none; }} th[data-sort]:hover {{ color:var(--fg); }}
 th[aria-sort="ascending"]::after {{ content:" ▲"; }} th[aria-sort="descending"]::after {{ content:" ▼"; }}
 td.weak {{ color:var(--bad); }}
+.ts-pick {{ border:1px solid var(--line); border-radius:10px; background:var(--card); padding:8px 12px; margin:0 0 12px;
+  display:flex; flex-direction:column; gap:4px; max-width:820px; }}
+.ts-pick label {{ cursor:pointer; }} .small {{ font-size:13px; }}
 @media (max-width:640px) {{ td.sticky, th.sticky {{ position:sticky; left:0; background:var(--card); z-index:1; }} }}
 {charts.CSS}
 </style></head><body><main>'''
@@ -746,6 +872,7 @@ Click a column to sort; open a runner for their layouts.</li>
 <th data-sort>Date</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
 {_missing_note()}
+{ADD_RUN_NOTE}
 <script>
 (() => {{
   const t = document.getElementById('runs'), body = t.tBodies[0];
@@ -794,6 +921,10 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
 '''
     from . import theme
     pages = [("index.html", "runs", "P2 VOD Seeds · layout luck in Pikmin 2 Pay Off Debt runs", index, ""),
+             ("layouts.html", "layouts", "P2 VOD Seeds · layouts by run", picker(picks, "layouts"), ""),
+             ("detection.html", "detection", "P2 VOD Seeds · seed detection by run", picker(picks, "detection"), ""),
+             ("timesave.html", "timesave", "P2 VOD Seeds · time saved by sublevel", timesave_page(runs, acts),
+              f"<script>{TIMESAVE_JS}</script>"),
              ("accuracy.html", "accuracy", "P2 VOD Seeds · does the judge predict real times?", accuracy,
               f"<script>{charts.BRUSH_JS}</script><script>{charts.SCATTER_JS}</script>"),
              ("pokos.html", "pokos", "P2 VOD Seeds · pokos by sublevel", pokos_html.replace('<h2 id="pokos">', '<h1 id="pokos">', 1)
@@ -821,14 +952,15 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> 
             func(path)
         shutil.rmtree(out, onexc=writable)
     out.mkdir(parents=True)
-    for name in ("index.html", "accuracy.html", "pokos.html", "seeds.html", "suggest.html"):
+    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "accuracy.html", "pokos.html",
+                 "seeds.html", "suggest.html"):
         if (root / name).exists():
             shutil.copy2(root / name, out / name)
     (out / ".nojekyll").write_text("")          # serve files as they are (no Jekyll processing)
     for run in sorted(p for p in root.iterdir() if (p / "judge.html").exists()):
         dest = out / run.name
         dest.mkdir()
-        for name in ("judge.html", "report.html", "judge_a.html", "judge_b.html", "judge_c.html"):
+        for name in ("judge.html", "report.html"):
             if (run / name).exists():
                 shutil.copy2(run / name, dest / name)
         if (run / "img").exists():

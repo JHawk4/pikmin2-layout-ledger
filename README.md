@@ -70,9 +70,10 @@ cargo build --release --manifest-path p2seeds/cg3/Cargo.toml --target-dir data/b
 ```
 
 ```bash
-# the site over every judged run -> data/output/index.html (runs and their layout luck), accuracy.html
-# (does the judge predict real times), pokos.html, seeds.html (RNG-order check); also refreshes each
-# run's judge.html and the draft layouts judge_a/b/c.html
+# the site over every judged run -> data/output/index.html (runs and their layout luck), layouts.html and
+# detection.html (pick a run), timesave.html (every run's time per sublevel, raw or beyond the layout),
+# pokos.html, accuracy.html (does the judge predict real times), seeds.html (RNG-order check); also
+# refreshes each run's judge.html (run_page.py) and report.html
 .venv/Scripts/python -m p2seeds site
 ```
 
@@ -82,7 +83,7 @@ random layouts; a run's luck percentile compares its total with 20,000 simulated
 random layout of the same sublevels (`luck.py`).
 
 `judge.html` shows every layout render, its luck, how random layouts of that sublevel are spread (a
-violin per sublevel), and what the runner actually did against the median run, net of pokos.
+violin per sublevel), and what the runner did against the median run, net of pokos and of the layout: PBs drew lucky layouts more often than chance, so the judge's difference between each layout and the median run's is taken out.
 
 ## Published site
 

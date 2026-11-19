@@ -248,9 +248,7 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
 </section>''')
 
     title = f"{runner}{f' {run_time}' if run_time else ''} · layouts & luck"
-    from .alt_layouts import _switcher
-    switch = ('<style>.switcher { font-size:13px; background:var(--card); border:1px dashed var(--line); border-radius:8px;'
-              ' padding:6px 10px; margin:0 0 14px; display:inline-block; }</style>' + _switcher("judge.html")) if kind == "pod" else ""
+    switch = ""
     jump = "".join(f'<a href="#cave-{html.escape(c)}">{html.escape(c)}</a>' for c in dict.fromkeys(r["cave"] for r in rows))
     page = f'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
