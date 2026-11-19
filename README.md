@@ -14,7 +14,7 @@ layout seed follows from that (see `PLAN.md` for the full design).
 - `srcom_videos/`: reusable, game-agnostic library: speedrun.com leaderboards and
   small video downloads (≤480p, ≤30 fps, no audio).
 - `p2seeds/`: the Pikmin 2 pipeline (feed detection, entry screens, letter tracking,
-  seed search, sublevel labels, CaveGen rendering, HTML report).
+  seed search, sublevel labels, layout rendering, HTML report).
 - `vendor/CaveGen/`: fresh clone of https://github.com/JHaack4/CaveGen (not committed).
 - `data/`: videos, caches and outputs (not committed).
 
@@ -26,15 +26,21 @@ py -3.13 -m venv .venv
 git clone https://github.com/JHaack4/CaveGen.git vendor/CaveGen
 ```
 
-Java (JDK 8+) is needed to render layouts and to regenerate the test reference data.
+Java (JDK 8+) is needed to regenerate the test reference data, and as the fallback below.
 Node is used by yt-dlp to download from YouTube.
 
 Judge scores and treasure lists come from [CaveGen3](https://github.com/JHawk4/CaveGen3) when it is
 checked out next to this project (`../cavegen3`) and the bridge is built (Rust); otherwise from Java CaveGen.
 Both give identical scores; CaveGen3 is about 100x faster.
 
+Layout pictures and the camera views are drawn by CaveGen3's command line (the same map as its web
+page) when `data/build/cavegen3/cavegen3.exe` exists (or `P2SEEDS_CAVEGEN3` points at it); Japanese-region
+runs and a missing program fall back to Java CaveGen. `p2seeds render --redraw OUT_DIR` draws a run's
+layouts again.
+
 ```bash
 cargo build --release --manifest-path p2seeds/cg3/Cargo.toml --target-dir data/build/cg3
+cargo build --release --manifest-path ../cavegen3/Cargo.toml -p cavegen3-cli   # then copy target/release/cavegen3.exe to data/build/cavegen3/
 ```
 
 ## Use

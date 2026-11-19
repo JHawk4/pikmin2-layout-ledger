@@ -72,9 +72,8 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
             f'<nav class="site-nav">{nav}</nav></header>')
 
 
-FOOTER = ('<footer class="site-footer">Layouts, treasures and the judge from '
-          '<a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; layout pictures drawn by '
-          '<a href="https://github.com/JHawk4/CaveGen">CaveGen</a>; runs from '
+FOOTER = ('<footer class="site-footer">Layouts, pictures, treasures and the judge from '
+          '<a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from '
           '<a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. '
           'Source: <a href="https://github.com/JHawk4/p2-vod-seeds">github.com/JHawk4/p2-vod-seeds</a>.</footer>')
 
