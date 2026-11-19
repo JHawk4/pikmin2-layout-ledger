@@ -196,7 +196,7 @@ def timesave_chart(points: list[dict], title: str) -> str:
             ax, ay = cx + 4, y(p["actual"])
             out.append(f'<path d="M{ax:.1f},{ay - 5:.1f} L{ax + 5:.1f},{ay:.1f} L{ax:.1f},{ay + 5:.1f} L{ax - 5:.1f},{ay:.1f} Z" '
                        f'fill="var(--surface-1)" stroke="{color(p["actual"])}" stroke-width="2"/>')
-            lines.append(f'run: {p["actual"]:+.1f} s net vs the median run')
+            lines.append(f'runner: {p["actual"]:+.1f} s vs the median run, same layout luck')
         if p.get("extra"):
             lines.append(p["extra"])
         out.append(f'<a href="#{_esc(p["anchor"])}"><rect class="hit" tabindex="0" x="{cx - col / 2:.1f}" y="{T}" '
@@ -205,7 +205,7 @@ def timesave_chart(points: list[dict], title: str) -> str:
     legend = ('<div class="legend"><span><i class="dotkey" style="background:var(--good-mark)"></i>'
               '<i class="dotkey" style="background:var(--bad-mark);margin-left:-4px"></i>this run\'s layout, by the judge</span>'
               '<span><i class="dotkey" style="background:transparent;border:2px solid var(--ink-2);border-radius:2px;'
-              'transform:rotate(45deg);width:7px;height:7px"></i>runner\'s actual result, net of pokos</span>'
+              'transform:rotate(45deg);width:7px;height:7px"></i>runner, net of pokos and layout</span>'
               + ('<span><i style="background:var(--range);height:8px;width:10px;border-radius:5px"></i>how 1000 random layouts '
                  'score (wider = more common)</span>' if any(p.get("dist") is not None for p in points) else
                  '<span><i style="background:var(--range);height:6px"></i>5th–95th percentile of random layouts</span>')

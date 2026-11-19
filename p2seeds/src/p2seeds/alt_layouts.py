@@ -244,7 +244,7 @@ def variant_a(info, rows, out_dir):
     body = f'''{heads}
 <p class="muted small">One row per sublevel. <b>Layout</b>: seconds the layout should save against the median random layout
 (negative = faster). The grey shape is how 1000 random layouts score, the tick is this one. <b>Beats</b>: share of random
-layouts it beats. <b>Runner</b>: what the runner actually did against the median run, net of pokos (2 pokos = 1 s).
+layouts it beats. <b>Runner</b>: what the runner did against the median run, net of pokos (2 pokos = 1 s) and of the layout.
 Click a column to sort, a picture to enlarge it.</p>
 <div class="tablewrap"><table id="subs"><thead><tr><th data-sort>Sublevel</th><th></th><th class="num" data-sort>Layout</th>
 <th>vs random layouts <span class="muted">({lo:+.0f} to {hi:+.0f} s)</span></th><th class="num" data-sort>Beats</th>
@@ -348,7 +348,7 @@ def variant_c(info, rows, out_dir):
                 f'{html.escape(CAVE_NAMES.get(r["cave"], r["cave"]))}</span></h3>'
                 f'<div class="big">{_num(r["delta"])}</div><div class="muted small">{_beats(r["pct"])}</div>'
                 f'{mini_violin(r["dist"], r["delta"], lo, hi, w=170)}'
-                + (f'<p class="small">Runner: {_num(r["net"])} net vs the median run</p>' if r["net"] is not None else "")
+                + (f'<p class="small">Runner: {_num(r["net"])} vs the median run, same layout luck</p>' if r["net"] is not None else "")
                 + (f'<p class="muted small">{html.escape(r["pokos_text"])}</p>' if r["pokos_text"] else "")
                 + f'<p class="small"><a href="{html.escape(r["cg3"])}" target="_blank" rel="noopener">CaveGen3</a>'
                 + (f' · <a href="{html.escape(r["link"])}" target="_blank" rel="noopener">video {html.escape(r["time"])}</a>' if r["link"] else "")

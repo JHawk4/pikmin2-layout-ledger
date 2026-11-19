@@ -139,11 +139,14 @@ def _actual_html(a: dict | None, last: bool = False) -> str:
         why = ("last floor of the cave, and its results screen was not found in the video" if last
                else "no other high-confidence run of this sublevel to compare with")
         return f'<div class="verdict mid"><span class="lbl">Runner</span><span class="muted small">Not timed: {why}.</span></div>'
-    rows = f'<dt>Time</dt><dd>{a["took"]:.1f} s <span class="muted">(median {a["median_took"]:.1f} s)</span></dd>'
+    rows = f'<dt>Time</dt><dd>{a["took"]:.1f} s <span class="muted">(median run {a["median_took"]:.1f} s)</span></dd>'
     if a.get("pokos") is not None:
-        rows += f'<dt>Pokos</dt><dd>{a["pokos"]} <span class="muted">(median {a["median_pokos"]:g})</span></dd>'
+        rows += f'<dt>Pokos</dt><dd>{a["pokos"]} <span class="muted">(median run {a["median_pokos"]:g})</span></dd>'
+    if a.get("expected"):
+        rows += (f'<dt>Layout</dt><dd>{a["expected"]:+.1f} s <span class="muted">(vs the median run\'s layout; '
+                 f'{a["raw"]:+.1f} s net before allowing for it)</span></dd>')
     return (f'<div class="verdict {_tone(a["net"])}"><span class="lbl">Runner</span><span class="big">{a["net"]:+.1f} s</span>'
-            f'<span>net vs median run</span></div>'
+            f'<span>vs median run, same layout luck</span></div>'
             f'<dl>{rows}</dl>')
 
 
@@ -312,14 +315,15 @@ dialog img {{ max-width:96vw; max-height:92vh; display:block; border-radius:6px;
 {f' · <a href="{html.escape(run["weblink"])}" target="_blank" rel="noopener">speedrun.com</a>' if run.get("weblink") else ""}.
 Every sublevel's layout was rebuilt from the seed read off the video and timed by a layout judge (CaveGen's judge,
 re-tuned on these runs' real times), against the median of 1000 random layouts of the same sublevel: that is the
-<b>layout luck</b>. <b>Runner</b> is what this run actually did against the median run, counting 2 pokos as 1 second.
+<b>layout luck</b>. <b>Runner</b> is what this run did against the median run, counting 2 pokos as 1 second, after taking out
+what the layout alone should have changed.
 Negative is faster, as on splits.</p>
 
 {f'''<label class="toggle"><input type="checkbox" id="show-low"> Show uncertain seeds ({n_low} sublevel{"s" if n_low != 1 else ""};
   never counted in the totals or the chart)</label>''' if n_low else ""}
 <div class="stats">
   <div class="stat hero"><b>{_num(total_luck)}</b><span>Layout luck over {len(judged)} sublevels{f": {luck.describe(pct)}" if pct is not None else ""}</span></div>
-  {f'<div class="stat hero"><b>{_num(total_actual)}</b><span>Runner vs field over {len(measured)} sublevels, net of pokos</span></div>' if measured else ""}
+  {f'<div class="stat hero"><b>{_num(total_actual)}</b><span>Runner vs field over {len(measured)} sublevels, net of pokos and layouts</span></div>' if measured else ""}
   {f'<div class="stat"><b>{html.escape(label(best))}</b><span>luckiest: {_beats(beats[best["frame"]])}</span></div>' if best else ""}
   {f'<div class="stat"><b>{html.escape(label(worst))}</b><span>unluckiest: {_beats(beats[worst["frame"]])}</span></div>' if worst else ""}
   <div class="stat"><b>{len(rows) - n_low} of {len(rows)}</b><span>seeds read with confidence{f" ({n_fixed} fixed floors)" if n_fixed else ""}{f"; {n_low} uncertain" if n_low else ""}</span></div>
@@ -339,7 +343,10 @@ so that across these runs one predicted second is worth about one real second; i
 measured time. The run's luck percentile compares its total with {luck.SIMS:,} simulated runs that each drew one random
 layout of every sublevel counted here. As on splits, negative means faster
 than the median: green is good, red is bad. "Runner" is what the runner actually did on the sublevel, measured from one
-entry screen to the next, against the median of the runs on this site, counting two pokos as one second. Only seeds read at high confidence count anywhere on this page; lower-confidence reads (dashed cards) are
+entry screen to the next, against the median of the runs on this site, counting two pokos as one second. These
+runs are personal bests, which drew lucky layouts more often than chance, so the median run usually had a good layout
+(on SH 6 about 30 s better than the median layout); the judge's difference between this layout and the median run's is
+taken out, so only the runner's own part is left. Only seeds read at high confidence count anywhere on this page; lower-confidence reads (dashed cards) are
 hidden unless you ask for them, and are never added to the totals.</p>
 </main>
 <dialog id="zoom"><img alt=""></dialog>

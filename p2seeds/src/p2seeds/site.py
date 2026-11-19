@@ -117,14 +117,20 @@ def timed(entries: list[dict], tre: dict) -> list[tuple[dict, int]]:
     return out
 
 
-def actuals(runs: list[dict]) -> list[dict]:
-    """Per run: entry frame -> what the runner did on that sublevel against the median run.
+def actuals(runs: list[dict], slope: float = 1.0) -> list[dict]:
+    """Per run: entry frame -> what the runner did on that sublevel, allowing for the layout.
 
     took: seconds from this entry screen to the next one (same cave), or to the cave's results
-    screen for its last sublevel (see timed); pokos from the treasure
-    panels. net = (took - median took) - (pokos - median pokos) / 2 for Pay Off Debt, plain
-    time otherwise. Negative = faster than the median run."""
-    plays: dict[str, list[tuple[int, str, float, int | None]]] = {}
+    screen for its last sublevel (see timed); pokos from the treasure panels.
+    raw = (took - median took) - (pokos - median pokos) / 2 for Pay Off Debt, plain time
+    otherwise: against the median run on this site.
+
+    The runs here are personal bests, which drew lucky layouts more often than chance, so the
+    median run had a better than median layout (on SH 6 about 30 s better). raw would count
+    that layout as the runner's doing. expected = slope * (this layout's luck - the median run's
+    layout luck) is what the layout alone should change against the median run, and
+    net = raw - expected is the runner's own part. Negative = faster."""
+    plays: dict[str, list[tuple[int, str, float, int | None, float | None]]] = {}
     for i, r in enumerate(runs):
         tre = treasures.load(r["dir"])
         e = r["entries"]
@@ -132,8 +138,9 @@ def actuals(runs: list[dict]) -> list[dict]:
             if r["kind"] == "pod" and not judge_report.trusted(a):
                 continue      # pokos are read against the seed's treasures: no trusted seed, no net time
             t = tre.get(str(a["frame"]))
+            d = luck.delta(a) if luck.judged(a) and judge_report.trusted(a) else None
             plays.setdefault(f'{a["cave"]} {a["sublevel"]}', []).append(
-                (i, str(a["frame"]), (end - a["frame"]) / r["fps"], treasures.reliable_pokos(t)))
+                (i, str(a["frame"]), (end - a["frame"]) / r["fps"], treasures.reliable_pokos(t), d))
     out: list[dict] = [{} for _ in runs]
     for sub, ps in plays.items():
         if len(ps) < 2:
@@ -141,12 +148,16 @@ def actuals(runs: list[dict]) -> list[dict]:
         med_t = float(np.median([p[2] for p in ps]))
         pk = [p[3] for p in ps if p[3] is not None]
         med_p = median_pokos(pk)
-        for i, frame, took, pokos in ps:
-            net = took - med_t
+        ds = [p[4] for p in ps if p[4] is not None]
+        med_d = float(np.median(ds)) if ds else None
+        for i, frame, took, pokos, d in ps:
+            raw = took - med_t
             if runs[i]["kind"] == "pod" and pokos is not None and med_p is not None:
-                net -= (pokos - med_p) / POKOS_PER_SECOND
-            out[i][frame] = {"net": net, "took": took, "median_took": med_t, "pokos": pokos,
-                             "median_pokos": med_p, "n": len(ps)}
+                raw -= (pokos - med_p) / POKOS_PER_SECOND
+            expected = slope * (d - med_d) if d is not None and med_d is not None else 0.0
+            out[i][frame] = {"net": raw - expected, "raw": raw, "expected": expected, "took": took,
+                             "median_took": med_t, "pokos": pokos, "median_pokos": med_p,
+                             "median_luck": med_d, "n": len(ps)}
     return out
 
 
@@ -513,7 +524,8 @@ def build(root: str | Path = "data/output") -> Path:
             if (d / "judge.json").exists():
                 judge2.add_to_run(d)          # only fills what is missing
     runs = _load(root)
-    acts = actuals(runs)
+    key0 = "judge2" if any(x.get("judge2_score") is not None for r in runs for x in r["entries"]) else "judge"
+    acts = actuals(runs, slope=calibration(runs, key0).get("slope", 1.0))
     for r, a in zip(runs, acts):
         judge_report.write_page(r["dir"], home="../index.html", actual=a)
         if r["kind"] == "pod":
@@ -719,8 +731,8 @@ and how much time the runner actually saved.</p>
 <ul class="legend-list muted">
 <li><b>Layout luck</b>: seconds the run's layouts should save against the median layout of the same sublevels, by
 CaveGen's layout judge re-tuned on these runs' real times. <b>Luck percentile</b>: how many random runs it beats.</li>
-<li><b>Runner vs field</b>: seconds the runner actually saved against the median run on the same sublevels, counting every
-2 pokos as 1 second.</li>
+<li><b>Runner vs field</b>: seconds the runner saved against the median run on the same sublevels, after allowing for
+the layouts (so a bad layout is not counted against the runner), counting every 2 pokos as 1 second.</li>
 <li>Negative is faster, as on splits. <b>Seeds read</b> is how many sublevels' seeds were read with confidence; only those count.
 Click a column to sort; open a runner for their layouts.</li>
 </ul>
@@ -729,7 +741,7 @@ Click a column to sort; open a runner for their layouts.</li>
 <thead><tr><th class="num" data-sort>Rank</th><th class="sticky" data-sort>Runner</th><th data-sort>Time</th>
 <th class="num" data-sort title="Seconds the layouts should save vs median layouts">Layout luck</th>
 <th class="num" data-sort title="Share of random runs over the same sublevels this run's layouts beat">Luck percentile</th>
-<th class="num" data-sort title="Seconds actually saved vs the median run, time minus pokos ÷ 2">Runner vs field (net)</th>
+<th class="num" data-sort title="Seconds saved vs the median run on the same layout luck, time minus pokos ÷ 2">Runner vs field (net)</th>
 <th class="num" data-sort title="Sublevels whose seed was read with confidence">Seeds read</th>
 <th data-sort>Date</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
