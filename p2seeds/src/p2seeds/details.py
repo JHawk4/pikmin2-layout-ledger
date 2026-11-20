@@ -32,7 +32,8 @@ dominate) after removing a shared speed offset. Lower is better; about 1 per let
 <li><b>Next</b>: the same score for the second-best seed. A big gap between the two means nothing else comes close.</li>
 <li><b>Confidence</b>: <i>high</i> needs 10+ letters, under 4 per letter and a gap of 30+; <i>medium</i> needs 7+,
 under 6 and a gap of 15+. A seed can also be confirmed by its neighbours: consecutive sublevels' seeds sit a few
-hundred thousand steps apart in the generator, which almost never happens by chance.</li>
+hundred thousand steps apart in the generator, which almost never happens by chance. A <i>medium</i> seed that sits
+in order between its high neighbours (within 2 million steps of each) is counted in the totals too.</li>
 </ul>
 <p><b>Letter seed</b> is the random number generator's state when the title's letters start falling; the <b>layout
 seed</b> is its state when the floor was generated, a fixed number of steps earlier, and is what CaveGen needs.</p>
@@ -227,7 +228,7 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
                     f'title="{e(r["confidence"])} confidence">{e(r["cave"])} {r["sublevel"] or "?"}</a>' for r in entries)
     strip = (f'<nav class="chips" aria-label="Sublevels">{chips}</nav>'
              '<p class="muted small legend-chips"><span class="chip high">high</span> read with confidence '
-             '<span class="chip medium">medium</span> <span class="chip low">low</span> uncertain: left out of every total</p>')
+             '<span class="chip medium">medium</span> <span class="chip low">low</span> uncertain: left out of every total (a medium seed in order with its neighbours is counted)</p>')
     page = PAGE.format(title=title, summary=e(summary), help=SCORE_HELP, cards=strip + filt + "".join(cards))
     from . import theme
     page = theme.apply(page, prefix="../", run=out_dir.name, active="detection")

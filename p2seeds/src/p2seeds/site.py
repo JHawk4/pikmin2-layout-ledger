@@ -50,7 +50,7 @@ def _load(root: Path) -> list[dict]:
         meta = data.get("meta", {})
         run = meta.get("run", {})
         runs.append({"dir": d, "slug": d.name, "meta": meta, "run": run, "kind": data.get("kind", "pod"),
-                     "entries": data["entries"], "fps": meta.get("fps", 30.0),
+                     "entries": judge_report.mark_neighbors(data["entries"]), "fps": meta.get("fps", 30.0),
                      "player": ", ".join(p["name"] for p in run.get("players", [])) or d.name,
                      "runner": _run_label(run, d.name)})
     runs.sort(key=lambda r: (r["run"].get("time_seconds") or 1e9, r["slug"]))     # fastest first
@@ -132,7 +132,9 @@ def actuals(runs: list[dict], slope: float = 1.0) -> list[dict]:
     median run had a better than median layout (on SH 6 about 30 s better). raw would count
     that layout as the runner's doing. expected = slope * (this layout's luck - the median run's
     layout luck) is what the layout alone should change against the median run, and
-    net = raw - expected is the runner's own part. Negative = faster."""
+    net = raw - expected is the runner's own part. par = raw + slope * the median run's layout
+    luck is against "par", a median runner on a median layout: what the runner did with this
+    layout against a typical run on a typical layout. Negative = faster."""
     plays: dict[str, list[tuple[int, str, float, int | None, float | None]]] = {}
     for i, r in enumerate(runs):
         tre = treasures.load(r["dir"])
@@ -158,7 +160,8 @@ def actuals(runs: list[dict], slope: float = 1.0) -> list[dict]:
             if runs[i]["kind"] == "pod" and pokos is not None and med_p is not None:
                 raw -= (pokos - med_p) / POKOS_PER_SECOND
             expected = slope * (d - med_d) if d is not None and med_d is not None else 0.0
-            out[i][frame] = {"net": raw - expected, "raw": raw, "expected": expected, "took": took,
+            out[i][frame] = {"net": raw - expected, "raw": raw, "expected": expected,
+                             "par": raw + (slope * med_d if med_d is not None else 0.0), "took": took,
                              "median_took": med_t, "pokos": pokos, "median_pokos": med_p,
                              "median_luck": med_d, "n": len(ps)}
     return out
@@ -442,7 +445,7 @@ def picker(picks: list[dict], what: str) -> str:
         title, intro = "Layouts", ("Pick a run to see every layout it got: how lucky each one was against 1000 random layouts "
                                    "of the same sublevel, what the runner did with it, and the pictures.")
         cols = ('<th class="num">Layout luck</th><th class="num">Luck percentile</th>'
-                '<th class="num">Runner vs field</th>')
+                '<th class="num">Runner beyond layouts</th>')
     else:
         title, intro = "Seed detection", ("Pick a run to see how each sublevel's seed was read from the falling title "
                                           "letters, how sure the reading is, and the pictures behind it.")
@@ -454,6 +457,76 @@ def picker(picks: list[dict], what: str) -> str:
 <thead><tr><th class="num">Rank</th><th class="sticky">Runner</th><th>Time</th>{cols}<th>Date</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
 {ADD_RUN_NOTE}
+'''
+
+def layout_spread(runs: list[dict]) -> str:
+    """Per sublevel: how the included runs' layouts compare with random layouts.
+
+    Personal bests drew lucky layouts more often than chance, so the median run here usually
+    had a better layout than the median random one; this table shows by how much."""
+    order = {c: k for k, c in enumerate(STORY_ORDER)}
+    subs: dict[tuple[str, int], dict] = {}
+    for r in runs:
+        if r["kind"] != "pod":
+            continue
+        for e in r["entries"]:
+            if not e.get("sublevel") or not luck.judged(e) or not judge_report.trusted(e):
+                continue
+            s = subs.setdefault((e["cave"], e["sublevel"]), {"d": [], "ref": None})
+            s["d"].append(luck.delta(e))
+            if s["ref"] is None:
+                s["ref"] = luck.reference(e, r["kind"])
+    rows, total = [], 0.0
+    for (cave, sub), s in sorted(subs.items(), key=lambda kv: (order.get(kv[0][0], 99), kv[0][1])):
+        ref, d = s["ref"], np.asarray(s["d"], dtype=float)
+        if ref is None or len(ref) == 0 or len(d) < 3 or float(np.ptp(ref)) < 1e-6:
+            continue
+        ref = np.asarray(ref, dtype=float)
+        med = float(np.median(d))
+        beats = float(100.0 * (np.sum(ref > med + 1e-9) + 0.5 * np.sum(np.abs(ref - med) <= 1e-9)) / len(ref))
+        total += med
+        r25, r75 = np.percentile(ref, [25, 75])
+        d25, d75 = np.percentile(d, [25, 75])
+        # a strip: random layouts' middle 80% and middle half, each run's layout as a dot, the median run's as a tick
+        lo, hi = min(np.percentile(ref, 2), d.min()), max(np.percentile(ref, 98), d.max())
+        W, H = 220, 20
+        sx = lambda v: 4 + (W - 8) * (v - lo) / ((hi - lo) or 1)
+        p10, p90 = np.percentile(ref, [10, 90])
+        svg = (f'<svg class="spread" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" '
+               f'aria-label="{cave} {sub}: random layouts and these runs\' layouts">'
+               f'<title>{cave} {sub}: bars are random layouts (middle 80% and middle half), dots are these runs\' '
+               f'layouts, the dark tick is the median run\'s</title>'
+               f'<rect x="{sx(p10):.1f}" y="6" width="{sx(p90) - sx(p10):.1f}" height="8" rx="3" fill="var(--range)"/>'
+               f'<rect x="{sx(r25):.1f}" y="6" width="{sx(r75) - sx(r25):.1f}" height="8" rx="3" fill="var(--ink-3)" fill-opacity=".45"/>'
+               f'<line x1="{sx(0):.1f}" x2="{sx(0):.1f}" y1="2" y2="18" stroke="var(--ink-3)" stroke-dasharray="2 2"/>'
+               + "".join(f'<circle cx="{sx(v):.1f}" cy="10" r="2.6" fill="var(--series-1)" fill-opacity=".6"/>' for v in d)
+               + f'<line x1="{sx(med):.1f}" x2="{sx(med):.1f}" y1="1" y2="19" stroke="var(--ink-1)" stroke-width="2.5"/></svg>')
+        tone = "good-text" if med < -0.5 else "bad-text" if med > 0.5 else ""
+        rows.append(
+            f'<tr><td><b>{cave} {sub}</b></td><td class="num">{len(d)}</td>'
+            f'<td class="num">{r25:+.1f} to {r75:+.1f}</td>'
+            f'<td class="num">{d25:+.1f} to {d75:+.1f}</td>'
+            f'<td class="num {tone}" data-v="{med:.2f}"><b>{med:+.1f} s</b></td>'
+            f'<td class="num" data-v="{beats:.1f}">{beats:.0f}%</td><td>{svg}</td></tr>')
+    if not rows:
+        return ""
+    return f'''
+<h2 id="spread">Do these runs get typical layouts?</h2>
+<p>No: they are personal bests, and a run with good layouts is more likely to become one. For each sublevel, how the layouts
+of the runs on this site compare with random layouts, in seconds against the median random layout by the judge
+(negative = faster). Over these sublevels the median run's layouts add up to <b>{total:+.0f} s</b> against median
+layouts. That is why the runner numbers on this site take the layout out instead of comparing with the median run alone.</p>
+<div class="tablewrap viz-root"><table class="spread-table">
+<thead><tr><th>Sublevel</th><th class="num">Runs</th>
+<th class="num" title="25th to 75th percentile of 1000 random layouts">Random layouts<br><span class="muted">middle half</span></th>
+<th class="num" title="25th to 75th percentile of the runs' layouts">These runs<br><span class="muted">middle half</span></th>
+<th class="num" title="The median run's layout against the median random layout">Median run<br><span class="muted">vs median layout</span></th>
+<th class="num" title="Share of random layouts the median run's layout beats">Median run<br><span class="muted">beats</span></th>
+<th>Spread</th></tr></thead>
+<tbody>{"".join(rows)}</tbody></table></div>
+<p class="muted small">Spread: the light bar holds the middle 80% of 1000 random layouts and the darker bar the middle half;
+the dashed line is the median random layout, each dot one run's layout and the dark tick the median run's. Fixed floors
+and sublevels with fewer than 3 confidently read layouts are left out.</p>
 '''
 
 
@@ -475,7 +548,7 @@ def timesave_page(runs: list[dict], acts: list[dict]) -> str:
     cats = sorted({c for v in per_run.values() for c in v}, key=lambda c: (order.get(c.split()[0], 99), int(c.split()[1])))
     # keep the usual route: sublevels most runs played
     cats = [c for c in cats if sum(c in v for v in per_run.values()) >= len(per_run) / 2]
-    allv = [abs(a[k]) for v in per_run.values() for c in cats if c in v for a in (v[c][0],) for k in ("raw", "net")]
+    allv = [abs(a[k]) for v in per_run.values() for c in cats if c in v for a in (v[c][0],) for k in ("raw", "net", "par")]
     big = float(np.percentile(allv, 95)) if allv else 1.0
 
     def cell(a, e, k, sub, runner):
@@ -483,9 +556,10 @@ def timesave_page(runs: list[dict], acts: list[dict]) -> str:
         tip = (f"{sub} · {runner} · {e.get('time', '')}\n"
                f"took {a['took']:.1f} s (median run {a['median_took']:.1f} s)"
                + (f"\n{a['pokos']} pokos (median run {a['median_pokos']:g})" if a.get("pokos") is not None and a.get("median_pokos") is not None else "")
-               + f"\nvs the median run: {a['raw']:+.1f} s net of pokos"
+               + f"\nvs the median run: {a['raw']:+.1f} s, pokos counted"
                + (f"\nlayout vs the median run's: {a['expected']:+.1f} s by the judge" if a.get("expected") else "")
-               + f"\nbeyond the layout: {a['net']:+.1f} s")
+               + f"\nbeyond the layout: {a['net']:+.1f} s"
+               + f"\nvs par (median runner, median layout): {a['par']:+.1f} s")
         mark = "--good-mark" if val < 0 else "--bad-mark"
         pct = 0 if abs(val) < 0.5 else 15 + 55 * min(1.0, abs(val) / (big or 1))
         text = f"{val:+.0f}"
@@ -495,7 +569,7 @@ def timesave_page(runs: list[dict], acts: list[dict]) -> str:
                 f"data-tip='{html.escape(tip)}'>{text}</td>")
 
     tables = []
-    for k, label in (("net", "beyond the layout"), ("raw", "vs the median run")):
+    for k, label in (("net", "beyond the layout"), ("par", "vs par"), ("raw", "vs the median run")):
         head = "".join(f"<th class='num'>{html.escape(c)}</th>" for c in cats)
         trs = []
         for i, v in sorted(per_run.items(), key=lambda kv: sum(a[k] for a, _ in kv[1].values() if a)):
@@ -510,12 +584,15 @@ def timesave_page(runs: list[dict], acts: list[dict]) -> str:
                       f"<tbody>{''.join(trs)}</tbody></table></div>")
     return f'''
 <h1>Time saved by sublevel</h1>
-<p>Seconds each run gained or lost on each sublevel against the median run on this site, counting 2 pokos as 1 second.
-Negative (green) is faster. Hover a cell for the details; click it to open the video there.</p>
+<p>Seconds each run gained or lost on each sublevel, with pokos counted (2 pokos = 1 second, so a sublevel
+done 10 s slower for 20 more pokos is even). Negative (green) is faster. Hover a cell for the details; click it to open the video there.</p>
 <fieldset class="ts-pick"><legend class="muted">Show</legend>
 <label><input type="radio" name="ts" value="net" checked> <b>The runner beyond the layout</b>: the judge's difference between
 this layout and the median run's is taken out, so it shows execution, not luck</label>
-<label><input type="radio" name="ts" value="raw"> <b>Against the median run</b>: the plain difference, layout luck included</label>
+<label><input type="radio" name="ts" value="par"> <b>Against par</b>: against a median runner on a median layout, so a lucky
+layout counts in the runner's favour</label>
+<label><input type="radio" name="ts" value="raw"> <b>Against the median run</b>: the plain difference from the median run
+here, whose layout was usually better than the median layout (these are personal bests)</label>
 </fieldset>
 {"".join(tables)}
 <p class="muted small">Runs are sorted by their total, fastest first. Only the usual route's sublevels are shown; – = not
@@ -727,7 +804,7 @@ def build(root: str | Path = "data/output") -> Path:
                     f"differences by about a fifth) and R² 0.37.</p>"
                     f"<div class='tablewrap'><table><thead><tr><th>Judge</th><th class='num'>Plays</th><th class='num'>Slope (95%)</th>"
                     f"<th class='num'>Correlation</th><th class='num'>R² (slope 1)</th></tr></thead><tbody>{cmp_rows}</tbody></table></div>"
-                    + (f"<p class='muted small'>The outcome is <b>net time</b>: seconds minus pokos ÷ 2. On plain time the judge would "
+                    + (f"<p class='muted small'>The outcome is time with pokos counted: seconds minus pokos ÷ 2. On plain time the judge would "
                        f"have slope {cal['time_only'][0]:.2f} (correlation {cal['time_only'][2]:.2f}).</p>" if cal["net"] else "")
                     + "</details>"
                     + (f"<details><summary>{len(out)} unusual play{'s' if len(out) != 1 else ''} (ringed in the charts)</summary>"
@@ -853,12 +930,12 @@ td.weak {{ color:var(--bad); }}
 <h1>How lucky were the layouts?</h1>
 <p class="intro">Every cave sublevel's layout is set by the game's random number generator. This site reads that seed from
 the falling title letters in each Pay Off Debt run's video, rebuilds the exact layout, and asks how lucky the layouts were
-and how much time the runner actually saved.</p>
+and how much time the runner saved beyond what the layouts gave.</p>
 <ul class="legend-list muted">
 <li><b>Layout luck</b>: seconds the run's layouts should save against the median layout of the same sublevels, by
 CaveGen's layout judge re-tuned on these runs' real times. <b>Luck percentile</b>: how many random runs it beats.</li>
-<li><b>Runner vs field</b>: seconds the runner saved against the median run on the same sublevels, after allowing for
-the layouts (so a bad layout is not counted against the runner), counting every 2 pokos as 1 second.</li>
+<li><b>Runner beyond the layouts</b>: seconds the runner saved against the median run on the same sublevels, after
+allowing for the layouts (so a bad layout is not counted against the runner), with pokos counted: 2 pokos = 1 second.</li>
 <li>Negative is faster, as on splits. <b>Seeds read</b> is how many sublevels' seeds were read with confidence; only those count.
 Click a column to sort; open a runner for their layouts.</li>
 </ul>
@@ -867,7 +944,7 @@ Click a column to sort; open a runner for their layouts.</li>
 <thead><tr><th class="num" data-sort>Rank</th><th class="sticky" data-sort>Runner</th><th data-sort>Time</th>
 <th class="num" data-sort title="Seconds the layouts should save vs median layouts">Layout luck</th>
 <th class="num" data-sort title="Share of random runs over the same sublevels this run's layouts beat">Luck percentile</th>
-<th class="num" data-sort title="Seconds saved vs the median run on the same layout luck, time minus pokos ÷ 2">Runner vs field (net)</th>
+<th class="num" data-sort title="Seconds saved vs the median run beyond what the layouts gave, pokos counted (2 = 1 s)">Runner beyond layouts</th>
 <th class="num" data-sort title="Sublevels whose seed was read with confidence">Seeds read</th>
 <th data-sort>Date</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
@@ -921,7 +998,7 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
 '''
     from . import theme
     pages = [("index.html", "runs", "Pikmin 2 Layout Ledger · layout luck in Pikmin 2 Pay Off Debt runs", index, ""),
-             ("layouts.html", "layouts", "Pikmin 2 Layout Ledger · layouts by run", picker(picks, "layouts"), ""),
+             ("layouts.html", "layouts", "Pikmin 2 Layout Ledger · layouts by run", picker(picks, "layouts") + layout_spread(runs), ""),
              ("detection.html", "detection", "Pikmin 2 Layout Ledger · seed detection by run", picker(picks, "detection"), ""),
              ("timesave.html", "timesave", "Pikmin 2 Layout Ledger · time saved by sublevel", timesave_page(runs, acts),
               f"<script>{TIMESAVE_JS}</script>"),

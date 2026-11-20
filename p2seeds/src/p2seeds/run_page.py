@@ -7,10 +7,12 @@
   3. the run as a story: running totals of luck and of the runner's own time
   4. a scatter of the judge's layout difference against the runner's time, per sublevel
   5. a compact sortable table
-  6. small cards: the luckiest and unluckiest layouts first, then every cave in story order
+  6. small cards: the luckiest and unluckiest layouts, the runner's best and worst sublevels,
+     then every cave in story order
 
 The runner's numbers come from site.actuals: against the median run on this site, with the
-judge's difference between this layout and the median run's taken out.
+judge's difference between this layout and the median run's taken out ("beyond the layout"),
+or against par, a median runner on a median layout (the diamonds in the sublevel chart).
 """
 
 from __future__ import annotations
@@ -21,10 +23,10 @@ from pathlib import Path
 
 import numpy as np
 
-from . import charts, luck, theme, treasures
+from . import charts, judge_report, luck, theme, treasures
 from .judge_report import CAVE_NAMES, _beats, _num, _pokos, cg3_url, treasure_name, trusted
 
-SPOTLIGHT = 5        # luckiest and unluckiest layouts shown first
+SPOTLIGHT = 5        # luckiest and unluckiest layouts, best and worst sublevels, shown first
 
 
 def _rows(out_dir: Path, actual: dict) -> tuple[dict, list[dict]]:
@@ -34,7 +36,7 @@ def _rows(out_dir: Path, actual: dict) -> tuple[dict, list[dict]]:
     tre = treasures.load(out_dir)
     imgs = {p.name for p in (out_dir / "img").glob("layout_*.png")}
     rows = []
-    for r in data["entries"]:
+    for r in judge_report.mark_neighbors(data["entries"]):
         if not r.get("cave") or not r.get("sublevel"):
             continue
         img = f"layout_{r['frame']}_{r['cave']}-{r['sublevel']}.png"
@@ -53,7 +55,7 @@ def _rows(out_dir: Path, actual: dict) -> tuple[dict, list[dict]]:
             "pct": luck.faster_than(r, kind) if judged else None,
             "dist": luck.reference(r, kind) if judged else None,
             "skip": [treasure_name(x) for x in (r.get("judge2_skip") or [])] if judged else [],
-            "net": act["net"] if act else None, "raw": act.get("raw") if act else None,
+            "net": act["net"] if act else None, "par": act.get("par") if act else None, "raw": act.get("raw") if act else None,
             "expected": act.get("expected") if act else None, "median_luck": act.get("median_luck") if act else None,
             "took": act["took"] if act else None, "median_took": act["median_took"] if act else None,
             "pokos": act["pokos"] if act else (t or {}).get("pokos"),
@@ -166,7 +168,7 @@ def _heads(info: dict, rows: list[dict]) -> str:
                      f'over the same sublevels</span></div>')
     if nets:
         tiles.append(f'<div><b class="{_tone(sum(nets))}">{_num(sum(nets))}</b><span>runner: time saved against the median '
-                     f'run over {len(nets)} sublevels, beyond what the layouts gave, net of pokos</span></div>')
+                     f'run over {len(nets)} sublevels, beyond what the layouts gave, pokos counted</span></div>')
     return f'<div class="heads">{"".join(tiles)}</div>'
 
 
@@ -175,7 +177,7 @@ def _heads(info: dict, rows: list[dict]) -> str:
 def _rows_chart(rows: list[dict]) -> str:
     vals = [v for r in rows if r["dist"] is not None
             for v in (np.percentile(r["dist"], 1), np.percentile(r["dist"], 99), r["delta"])]
-    vals += [r["net"] for r in rows if r["net"] is not None]
+    vals += [r["par"] for r in rows if r["par"] is not None]
     ticks = charts.nice_ticks(min(vals + [-10]), max(vals + [10]), 8)
     W, L, R, T, RH, GAP = 960, 76, 96, 40, 22, 18
     n_caves = len(dict.fromkeys(r["cave"] for r in rows))
@@ -188,7 +190,7 @@ def _rows_chart(rows: list[dict]) -> str:
         out.append(f'<line class="{"zero" if t == 0 else "grid"}" x1="{x(t):.1f}" x2="{x(t):.1f}" y1="{T - 6}" y2="{H - 26}"/>'
                    f'<text x="{x(t):.1f}" y="{T - 10}" text-anchor="middle">{t:+g}</text>'
                    f'<text x="{x(t):.1f}" y="{H - 12}" text-anchor="middle">{t:+g}</text>')
-    out.append(f'<text x="{W - R + 14}" y="14" style="font-weight:600">layout · runner</text>')
+    out.append(f'<text x="{W - R + 14}" y="14" style="font-weight:600">layout · vs par</text>')
     y, cave = T, None
     for r in rows:
         if r["cave"] != cave:
@@ -215,18 +217,19 @@ def _rows_chart(rows: list[dict]) -> str:
         else:
             why = "fixed floor" if r["fixed"] else "uncertain seed" if not r["trusted"] else "no judge"
             out.append(f'<text x="{L + 6}" y="{cy + 4:.1f}" style="font-style:italic">{why}</text>')
-        if r["net"] is not None:
-            px, s = x(clamp(r["net"])), 5
-            col = "var(--good-mark)" if r["net"] < 0 else "var(--bad-mark)"
+        if r["par"] is not None:
+            px, s = x(clamp(r["par"])), 5
+            col = "var(--good-mark)" if r["par"] < 0 else "var(--bad-mark)"
             out.append(f'<path d="M{px:.1f},{cy - s:.1f} L{px + s:.1f},{cy:.1f} L{px:.1f},{cy + s:.1f} L{px - s:.1f},{cy:.1f} Z" '
                        f'fill="var(--surface-1)" stroke="{col}" stroke-width="2"/>')
-        nums = " · ".join(_signed(v).replace(" s", "") for v in (r["delta"], r["net"]))
+        nums = " · ".join(_signed(v).replace(" s", "") for v in (r["delta"], r["par"]))
         out.append(f'<text x="{W - R + 14}" y="{cy + 4:.1f}" style="font-variant-numeric:tabular-nums">{nums}</text>')
         tip = [f"{r['label']} · seed {r['seed']}"]
         if r["delta"] is not None:
             tip.append(f"layout {r['delta']:+.1f} s vs the median layout ({_beats(r['pct'])})")
         if r["net"] is not None:
-            tip.append(f"runner {r['net']:+.1f} s vs the median run, beyond the layout")
+            tip.append(f"runner {r['par']:+.1f} s vs par (a median runner on a median layout)")
+            tip.append(f"runner {r['net']:+.1f} s beyond the layout")
         if r["pokos_text"]:
             tip.append(r["pokos_text"])
         out.append(f'<a href="#{r["anchor"]}"><rect class="hit" tabindex="-1" x="0" y="{y}" width="{W}" height="{RH}" '
@@ -235,7 +238,8 @@ def _rows_chart(rows: list[dict]) -> str:
     out.append("</svg>")
     legend = ('<div class="legend"><span><i class="shape"></i>1000 random layouts (1st–99th percentile; wider = more '
               'common)</span><span><i class="tick"></i>this layout (green faster, red slower)</span>'
-              '<span><i class="diamond"></i>the runner, beyond the layout, net of pokos</span></div>')
+              '<span><i class="diamond"></i>the runner against par: a median runner on a median layout, pokos counted. '
+              'The gap from tick to diamond is the runner’s own part</span></div>')
     return f'<div class="chart viz-root wide">{"".join(out)}{legend}</div>'
 
 
@@ -290,7 +294,7 @@ def _card_lines(r: dict) -> list[str]:
     """A card with its details open, as tooltip lines (the first line is the title)."""
     lines = [f"{r['label']} · {CAVE_NAMES.get(r['cave'], r['cave'])}",
              f"Layout {_signed(r['delta'])}" + (f" · beats {r['pct']:.0f}% of layouts" if r["pct"] is not None else ""),
-             f"Runner {_signed(r['net'])} beyond the layout"]
+             f"Runner {_signed(r['net'])} beyond the layout" + (f" · {_signed(r['par'])} vs par" if r["par"] is not None else "")]
     if r["score"] is not None:
         lines.append(f"Judge {r['score']:.1f} s (median {r['median']:.1f})")
     if r["took"] is not None:
@@ -316,14 +320,14 @@ def _scatter(rows: list[dict]) -> str:
         if abs(dx) > 1e-6 and r["expected"]:
             slopes.append(r["expected"] / dx)
         tip = "\n".join(_card_lines(r) + [f"Across: layout {dx:+.1f} s vs the median run's layout",
-                                          f"Up: runner {r['raw']:+.1f} s vs the median run, net of pokos"])
+                                          f"Up: runner {r['raw']:+.1f} s vs the median run, pokos counted"])
         pts.append((dx, r["raw"], tip, None, r["img"]))
     if len(pts) < 3:
         return ""
     return ('<div class="scatterbox">' + charts.scatter_chart(
         pts, "The judge against the runner, one dot per sublevel",
         "judge: this layout vs the median run's layout, seconds",
-        "runner vs the median run, seconds net of pokos",
+        "runner vs the median run, seconds, pokos counted",
         slope=float(np.median(slopes)) if slopes else None,
         quadrants=(("worse layout, slower", None), ("worse layout,\nstill faster", "good"),
                    ("better layout,\nstill slower", "bad"), ("better layout, faster", None))) + '</div>')
@@ -359,7 +363,7 @@ def _table(rows: list[dict]) -> str:
     return (f'<div class="tablewrap"><table id="subs"><thead><tr><th data-sort>Sublevel</th>'
             f'<th class="num" data-sort title="The judge\'s estimated clear time (vs the median layout)">Judge</th>'
             f'<th class="num" data-sort title="Share of 1000 random layouts this one beats">Beats</th>'
-            f'<th class="num" data-sort title="Seconds vs the median run beyond what the layout gave, net of pokos">Runner</th>'
+            f'<th class="num" data-sort title="Seconds vs the median run beyond what the layout gave, pokos counted (2 = 1 s)">Runner</th>'
             f'<th class="num" data-sort>Pokos <span class="muted">(vs median)</span></th><th>Video</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>')
 
@@ -374,6 +378,7 @@ def _card(r: dict, anchor: bool = True) -> str:
           + (f'<dt>Pokos</dt><dd>{r["pokos"]}' + (f' (median run {r["median_pokos"]:g})' if r["median_pokos"] is not None else "")
              + '</dd>' if r["pokos"] is not None else "")
           + (f'<dt>Layout</dt><dd>{r["expected"]:+.1f} s vs the median run\'s</dd>' if r["expected"] else "")
+          + (f'<dt>Vs par</dt><dd>{r["par"]:+.1f} s</dd>' if r["par"] is not None else "")
           + '</dl>'
           + (f'<p class="muted">{html.escape(r["pokos_text"])}</p>' if r["pokos_text"] else "")
           + (f'<p class="muted">Judge expects a skip: {html.escape(", ".join(r["skip"]))}</p>' if r["skip"] else "")
@@ -399,11 +404,20 @@ def _cards(rows: list[dict]) -> str:
     jd = [r for r in rows if r["delta"] is not None]
     lucky = sorted([r for r in jd if r["delta"] < 0], key=lambda r: r["delta"])[:SPOTLIGHT]
     unlucky = sorted([r for r in jd if r["delta"] > 0], key=lambda r: -r["delta"])[:SPOTLIGHT]
+    ran = [r for r in rows if r["net"] is not None]
+    best = sorted([r for r in ran if r["net"] < 0], key=lambda r: r["net"])[:SPOTLIGHT]
+    worst = sorted([r for r in ran if r["net"] > 0], key=lambda r: -r["net"])[:SPOTLIGHT]
     out = []
     if lucky:
         out.append(f'<h2>Luckiest layouts</h2><div class="strip">{"".join(_card(r, anchor=False) for r in lucky)}</div>')
     if unlucky:
         out.append(f'<h2>Unluckiest layouts</h2><div class="strip">{"".join(_card(r, anchor=False) for r in unlucky)}</div>')
+    if best:
+        out.append(f'<h2>Highlights <span class="muted small">most time saved beyond the layout</span></h2>'
+                   f'<div class="strip">{"".join(_card(r, anchor=False) for r in best)}</div>')
+    if worst:
+        out.append(f'<h2>Lowlights <span class="muted small">most time lost beyond the layout</span></h2>'
+                   f'<div class="strip">{"".join(_card(r, anchor=False) for r in worst)}</div>')
     for cave in dict.fromkeys(r["cave"] for r in rows):
         rs = [r for r in rows if r["cave"] == cave]
         lk = [r["delta"] for r in rs if r["delta"] is not None]
@@ -431,7 +445,8 @@ def write(out_dir: Path, actual: dict | None = None) -> Path | None:
 Pay Off Debt judge, refit on these runs' real times). <b>Layout luck</b> is the judge's time against the median of 1000
 random layouts of the same sublevel. <b>Runner</b> is what the runner did against the median run on this site, counting
 2 pokos as 1 second, with the judge's difference between this layout and the median run's taken out, so a bad layout
-is not counted against the runner. Negative is faster, as on splits.{f" {n_low} sublevel{'s' if n_low != 1 else ''} whose seed is uncertain {'are' if n_low != 1 else 'is'} shown faded and never counted." if n_low else ""}</p>
+is not counted against the runner. <b>Par</b> is a median runner on a median layout: the diamonds below show the
+runner against par, luck included. Negative is faster, as on splits.{f" {n_low} sublevel{'s' if n_low != 1 else ''} whose seed is uncertain {'are' if n_low != 1 else 'is'} shown faded and never counted." if n_low else ""}</p>
 
 <h2>Every sublevel</h2>
 {_rows_chart(rows)}

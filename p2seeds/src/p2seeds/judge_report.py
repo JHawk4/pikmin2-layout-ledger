@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cavegen, charts, luck, treasures
+from . import cavegen, charts, luck, rng, treasures
 from .caves import CAVES
 
 CAVE_NAMES = {c.cavegen: c.name for c in CAVES if getattr(c, "lang", "en") == "en"}
@@ -85,10 +85,35 @@ def cg3_url(r: dict) -> str:
     return f"https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:{r['cave']}-{r['sublevel']}&seed={seed}"
 
 
+NEIGHBOR_STEPS = 2_000_000    # a medium seed this few RNG steps from both high neighbours is in order
+
+
+def mark_neighbors(entries: list[dict]) -> list[dict]:
+    """Set `neighbor_ok` on medium-confidence entries whose letter seed falls in RNG order
+    between the nearest high-confidence seeds before and after it (within NEIGHBOR_STEPS of
+    each). A wrong read lands at a random place in the 2^32 cycle, so this is very unlikely by
+    chance. Returns `entries`."""
+    seeds = [int(e["letter_seed"], 16) if e.get("letter_seed") else None for e in entries]
+    high = [i for i, e in enumerate(entries) if e.get("confidence") == "high" and seeds[i] is not None]
+    for i, e in enumerate(entries):
+        e.pop("neighbor_ok", None)
+        if e.get("confidence") != "medium" or seeds[i] is None:
+            continue
+        before = [j for j in high if j < i][-1:]
+        after = [j for j in high if j > i][:1]
+        if not before and not after:
+            continue
+        ok = all(rng.distance(seeds[j], seeds[i], limit=NEIGHBOR_STEPS) is not None for j in before) and             all(rng.distance(seeds[i], seeds[j], limit=NEIGHBOR_STEPS) is not None for j in after)
+        if ok:
+            e["neighbor_ok"] = True
+    return entries
+
+
 def trusted(r: dict) -> bool:
-    """Only high-confidence seeds feed totals, charts and the calibration; the rest are shown
-    on request, marked, since a wrong seed means a wrong layout, judge score and treasure list."""
-    return r.get("confidence") == "high"
+    """High-confidence seeds, and medium ones in order with their high neighbours (see
+    mark_neighbors), feed totals, charts and the calibration; the rest are shown on request,
+    marked, since a wrong seed means a wrong layout, judge score and treasure list."""
+    return r.get("confidence") == "high" or (r.get("confidence") == "medium" and bool(r.get("neighbor_ok")))
 
 
 _NAMES: dict | None = None
@@ -144,9 +169,9 @@ def _actual_html(a: dict | None, last: bool = False) -> str:
         rows += f'<dt>Pokos</dt><dd>{a["pokos"]} <span class="muted">(median run {a["median_pokos"]:g})</span></dd>'
     if a.get("expected"):
         rows += (f'<dt>Layout</dt><dd>{a["expected"]:+.1f} s <span class="muted">(vs the median run\'s layout; '
-                 f'{a["raw"]:+.1f} s net before allowing for it)</span></dd>')
+                 f'{a["raw"]:+.1f} s vs the median run before allowing for it)</span></dd>')
     return (f'<div class="verdict {_tone(a["net"])}"><span class="lbl">Runner</span><span class="big">{a["net"]:+.1f} s</span>'
-            f'<span>vs median run, same layout luck</span></div>'
+            f'<span>beyond the layout, pokos counted</span></div>'
             f'<dl>{rows}</dl>')
 
 
@@ -154,7 +179,7 @@ def write_page(out_dir: Path, rows: list[dict] | None = None, home: str | None =
                actual: dict | None = None) -> Path:
     """`actual`: entry frame -> the runner's measured result against the median run (see site.actuals)."""
     data = json.loads((out_dir / "judge.json").read_text(encoding="utf-8"))
-    rows = rows if rows is not None else data["entries"]
+    rows = mark_neighbors(rows if rows is not None else data["entries"])
     meta, kind = data.get("meta", {}), data.get("kind", "pod")
     run = meta.get("run", {})
     runner = ", ".join(p["name"] for p in run.get("players", [])) or out_dir.name
@@ -321,7 +346,7 @@ Negative is faster, as on splits.</p>
   never counted in the totals or the chart)</label>''' if n_low else ""}
 <div class="stats">
   <div class="stat hero"><b>{_num(total_luck)}</b><span>Layout luck over {len(judged)} sublevels{f": {luck.describe(pct)}" if pct is not None else ""}</span></div>
-  {f'<div class="stat hero"><b>{_num(total_actual)}</b><span>Runner vs field over {len(measured)} sublevels, net of pokos and layouts</span></div>' if measured else ""}
+  {f'<div class="stat hero"><b>{_num(total_actual)}</b><span>Runner beyond the layouts over {len(measured)} sublevels, pokos counted</span></div>' if measured else ""}
   {f'<div class="stat"><b>{html.escape(label(best))}</b><span>luckiest: {_beats(beats[best["frame"]])}</span></div>' if best else ""}
   {f'<div class="stat"><b>{html.escape(label(worst))}</b><span>unluckiest: {_beats(beats[worst["frame"]])}</span></div>' if worst else ""}
   <div class="stat"><b>{len(rows) - n_low} of {len(rows)}</b><span>seeds read with confidence{f" ({n_fixed} fixed floors)" if n_fixed else ""}{f"; {n_low} uncertain" if n_low else ""}</span></div>

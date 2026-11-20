@@ -134,7 +134,7 @@ def timesave_chart(points: list[dict], title: str) -> str:
 
     Grey shape: how 1000 random layouts of the sublevel score (a violin, wider where more layouts
     land; without `dist`, a bar from the 5th to the 95th percentile). Circle: the judge's estimate
-    for this run's layout. Diamond: what the runner actually did, net of pokos, against the
+    for this run's layout. Diamond: what the runner did beyond the layout, pokos counted, against the
     median run. Marks are green when faster than the median and red when slower.
 
     points: dicts with label, anchor, fixed (bool), judge (or None), lo/hi (5th/95th
@@ -196,7 +196,7 @@ def timesave_chart(points: list[dict], title: str) -> str:
             ax, ay = cx + 4, y(p["actual"])
             out.append(f'<path d="M{ax:.1f},{ay - 5:.1f} L{ax + 5:.1f},{ay:.1f} L{ax:.1f},{ay + 5:.1f} L{ax - 5:.1f},{ay:.1f} Z" '
                        f'fill="var(--surface-1)" stroke="{color(p["actual"])}" stroke-width="2"/>')
-            lines.append(f'runner: {p["actual"]:+.1f} s vs the median run, same layout luck')
+            lines.append(f'runner: {p["actual"]:+.1f} s beyond the layout, pokos counted')
         if p.get("extra"):
             lines.append(p["extra"])
         out.append(f'<a href="#{_esc(p["anchor"])}"><rect class="hit" tabindex="0" x="{cx - col / 2:.1f}" y="{T}" '
@@ -205,7 +205,7 @@ def timesave_chart(points: list[dict], title: str) -> str:
     legend = ('<div class="legend"><span><i class="dotkey" style="background:var(--good-mark)"></i>'
               '<i class="dotkey" style="background:var(--bad-mark);margin-left:-4px"></i>this run\'s layout, by the judge</span>'
               '<span><i class="dotkey" style="background:transparent;border:2px solid var(--ink-2);border-radius:2px;'
-              'transform:rotate(45deg);width:7px;height:7px"></i>runner, net of pokos and layout</span>'
+              'transform:rotate(45deg);width:7px;height:7px"></i>runner beyond the layout, pokos counted</span>'
               + ('<span><i style="background:var(--range);height:8px;width:10px;border-radius:5px"></i>how 1000 random layouts '
                  'score (wider = more common)</span>' if any(p.get("dist") is not None for p in points) else
                  '<span><i style="background:var(--range);height:6px"></i>5th–95th percentile of random layouts</span>')
@@ -518,7 +518,7 @@ def cumulative_chart(points: list[tuple], band: list[tuple], beta: float, title:
     out.append(f'<path d="{d}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" pointer-events="none"/>')
     # no mark per play (seven charts of every play would weigh megabytes): the script finds the
     # play nearest the pointer in data-pts and reads it out at the top
-    out.append(f'<circle class="cur" r="4" cx="-99" cy="-99" fill="var(--series-1)" stroke="var(--surface-1)" '
+    out.append(f'<circle class="cur" r="4" cx="0" cy="0" visibility="hidden" fill="var(--series-1)" stroke="var(--surface-1)" '
                f'stroke-width="1.5" pointer-events="none"/>')
     out.append(f'<text class="brush-read" x="{W - R}" y="{T + 14}" text-anchor="end"></text>')
     out.append(f'<text class="hover-read" x="{L + 6}" y="{T + 30}"></text>')
@@ -579,10 +579,10 @@ document.querySelectorAll('.cumul').forEach(box => {
   area.addEventListener('pointermove', e => {
     if (x0 !== null) { show(x0, toX(e)); return; }
     const k = near(toX(e)), q = pts[k];
-    cur.setAttribute('cx', q[0]); cur.setAttribute('cy', q[4]);
+    cur.setAttribute('cx', q[0]); cur.setAttribute('cy', q[4]); cur.setAttribute('visibility', 'visible');
     hov.textContent = q[5] ? q[5].replace('\\n', ' · ') : '';
   });
-  area.addEventListener('pointerleave', () => { cur.setAttribute('cx', -99); hov.textContent = ''; });
+  area.addEventListener('pointerleave', () => { cur.setAttribute('visibility', 'hidden'); hov.textContent = ''; });
   area.addEventListener('pointerup', e => { if (x0 !== null) { const x1 = toX(e);
     if (Math.abs(x1 - x0) < 3) { brush.setAttribute('width', 0); read.textContent = ''; } x0 = null; } });
 });
