@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pikmin 2 Layout Ledger · how the judge works</title>
+<style>
+:root { --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8; --good:#1f7a3a; --bad:#b42318; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161614; --fg:#ececea; --muted:#9a9a94;
+  --card:#20201e; --line:#33332f; --good:#5cc27a; --bad:#f0786d; } }
+.good-text { color:var(--good); } .bad-text { color:var(--bad); } .mid-text { color:var(--muted); }
+:root[data-theme="dark"] { --bg:#161614; --fg:#ececea; --muted:#9a9a94; --card:#20201e; --line:#33332f;
+  --good:#5cc27a; --bad:#f0786d; }
+* { box-sizing:border-box; }
+body { background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,sans-serif; margin:0; padding:24px 16px 48px; }
+main { max-width:1080px; margin:0 auto; }
+h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:19px; margin:36px 0 8px; }
+a { color:inherit; } .muted { color:var(--muted); } p { max-width:780px; }
+.tablewrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+.heatgrid { font-size:12px; } .heatgrid th, .heatgrid td { padding:4px 7px; white-space:nowrap; }
+.heatgrid th:first-child, .heatgrid td:first-child { position:sticky; left:0; background:var(--card); z-index:1; }
+.heatgrid td.heat a { color:var(--fg); text-decoration:none; font-weight:600; }
+.heatgrid td.heat { outline:none; } .heatgrid td.heat:hover, .heatgrid td.heat:focus { box-shadow:inset 0 0 0 2px var(--fg); }
+table { border-collapse:collapse; width:100%; font-size:14px; }
+th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+th { color:var(--muted); font-weight:500; } tr:last-child td { border-bottom:none; }
+.num { text-align:right; font-variant-numeric:tabular-nums; }
+.curves { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:12px; }
+@media (max-width:480px) { .curves { grid-template-columns:1fr; } }
+h3 { font-size:16px; margin:28px 0 6px; } .findings { font-size:14px; }
+details { margin:10px 0 0; } summary { cursor:pointer; color:var(--muted); font-size:14px; }
+details .tablewrap { max-height:360px; overflow:auto; margin-top:8px; }
+code { font:13px ui-monospace,Consolas,monospace; }
+.lead { font-size:16px; } .intro { max-width:820px; } .legend-list { margin:6px 0 14px; padding-left:18px; max-width:820px; }
+.badge { font-size:11px; font-weight:700; color:var(--sun); border:1px solid var(--sun); border-radius:999px; padding:0 6px; margin-left:4px; }
+th[data-sort] { cursor:pointer; user-select:none; } th[data-sort]:hover { color:var(--fg); }
+th[aria-sort="ascending"]::after { content:" ▲"; } th[aria-sort="descending"]::after { content:" ▼"; }
+td.weak { color:var(--bad); }
+.ts-pick { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:8px 12px; margin:0 0 12px;
+  display:flex; flex-direction:column; gap:4px; max-width:820px; }
+.ts-pick label { cursor:pointer; } .small { font-size:13px; }
+@media (max-width:640px) { td.sticky, th.sticky { position:sticky; left:0; background:var(--card); z-index:1; } }
+
+.sc-keys[hidden] { display:none !important; }
+.scatter-controls { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; font-size:13px; margin:0 0 6px; }
+.scatter-controls select { font:inherit; color:inherit; background:var(--surface-1); border:1px solid var(--grid); border-radius:6px; padding:2px 6px; max-width:60vw; }
+.cumul .brush-area { cursor:crosshair; touch-action:none; }
+.cumul .sortval { font-size:10px; }
+.cumul .brush-read { font-size:12px; font-weight:600; }
+.cumul .hover-read { font-size:11px; fill:var(--ink-1); }
+.viz-root { --surface-1:#fcfcfb; --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#8a8984; --grid:#e6e5e0;
+  --range:#d4d3cd; --good-mark:#0ca30c; --bad-mark:#d03b3b; --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
+  --series-5:#e87ba4; --series-6:#008300; --series-7:#6250d6; --series-8:#e34948; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .viz-root {
+  --surface-1:#1a1a19; --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8f8e88; --grid:#2f2f2c; --range:#45443f;
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500; --series-5:#d55181;
+  --series-6:#0ca30c; --series-7:#9085e9; --series-8:#e66767; } }
+:root[data-theme="dark"] .viz-root { --surface-1:#1a1a19; --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8f8e88;
+  --grid:#2f2f2c; --range:#45443f; --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+  --series-4:#c98500; --series-5:#d55181; --series-6:#0ca30c; --series-7:#9085e9; --series-8:#e66767; }
+.chart { background:var(--surface-1); border:1px solid var(--grid); border-radius:10px; padding:12px 12px 6px; }
+.chart svg { display:block; width:100%; height:auto; overflow:visible; }
+.chart text { fill:var(--ink-2); font:11px system-ui,sans-serif; }
+.chart .ttl { fill:var(--ink-1); font-weight:600; font-size:12px; }
+.chart .grid { stroke:var(--grid); stroke-width:1; }
+.chart .zero { stroke:var(--ink-3); stroke-width:1; }
+.chart .range { stroke:var(--range); stroke-width:6; stroke-linecap:round; }
+.chart .hit { fill:transparent; cursor:default; outline:none; }
+.chart svg text, .chart .dot { pointer-events:none; }
+.chart .hit:hover + .dot, .chart .hit:focus + .dot { stroke:var(--ink-1); stroke-width:2; }
+.chart .runline { opacity:.35; } .chart .runline:hover, .chart .runline:focus-within { opacity:1; }
+.chart .runline:hover path { stroke-width:2.5; }
+.legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin:8px 2px 2px; font-size:12px; color:var(--ink-2); }
+.legend i { display:inline-block; width:16px; height:2px; vertical-align:middle; margin-right:6px; border-radius:1px; }
+.legend i.dotkey { width:8px; height:8px; border-radius:50%; }
+#viz-tip { position:fixed; pointer-events:none; z-index:10; background:var(--surface-1); color:var(--ink-2);
+  border:1px solid var(--grid); border-radius:8px; padding:6px 9px; font:12px/1.4 system-ui,sans-serif;
+  box-shadow:0 4px 14px rgba(0,0,0,.25); display:none; box-sizing:border-box; max-width:min(260px, calc(100vw - 16px)); }
+#viz-tip b { color:var(--ink-1); display:block; font-size:13px; }
+#viz-tip img { display:block; width:240px; height:min(200px, 45vh); object-fit:contain; max-width:100%; margin-top:6px;
+  border-radius:4px; background:#000; }
+
+
+:root, :root[data-theme="light"] {
+  --bg:#e4eed2; --bg-2:#d3e4b8; --fg:#1d2418; --muted:#5f6b58; --card:#ffffff; --line:#d5dccb; --field:#f7faf1;
+  --leaf:#4b9a3c; --leaf-2:#3c8531; --leaf-dark:#2c6a24; --accent:#3c8531; --sun:#f2a01c;
+  --good:#2c6a24; --mid:#8a6a1f; --bad:#b3261e; --goodbg:#e3f1dc; --midbg:#f6ecd6; --badbg:#f8e1df; --bar:#c9d3bd;
+  --radius:14px; --shadow:0 1px 2px rgba(44,106,36,.12), 0 2px 10px rgba(44,106,36,.08); color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#141c10; --bg-2:#0d130a; --fg:#e6ece0; --muted:#a3ae98; --card:#1d2619; --line:#34442c; --field:#161e12;
+  --leaf-dark:#a6dc8f; --accent:#8fd37a; --good:#8fd37a; --mid:#e0b45a; --bad:#f2b8b5;
+  --goodbg:#1e3319; --midbg:#352d19; --badbg:#3b2120; --bar:#3a4a32;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.25); color-scheme:dark; } }
+html { background:var(--bg); }
+body { background:linear-gradient(180deg, var(--bg) 0, var(--bg) 340px, var(--bg-2) 100%) fixed; color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+a { color:var(--accent); } a:hover { color:var(--leaf-dark); }
+.site-header { max-width:1240px; margin:0 auto 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.site-logo { display:flex; align-items:center; gap:6px; color:var(--leaf-dark); text-decoration:none; font-weight:800;
+  letter-spacing:-.5px; font-size:1.25rem; text-shadow:1px 1px 0 rgba(255,255,255,.8); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .site-logo { text-shadow:none; } }
+.site-nav { display:flex; flex-wrap:wrap; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  background:linear-gradient(135deg, var(--leaf), var(--leaf-2)); box-shadow:inset 4px 0 0 var(--sun); }
+.site-nav a { text-decoration:none; color:#fff; padding:3px 12px; border-radius:999px; }
+.site-nav a:hover { color:#fff; background:rgba(0,0,0,.15); }
+.site-nav a[aria-current="page"] { background:#fff; color:var(--leaf-2); }
+.site-footer { max-width:1240px; margin:28px auto 0; color:var(--muted); font-size:.85rem; }
+h1, h2 { color:var(--leaf-dark); }
+h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-block; }
+.tablewrap, .card, .help, .tile, .stat { border-radius:var(--radius) !important; box-shadow:var(--shadow); }
+</style></head><body><header class="site-header"><a class="site-logo" href="index.html"><svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true"><path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 25 C8.5 25.5 5 23.5 3.6 20.6 C7.4 19.6 10.6 21.5 12 25 Z" fill="#5fb447" stroke="#3c8531" stroke-width="1"/><ellipse cx="12.0" cy="4.4" rx="3.1" ry="4.3" transform="rotate(0 12.0 4.4)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="16.37" cy="7.58" rx="3.1" ry="4.3" transform="rotate(72 16.37 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="14.7" cy="12.72" rx="3.1" ry="4.3" transform="rotate(144 14.7 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="9.3" cy="12.72" rx="3.1" ry="4.3" transform="rotate(216 9.3 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="7.63" cy="7.58" rx="3.1" ry="4.3" transform="rotate(288 7.63 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><circle cx="12" cy="9" r="3.1" fill="#f2c230" stroke="#d39a12" stroke-width="0.9"/></svg>Pikmin 2 Layout Ledger</a><nav class="site-nav"><a href="index.html">All runs</a><a href="layouts.html">Layouts</a><a href="detection.html">Detection</a><a href="timesave.html">Time saved</a><a href="pokos.html">Pokos</a><a href="how-judge.html" aria-current=page>The judge</a><a href="accuracy.html">Judge accuracy</a><a href="seeds.html">Seed check</a><a href="suggest.html" class=nav-suggest>Suggestion box</a></nav></header><main>
+<h1>How the judge works</h1>
+<p class="intro">The judge looks at a sublevel's layout (where the ship, the treasures, the enemies and the hole are)
+and estimates how many seconds a good runner needs to clear it in Pay Off Debt. It never watches the run: it only
+sees the layout, so it can say how kind the layout was, apart from how well it was played.</p>
+
+<ul class="legend-list">
+<li><b>Estimate</b>: the time to walk the route, plus the time Pikmin spend carrying each treasure back to the ship,
+plus extra time for enemies near a carry path and for gates in the way, plus a fixed cost per treasure.</li>
+<li><b>Layout luck</b>: the same estimate for 1000 random layouts of the sublevel. This layout against the median one
+is its luck (negative = faster), and the share of random layouts it beats is its percentile.</li>
+<li><b>Runner</b>: the real time from the video, with pokos counted (2 pokos = 1 s), minus what the judge says the
+layout was worth. What is left is the runner's own doing.</li>
+</ul>
+<p>Across 1,320 sublevel plays on this site, one second the judge predicts is worth 0.96 real seconds (1 would be perfect), and its estimates correlate 0.70 with the real times. See <a href="accuracy.html">Judge accuracy</a> for the checks.</p>
+
+<details><summary>What goes into the estimate</summary>
+<ul>
+<li><b>Walking</b>: the shortest tour from the ship over the treasures, then on to the hole.</li>
+<li><b>Carrying</b>: for each treasure, the time to gather carriers, dig it up if it is buried, and carry it home
+at a speed set by its weight and how many Pikmin fit on it.</li>
+<li><b>Hazards</b>: enemies within reach of a carry path, by how dangerous they are.</li>
+<li><b>Gates</b>: gates on a carry path or on the way to the hole, by their health.</li>
+<li><b>Pokos</b>: if the treasures it expects you to take are worth fewer pokos than usual, the shortfall counts
+against the layout at 2 pokos per second, the same rate the runner numbers use.</li>
+<li><b>10 seconds per treasure</b> taken, for picking it up and the collection cutscene.</li>
+</ul>
+<p>Each part has its own weight, fitted to real times (below): walking ×1.22, carrying ×0.78, hazards ×0.60,
+gates ×0.58.</p>
+</details>
+
+<details><summary>Which treasures it expects the runner to take</summary>
+<p>Runners skip a treasure when it costs more time than its pokos are worth. The judge tries every take/skip choice
+(every combination of up to four treasures) and scores each. It doesn't simply pick the fastest; it averages the
+choices, leaning heavily on the fast ones, because runners don't always make the best call. When one choice is clearly
+best (about 80% of the weight) the run pages name the treasure it expects to be skipped.</p>
+<p><b>Optional treasures are assumed left behind.</b> Six treasures that runners almost never collect get no time
+and no pokos in the estimate: the chess pieces on FC 6, the locket, the gum tape on SCx 1, the leaf on CoS 1 and
+the queen on SH 6. On FC 6, 4 of 29 runs here took a chess piece. When a runner does take one, its pokos still
+count in the runner's number (2 pokos = 1 s), so the detour is judged on whether it paid for itself. About 15
+low-value treasures are ignored altogether.</p>
+</details>
+
+<details><summary>Special cases</summary>
+<ul>
+<li><b>SH 6</b>: if the Dwarf Bulborb carrying the lens would have to cross water, the lens counts as so costly that
+the judge expects runners to skip it, which they do.</li>
+<li><b>GK</b>: CaveGen's own adjustments for Glutton's Kitchen are kept, with a fitted weight (×0.54).</li>
+<li><b>Fixed floors</b> (the same layout for every seed, such as boss floors) have no luck: they are shown but
+never counted.</li>
+</ul>
+</details>
+
+<details><summary>How it was made and checked</summary>
+<p>It starts from CaveGen's Pay Off Debt judge, rebuilt in CaveGen3. The original treated every
+treasure as taken, gave credit for optional treasures and for creature pokos, and overstated layout differences by
+about a fifth. This version ("judge2") changes those rules and refits the weights on the real sublevel times in
+these runs.</p>
+<p>To avoid tuning it to the runs it is then judged on, the weights were fitted on some runners' runs and tested on
+the others. On the held-out runners, it explained about 47% of the differences in time between layouts, against
+36% for the original.</p>
+<p>The comparison works within each sublevel and each runner, so it asks only: when the same runner meets a
+different layout of the same sublevel, does the time move as the judge says?</p>
+</details>
+
+<details><summary>What it can't see</summary>
+<ul>
+<li>Execution: deaths, misplays, lucky enemy behaviour, how well a runner manages Pikmin.</li>
+<li>Route habits beyond the take/skip choice, and tricks the base judge doesn't model.</li>
+<li>It is an estimate. Single sublevels can be off by several seconds; totals over a run are much steadier.</li>
+</ul>
+</details>
+</main>
+<script>
+(() => {
+  const tip = document.createElement('div'); tip.id = 'viz-tip'; tip.className = 'viz-root';
+  document.body.appendChild(tip);
+  let at = null;
+  const place = () => {
+    if (!at) return;
+    const [x, y] = at, w = tip.offsetWidth, h = tip.offsetHeight, gap = 14;
+    // right of the pointer if it fits, else left; vertically centred on it, kept inside the window
+    let left = x + gap + w <= innerWidth - 8 ? x + gap : x - gap - w;
+    left = Math.max(8, Math.min(left, innerWidth - w - 8));
+    const top = Math.max(8, Math.min(y - h / 2, innerHeight - h - 8));
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  };
+  let cur = null;
+  const hide = () => { tip.style.display = 'none'; cur = null; };
+  const show = (el, x, y) => {
+    if (cur === el) { at = [x, y]; place(); return; }  // same mark: just follow the pointer
+    cur = el;
+    tip.replaceChildren();
+    const [head, ...rest] = el.dataset.tip.split('\n');
+    const b = document.createElement('b'); b.textContent = head; tip.appendChild(b);
+    rest.forEach(line => { const d = document.createElement('div'); d.textContent = line; tip.appendChild(d); });
+    if (el.dataset.img) {
+      const im = document.createElement('img'); im.alt = ''; im.addEventListener('load', place);
+      im.src = el.dataset.img; tip.appendChild(im);
+    }
+    tip.style.display = 'block';
+    at = [x, y]; place();
+  };
+  // touch: the first tap on a mark shows its tooltip, a second tap on the same mark follows its link
+  let touch = false;
+  addEventListener('pointerdown', e => { touch = e.pointerType === 'touch'; }, true);
+  addEventListener('scroll', () => { if (touch) hide(); }, { passive: true });
+  addEventListener('click', e => { if (touch && !e.target.closest('[data-tip]')) hide(); });
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('click', e => {
+      if (!touch || cur === el) return;
+      e.preventDefault(); e.stopPropagation(); show(el, e.clientX, e.clientY);
+    });
+    el.addEventListener('pointermove', e => { if (e.pointerType !== 'touch') show(el, e.clientX, e.clientY); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') hide(); });
+    el.addEventListener('focus', () => { if (touch) return; const r = el.getBoundingClientRect(); show(el, r.right, r.top); });
+    el.addEventListener('blur', hide);
+  });
+})();
+</script>
+
+<footer class="site-footer">Layouts, pictures, treasures and the judge from <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from <a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. Source: <a href="https://github.com/JHawk4/pikmin2-layout-ledger">github.com/JHawk4/pikmin2-layout-ledger</a>.</footer><script>
+for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('click', () => {
+  const p = location.pathname.split('/').filter(Boolean); const here = p.slice(-2).join('/');
+  const u = new URL(a.href); u.searchParams.set('from', here); a.href = u.toString(); });
+</script></body></html>
