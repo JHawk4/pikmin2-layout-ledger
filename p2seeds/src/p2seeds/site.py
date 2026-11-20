@@ -1057,4 +1057,6 @@ def publish(out: str | Path = "data/pages", remote: str = "origin", branch: str 
     git("init", "-q", "-b", branch)
     git("add", "-A")
     git("commit", "-q", "-m", "Site build")
-    git("push", "-q", "--force", url, f"{branch}:{branch}")
+    # the whole site (~550 MB) goes up each time; over HTTP/2 that often times out (HTTP 408)
+    git("-c", "http.version=HTTP/1.1", "-c", "http.postBuffer=1048576000", "push", "-q", "--force", url,
+        f"{branch}:{branch}")
