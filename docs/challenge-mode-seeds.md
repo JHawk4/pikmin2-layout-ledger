@@ -33,6 +33,8 @@ plus a `ScaleMgr`). Challenge mode reaches this screen through `VsGame` `LoadSta
   because of the flame glow). The font is the same, so no new templates are needed. 9 of 13 letters
   track, but each moves at most 2–4 px (6.5 for "z") over about 100 frames. `fit` stops with
   "too few letters with a usable fall", as the decomp predicts.
+- Both runs were repeated after merging `detection-page-and-tuning` (its new `track.py` pair
+  tracking included), with identical results.
 
 ## 3. What does carry the RNG: the results-screen score roll
 
