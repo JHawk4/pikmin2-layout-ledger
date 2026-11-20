@@ -1,9 +1,19 @@
 # Challenge Mode seeds from video
 
-**Verdict: not feasible with the falling-letter method; feasible a different way, from the
-results-screen score roll, for the first floor of every stage after the first.** Floors 2+ of a
-stage have no RNG readout in the video. For the run's first stage, the Pikmin dive on the stage
-select (§7) recovered the seed in a prototype on one dive; the rest of the menus carry too little (§6).
+**Verdict: not feasible with the falling-letter method, feasible in two other ways for each
+stage's first floor.**
+
+1. **The results-screen score roll** (§3–§4) gives the RNG state after a stage. The next stage's
+   floor 1 is that state + 1004 + (menu flashes).
+2. **The Pikmin dive on the stage select** (§7–§8) is 1000 draws made right before floor 1 is
+   generated. It reads the seed on its own, even when no roll comes before it: a run's first stage,
+   and single-stage score records. It is reliable when the dive has enough Pikmin spread across
+   enough colours. Lean dives (2–5 Pikmin) and single dense colours are only sometimes decidable,
+   and the reader says so through its margin.
+
+Floors 2+ have no RNG readout in the video. They are bounded to a window of 20k–1M states (§9);
+finding them would need a layout matcher, which isn't built. The Switch release (Pikmin 2 HD) uses
+a different RNG and is out of scope.
 
 ## 1. What a challenge floor shows on entry
 
@@ -328,6 +338,23 @@ Per-stage RNG use is consistent between runners
 to the next roll, 6 CMAL runs). For example, CH6 uses 5.4–7.0, CH11 3.3–4.2 and CH26 8.9–16.6. For
 dives with few Pikmin, the window is narrowed to (frames from the dive to the results) × the stage's
 rate, ±35%.
+
+### Running it
+
+```bash
+# results rolls of a video (one JSON entry per results screen)
+.venv/Scripts/python docs/challenge_dive/read_results.py VIDEO --out rolls.json
+# every dive in a video (whole 2^31 search, about 8 minutes per dive on 8 cores)
+.venv/Scripts/python docs/challenge_dive/read_dives.py VIDEO --out dives.json
+# CMAL cross-check: dives searched near the following roll, compared with the preceding roll
+.venv/Scripts/python docs/challenge_dive/crosscheck_cmal.py VIDEO --every 2
+# score WRs (data/challenge/wr/: wr_list.json, videos, visits.json, rolls/)
+.venv/Scripts/python docs/challenge_dive/run_wrs.py
+.venv/Scripts/python docs/challenge_dive/make_site_seeds.py ../pikmin-wrs/site/seeds.json
+```
+
+Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challenge_stages.csv`
+(found next to this repo, or `P2SEEDS_CAVEGEN3_DATA`).
 
 ### Score WRs (pik5.net, current Pikmin 2 #1s)
 

@@ -14,6 +14,9 @@ sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
 
 from p2seeds import rng  # noqa: E402
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from make_site_seeds import assess  # noqa: E402
+
 D = os.path.join(ROOT, "data", "challenge")
 COL = ("red", "yellow", "blue", "white", "purple")
 
@@ -54,8 +57,9 @@ def wrs():
             rows.append(f"| CH{ch} | {w['score']:,} {w['user']} | | | | | {r.get('note')} |")
             continue
         c = r["candidates"][0]
-        m, sm = r.get("margin") or 0, r.get("shift_margin") or 0
-        ok = m >= 0.10 and sm >= 0.005
+        _, _, m, sm = assess(r)
+        m, sm = m or 0, sm or 0
+        ok = m >= 0.10 and sm >= 0.005 and sum(min(k, 50) for k in r.get("counts", [])) >= 8
         rows.append(f"| CH{ch} | {w['score']:,} {w['user']} | {counts_str(r.get('counts'))} | "
                     f"`{c['layout_seed'] & 0x7FFFFFFF:08X}` | {m * 100:.1f}% | {sm * 100:+.1f}% | "
                     f"{'published' if ok else 'uncertain'} |")

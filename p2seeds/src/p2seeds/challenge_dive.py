@@ -962,6 +962,10 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         cap.set(cv2.CAP_PROP_POS_FRAMES, reg_frame)
         ok, f = cap.read()
         reg = register(f)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, visit[0] + 3))
+        ok, f2 = cap.read()
+        if ok:
+            reg = refine_registration(f2, reg)
     if ch is None:
         ch, share = landing_stage(path, first, last, reg)
     counts = stage_counts(ch)
@@ -1366,4 +1370,43 @@ def burst_locality(path: str, bursts, g: Geometry, lead: str, lead_delay: float,
         before = rel(max(0, b - 10), 9)
         if after is not None and before is not None:
             out[b] = after / (before + 0.5)
+    return out
+
+
+def refine_registration(frame, reg, min_score: float = 0.85, search: int = 22):
+    """Sharpen a menu registration with the tally icons themselves: match each reference icon near
+    its registered place and refit x and y scale/offset from the icons that match well (the colours
+    in use can be highlighted and match poorly). Returns a new registration dict (or the input)."""
+    ref = reference_menu()
+    R = load_reference()
+    G = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    T = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    x0r, y0r = REF_R0[0], REF_R0[1]
+    pts = []
+    for c, (u, v) in R["origins"].items():
+        px, py = int(u - 12), int(v - 20)
+        patch = cv2.resize(G[py:py + 30, px:px + 24], None, fx=reg["sx"], fy=reg["sy"])
+        mx = reg["lx"] + (px - x0r) * reg["sx"]
+        my = reg["ly"] + (py - y0r) * reg["sy"]
+        ax, ay = int(mx - search), int(my - search)
+        win = T[max(0, ay):ay + patch.shape[0] + 2 * search, max(0, ax):ax + patch.shape[1] + 2 * search]
+        if win.shape[0] < patch.shape[0] or win.shape[1] < patch.shape[1]:
+            continue
+        m = cv2.matchTemplate(win, patch, cv2.TM_CCOEFF_NORMED)
+        _, sc, _, loc = cv2.minMaxLoc(m)
+        if sc >= min_score:
+            pts.append((u, v, loc[0] + max(0, ax) - mx + reg["lx"] + (u - x0r) * reg["sx"],
+                        loc[1] + max(0, ay) - my + reg["ly"] + (v - y0r) * reg["sy"]))
+    if len(pts) < 3:
+        return reg
+    a = np.array(pts)
+    out = dict(reg)
+    for k, (src, dst, key_s, key_l, base) in enumerate(((0, 2, "sx", "lx", x0r), (1, 3, "sy", "ly", y0r))):
+        xs, ys = a[:, src] - base, a[:, dst]
+        if np.ptp(xs) < 20:                 # not enough spread: keep the scale, fit the offset
+            out[key_l] = float(np.mean(ys - xs * reg[key_s]))
+            continue
+        s, l = np.polyfit(xs, ys, 1)
+        out[key_s], out[key_l] = float(s), float(l)
+    out["icons"] = len(pts)
     return out

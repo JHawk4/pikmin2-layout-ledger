@@ -31,8 +31,11 @@ def assess(r):
     s = best["state"]
     l0 = best["loss"]
     # best competitor that is not a whole-dive shift of the winner
-    others = [c["loss"] for c in r["candidates"][1:] + r.get("top", [])
-              if rng.distance(s, c["state"], limit=64) is None and rng.distance(c["state"], s, limit=64) is None]
+    def related(x):
+        if (x & 0x7FFFFFFF) == (s & 0x7FFFFFFF):
+            return True
+        return rng.distance(s, x, limit=64) is not None or rng.distance(x, s, limit=64) is not None
+    others = [c["loss"] for c in r["candidates"][1:] + r.get("top", []) if not related(c["state"])]
     m_other = (min(others) - l0) / l0 if others else None
     m_shift = r.get("shift_margin")
     return s, rng.next_seed(s, 999) & 0x7FFFFFFF, m_other, m_shift
@@ -43,6 +46,8 @@ def main():
     ap.add_argument("out")
     ap.add_argument("--min-margin", type=float, default=0.10)
     ap.add_argument("--min-shift", type=float, default=0.005)
+    ap.add_argument("--min-pikmin", type=int, default=8,
+                    help="fewer visible Pikmin leave many look-alike states in the window")
     a = ap.parse_args()
     wrs = {w["ch"]: w for w in json.load(open(os.path.join(WR, "wr_list.json"), encoding="utf8"))}
     entries, unread, report = [], {}, []
@@ -72,11 +77,15 @@ def main():
             report.append((ch, None, note))
             continue
         s, lay, m_other, m_shift = a_
-        ok = (m_other is None or m_other >= a.min_margin) and (m_shift is None or m_shift >= a.min_shift)
+        visible = sum(min(k, 50) for k in r.get("counts", []))
+        ok = ((m_other is None or m_other >= a.min_margin) and (m_shift is None or m_shift >= a.min_shift)
+              and visible >= a.min_pikmin)
         report.append((ch, f"{lay:08X}", f"other {m_other} shift {m_shift}", ok))
         if not ok:
-            unread[str(200 + ch)] = {"en": "the video does not pin it down (several layouts fit)",
-                                     "ja": "動画から一つに絞れません（複数の候補）"}
+            unread[str(200 + ch)] = ({"en": "too few Pikmin jump in to pin it down", "ja": "飛び込むピクミンが少なく絞り込めません"}
+                                     if visible < a.min_pikmin else
+                                     {"en": "the video does not pin it down (several layouts fit)",
+                                      "ja": "動画から一つに絞れません（複数の候補）"})
             continue
         entries.append({
             "post": w["post"], "rule": w["rule"], "stage": 200 + ch,
