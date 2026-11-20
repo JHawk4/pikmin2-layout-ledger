@@ -2,8 +2,8 @@
 
 **Verdict: not feasible with the falling-letter method; feasible a different way, from the
 results-screen score roll, for the first floor of every stage after the first.** Floors 2+ of a
-stage, and the run's first stage, have no RNG readout in the video. The pre-stage menus don't
-fill that gap either (§6).
+stage have no RNG readout in the video. For the run's first stage, the Pikmin dive on the stage
+select (§7) recovered the seed in a prototype on one dive; the rest of the menus carry too little (§6).
 
 ## 1. What a challenge floor shows on entry
 
@@ -114,8 +114,9 @@ Limits:
 The question: can something on the title screen, file select or challenge stage select read the
 RNG for the stages the results roll can't cover (the run's first stage, floors 2+)?
 
-**Verdict: no.** The menus advance the global RNG, but only two things there carry real
-information. The stage-select flash timer gives about 8 bits per flash, and a runner sees 0–1
+**Verdict: no for the title, file select and flash; yes for the dive (see §7, which supersedes the
+"not readable" verdict on the dive below).** The menus advance the global RNG, but only two things
+there carry real information. The stage-select flash timer gives about 8 bits per flash, and a runner sees 0–1
 flashes per visit. The stage-confirm Pikmin dive makes 1000 draws but can't be read at VOD
 resolution. Neither pins a seed. The decomp does explain CaveGen's "+1004", which confirms the
 menu → floor-1 link used in §4.
@@ -184,6 +185,86 @@ candidates when that happens.
 - The run's first stage: it follows a give-up, and the only readout before it is the unreadable
   dive.
 - Floors 2+: no menu between floors.
+
+## 7. Reading the seed from the Pikmin dive (prototype: works on one dive)
+
+§6 called the dive unreadable. Closer work shows it can be read, at least for a small dive. On the
+solo run's dive into Cryptic Cavern, the seed was recovered from the video **without using the
+score roll**, and it is the same seed §4 found and checked against CaveGen3.
+
+### What each draw does on screen
+
+From `TChallengePiki::jumpStart` / `update` (`challengeSelect2D.cpp:75–200`). Pikmin *i* of colour
+*c* (red, yellow, blue, white, purple) gets 4 draws:
+- launch timer `T0 = 0.1·r₀ − 0.1·i − 0.5·c`
+- sideways deviation `dx = 30·r₁`, negated when `r₂ > 0.5`
+- hop height `dy = 15 + 10·r₃`
+
+The timer advances 0.15 per frame. While it is in [0, π/2] (about 10.5 frames), the Pikmin hops
+sideways: `x = X₀ − dx·sin t`, `y = Y₀ − |dy·sin 2t|`. It then climbs 12 units per frame at
+`X₀ − dx` up to y = 100, and arcs to the stage panel.
+
+Only the stage's starting Pikmin are moved and drawn (`mMaxPiki`, at most 50 per colour), but all
+5 × 50 × 4 = 1000 draws are made regardless. Cryptic Cavern starts with 5 red and 5 white, so 10
+Pikmin are visible.
+
+The draws in game order are: last visible roll digit at s₁₀₈₉, then 5 more draws (s₁₀₉₀–s₁₀₉₄),
+then the dive s₁₀₉₅–s₂₀₉₄, and floor 1 is generated from s₂₀₉₄ = `8F129F12`. This matches CaveGen's
+`lastRead + 1004` exactly. §6's count of 4 menu draws left out one draw, whose source isn't pinned
+down; the high-score slot's `randInt(6)` in `challengeResult2D.cpp` is one possibility.
+
+### Evidence
+
+- **Qualitative.** Each Pikmin uses 4 draws, so shifting the dive start by 4 moves every Pikmin
+  over by one. Of offsets +1086…+1101 from `04047550`, only +1095 puts the red group 2 left /
+  3 right and the white group 4 left / 1 right, as in the video.
+- **Image fit.** The model renders a sprite template (cut from the video) at each simulated
+  position, against background-subtracted frames 5893–5911. Scale, group origins, climb length and
+  frame phase are fitted per hypothesis, within bounds.
+  - +1095 scores 8731.
+  - The 16 neighbouring offsets score 10712–15403.
+  - 20 random seeds score 10113–13505.
+
+![Simulated positions for +1095 (yellow: red Pikmin, cyan: white) over the video](challenge-mode/dive-fit.jpg)
+
+The climb-and-arc part (from about frame 5905 for red) isn't modelled; only the hop and climb are.
+
+### Seed-free recovery (`docs/challenge_dive/divemeasure.py`)
+
+1. **Geometry**, fixed from the calibration fit: 0.88 × 0.65 px per unit, the red and white group
+   origins, and the frame phase. These are properties of the capture layout. The tally icons sit at
+   the same place on every stage, so in a run they can come from any dive whose seed the score roll
+   already gives. Here they came from this same dive; see caveats.
+2. **Measure each Pikmin freely**: launch jitter, signed sideways deviation and hop height, by
+   differential evolution against the frames, with identity taken from launch order.
+   - Sideways deviations came out within 0.7–3.9 units (red) and 0.1–1.3 units (white) of the truth.
+   - All 10 directions were right.
+   - Launch jitter and hop height are not measurable at 360p.
+3. **Lattice search** over all 2³¹ states (`lattice.box_points`). Each |dx| bounds draw 4i+1 to
+   ±4.5 units, and the direction bounds draw 4i+2 to half its range. 15 states satisfy all 20
+   constraints (116 s), including the true one.
+4. **Rank** the 15 by the image fit with the calibrated geometry. The true state comes first:
+   8732, against 9328 for the next. That gives dive start `7CF9494B` and floor-1 layout seed
+   **`8F129F12`**, the one verified against CaveGen3 in §4.
+
+Synthetic check: with exact or σ = 1 noisy deviations and ±2.5 units, the lattice leaves about 30
+states and the direction signs leave exactly the true one, in under a second.
+
+### Caveats and what's next
+
+- **One dive, one video.** The geometry calibration came from the same dive. A proper test is to
+  calibrate on another stage of the run (its seed from the score roll) and recover a different
+  dive. The frame phase must also be found per dive (from the first hop frame) instead of fixed.
+- **The margin is modest:** 6% to the second candidate. Rendering the remaining candidates' floor 1
+  with CaveGen3 and comparing with the landing view would settle close calls.
+- **Crowding.** 5 per colour is a small dive. Bigger stages have up to 50 per colour, launched
+  0.67 frames apart, so they overlap much more. The first few Pikmin of each colour are still the
+  cleanest, and about 10 sideways deviations are enough.
+- **2-player runs:** the dive is drawn once (no split screen), so the method should carry over, but
+  it is untried.
+- **What it adds:** the run's first stage, which follows a give-up and has no score roll before it.
+  On later stages it gives an independent check of the roll and pins the ±1 draw. Floors 2+ are
+  still out of reach.
 
 ## Footage used
 
