@@ -541,7 +541,8 @@ def geometry_from_vector(th) -> Geometry:
     return Geometry(sx, sy, {c: (o[2 * k], o[2 * k + 1]) for k, c in enumerate(COLOURS)}, v100, (gu, gv), f0)
 
 
-def fit_geometry(dv: DiveVideo, flat, g0: Geometry, frames, free_scale=True, origin_slack=12.0, f0_slack=8.0):
+def fit_geometry(dv: DiveVideo, flat, g0: Geometry, frames, free_scale=True, origin_slack=12.0, f0_slack=8.0,
+                 fast: bool = False):
     """Fit geometry (and the dive's frame phase) for a known dive (flat params)."""
     from scipy.optimize import minimize
     th0 = geometry_vector(g0)
@@ -551,11 +552,13 @@ def fit_geometry(dv: DiveVideo, flat, g0: Geometry, frames, free_scale=True, ori
          (g0.goal[0] - 80, g0.goal[0] + 80), (g0.goal[1] - 60, g0.goal[1] + 60)]
     B += [(x - origin_slack, x + origin_slack) for x in th0[6:]]
     best = None
-    for df0 in (-3, 0, 3):
+    starts = (0,) if fast else (-3, 0, 3)
+    for df0 in starts:
         t = list(th0)
         t[2] = min(max(t[2] + df0, B[2][0]), B[2][1])
         r = minimize(lambda th: image_loss(dv, flat, geometry_from_vector(th), frames), t, method="Powell",
-                     bounds=B, options=dict(maxiter=8000, xtol=0.02, ftol=1e-6))
+                     bounds=B, options=dict(maxiter=1500 if fast else 8000, xtol=0.05 if fast else 0.02,
+                                            ftol=1e-5 if fast else 1e-6))
         if best is None or r.fun < best.fun:
             best = r
     return geometry_from_vector(best.x), float(best.fun)
@@ -887,11 +890,11 @@ def dive_region(g: Geometry, counts):
     return x0, y0, x1, y1
 
 
-def window_states(end_state: int, span: int) -> np.ndarray:
-    """Dive first states whose floor-1 layout seed is 0..span-1 draws before `end_state`."""
+def window_states(end_state: int, span: int, skip: int = 0) -> np.ndarray:
+    """Dive first states whose floor-1 layout seed is skip..skip+span-1 draws before `end_state`."""
     a, c = rng.jump(-1)
     out = []
-    x = rng.prev_seed(end_state, 999)
+    x = rng.prev_seed(end_state, 999 + skip)
     for _ in range(span):
         out.append(x)
         x = (a * x + c) & 0xFFFFFFFF
@@ -900,7 +903,7 @@ def window_states(end_state: int, span: int) -> np.ndarray:
 
 def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geometry | None = None,
               keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print,
-              window=None, save_top: int = 200):
+              window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings."""
     import time
@@ -921,49 +924,88 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     g = geometry if geometry is not None else reference_geometry(ch, reg)
     lead = next(c for c, k in zip(COLOURS, counts) if k)
     onset = motion_onset(path, first, last, g, lead)
-    if onset is None:
+    if onset is None and window is None:
         return dict(ok=False, note="no dive motion found", ch=ch, reg=reg)
     # the lead colour's group starts 0.5/0.15 frames per colour after red
     lead_c = COLOURS.index(lead)
-    g = g.copy(f0=onset - ONSET_LAG - lead_c * 0.5 / TIMER_SPEED)
+    lead_delay = lead_c * 0.5 / TIMER_SPEED
+    f0_guess = (onset - ONSET_LAG - lead_delay) if onset is not None else first + 20 - lead_delay
     span = int((0.1 * (max(counts) - 1) + 0.5 * 4) / TIMER_SPEED + 45)
     region = dive_region(g, counts)
-    dv = DiveVideo(path, int(g.f0) + 2, min(last, int(g.f0) + span), None, region,
+    if window is not None:
+        # the whole visit: the dive can start anywhere in it (menu detection may begin late)
+        f0_lo, f0_hi = visit[0] - 45.0, visit[1] + 2.0
+    else:
+        f0_lo = f0_hi = f0_guess
+    dv = DiveVideo(path, max(0, int(f0_lo) + 2), min(n_frames - 1, int(max(f0_hi, f0_guess)) + span), None, region,
                    scale=float(np.sqrt(reg["sx"] * reg["sy"])))
+    g = g.copy(f0=f0_guess)
     log(f"stage CH{ch} counts {counts} onset {onset} f0~{g.f0:.1f} region {region} reg {reg}")
     if window is not None:
         st = window_states(*window)
         log(f"  window: {len(st)} states before roll state 0x{window[0]:08X} ({time.time() - t0:.0f}s)")
+        # the motion onset is unreliable when the "Pick one!" window is still sliding away: pick the
+        # frame phase where the window's best states fit best
+        sample = st[:: max(1, len(st) // 600_000)]
+        trials = []
+        for f0 in np.arange(f0_lo + (f0_guess - f0_lo) % 1.0, f0_hi + 0.01, 1.0):
+            sc = rescore(dv, counts, g.copy(f0=float(f0)), sample)
+            top = np.sort(sc)[-200:]
+            trials.append((float(top.mean()), float(f0)))
+        trials.sort(reverse=True)
+        g = g.copy(f0=trials[0][1])
+        # rebuild the observations from the dive's own frames (background median without the icons,
+        # which are moved off screen once the dive starts)
+        dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), None, region,
+                       scale=float(np.sqrt(reg["sx"] * reg["sy"])))
+        log(f"  f0 search: best {trials[0][1]:.1f} (guess {f0_guess:.1f}); top {[(round(f, 1), round(v, 2)) for v, f in trials[:4]]}")
     else:
         st, sc = search_all(dv, counts, g, first_pikmin=first_pikmin, keep=keep)
         log(f"  stage-1 search done {time.time() - t0:.0f}s")
-    sc2 = rescore(dv, counts, g, st)
-    o = np.argsort(-sc2)[:mid]
-    st2 = st[o]
-    bl = batch_image_loss(dv, counts, g, st2)
-    o2 = np.argsort(bl)[:final]
-    log(f"  rescored {len(st)} -> batch loss on {len(st2)} -> exact on {len(o2)} ({time.time() - t0:.0f}s)")
     frames = sorted(dv.obs)
-    res = []
-    for s in st2[o2]:
-        flat = flatten(dive_params(int(s), counts))
-        res.append((image_loss(dv, flat, g, frames), int(s)))
-    res.sort()
-    # refit f0 and origins slightly for the best few
+    flats = {}
+
+    def prune(geom):
+        sc2 = rescore(dv, counts, geom, st)
+        o = np.argsort(-sc2)[:mid]
+        st2 = st[o]
+        bl = batch_image_loss(dv, counts, geom, st2)
+        pool = st2[np.argsort(bl)[:final]]
+        for s in pool:
+            if int(s) not in flats:
+                flats[int(s)] = flatten(dive_params(int(s), counts))
+        return pool
+
+    def rank(geom, pool):
+        r = [(image_loss(dv, flats[int(s)], geom, frames), int(s)) for s in pool]
+        r.sort()
+        return r
+
+    pool = prune(g)
+    log(f"  pruned {len(st)} -> {len(pool)} ({time.time() - t0:.0f}s)")
+    res = rank(g, pool)
+    # alternate: refit the geometry on the leader, prune and re-rank with it (a look-alike's geometry is
+    # nearly right, so this converges on the true state, which lines up exactly)
+    geo = g
+    for it in range(iterations):
+        lead = res[0][1]
+        geo, _ = fit_geometry(dv, flats[lead], geo, frames, fast=False)
+        if window is not None:                 # pruning the window again is cheap
+            pool = np.unique(np.concatenate([pool, prune(geo)]))
+        res = rank(geo, pool)
+        log(f"  iteration {it + 1}: leader 0x{res[0][1]:08X} {res[0][0]:.1f}, next {res[1][0]:.1f} ({time.time() - t0:.0f}s)")
+        if (res[1][0] - res[0][0]) / res[0][0] > 0.1:
+            break                               # a clear leader: the geometry has converged
     refined = []
-    for l, s in res[:8]:
-        flat = flatten(dive_params(s, counts))
-        best = (l, g.f0)
-        for df in np.arange(-1.5, 1.51, 0.25):
-            l2 = image_loss(dv, flat, g.copy(f0=g.f0 + df), frames)
-            if l2 < best[0]:
-                best = (l2, g.f0 + df)
-        refined.append((best[0], s, best[1]))
+    for l, s in res[:refit]:
+        g3, l3 = fit_geometry(dv, flats[s], geo, frames, fast=True)
+        refined.append((min(l, l3), s, (g3 if l3 < l else geo).f0, l, geometry_vector(g3 if l3 < l else geo)))
     refined.sort()
-    log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, _ in refined[:3]]}")
+    log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, *_ in refined[:3]]}")
     return dict(ok=True, ch=ch, counts=counts, reg=reg, onset=onset, f0=g.f0, region=region,
                 top=[dict(state=s, loss=l) for l, s in res[:save_top]], dropped=dv.dropped,
-                candidates=[dict(state=s, loss=l, f0=f, layout_seed=layout_seed(s)) for l, s, f in refined],
+                candidates=[dict(state=s, loss=l, f0=f, loss_fixed=lf, geometry=gv, layout_seed=layout_seed(s))
+                            for l, s, f, lf, gv in refined],
                 margin=(refined[1][0] - refined[0][0]) / refined[0][0] if len(refined) > 1 else None,
                 seconds=time.time() - t0)
 
@@ -1107,3 +1149,21 @@ def batch_image_loss(dv: DiveVideo, counts, g: Geometry, states, frame_step: int
            np.float32(tcx), np.float32(tcy), np.float32(dv.region[0]), np.float32(dv.region[1]),
            np.float32(ds), out)
     return out
+
+
+def stage_draw_rates():
+    import json
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "challenge_stage_draws.json")
+    with open(p) as f:
+        return {int(k): v for k, v in json.load(f)["stages"].items()}
+
+
+def draw_window(ch: int, frames: float, slack: float = 0.35, fallback: int = 3_000_000):
+    """(skip, span) draws before the next results roll where the floor-1 seed should lie, from the
+    stage's draws per frame on CMAL runs and the frames between the dive and the results."""
+    r = stage_draw_rates().get(ch)
+    if r is None or frames <= 0:
+        return 0, fallback
+    lo = max(0, int(frames * r["min"] * (1 - slack)))
+    hi = int(frames * r["max"] * (1 + slack)) + 5000
+    return lo, hi - lo
