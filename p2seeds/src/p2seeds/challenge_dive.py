@@ -180,6 +180,12 @@ class DiveVideo:
             d = np.abs(f - bg).sum(2)
             o = np.clip((d - 60) / 150, 0, 1)
             self.obs[fr] = cv2.GaussianBlur(o, (blur, blur), 0) if blur else o
+        # drop frames dominated by something other than Pikmin (the "Pick one!" window fading out)
+        masses = {fr: float(o.sum()) for fr, o in self.obs.items()}
+        med = float(np.median(list(masses.values()))) if masses else 0.0
+        self.dropped = [fr for fr, m in masses.items() if m > 3.0 * med + 500]
+        for fr in self.dropped:
+            del self.obs[fr]
         t = template if template is not None else default_template()
         if scale != 1.0:
             t = cv2.resize(t, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
@@ -881,8 +887,20 @@ def dive_region(g: Geometry, counts):
     return x0, y0, x1, y1
 
 
+def window_states(end_state: int, span: int) -> np.ndarray:
+    """Dive first states whose floor-1 layout seed is 0..span-1 draws before `end_state`."""
+    a, c = rng.jump(-1)
+    out = []
+    x = rng.prev_seed(end_state, 999)
+    for _ in range(span):
+        out.append(x)
+        x = (a * x + c) & 0xFFFFFFFF
+    return np.array(out, np.uint64)
+
+
 def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geometry | None = None,
-              keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print):
+              keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print,
+              window=None, save_top: int = 200):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings."""
     import time
@@ -913,8 +931,12 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     dv = DiveVideo(path, int(g.f0) + 2, min(last, int(g.f0) + span), None, region,
                    scale=float(np.sqrt(reg["sx"] * reg["sy"])))
     log(f"stage CH{ch} counts {counts} onset {onset} f0~{g.f0:.1f} region {region} reg {reg}")
-    st, sc = search_all(dv, counts, g, first_pikmin=first_pikmin, keep=keep)
-    log(f"  stage-1 search done {time.time() - t0:.0f}s")
+    if window is not None:
+        st = window_states(*window)
+        log(f"  window: {len(st)} states before roll state 0x{window[0]:08X} ({time.time() - t0:.0f}s)")
+    else:
+        st, sc = search_all(dv, counts, g, first_pikmin=first_pikmin, keep=keep)
+        log(f"  stage-1 search done {time.time() - t0:.0f}s")
     sc2 = rescore(dv, counts, g, st)
     o = np.argsort(-sc2)[:mid]
     st2 = st[o]
@@ -940,6 +962,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     refined.sort()
     log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, _ in refined[:3]]}")
     return dict(ok=True, ch=ch, counts=counts, reg=reg, onset=onset, f0=g.f0, region=region,
+                top=[dict(state=s, loss=l) for l, s in res[:save_top]], dropped=dv.dropped,
                 candidates=[dict(state=s, loss=l, f0=f, layout_seed=layout_seed(s)) for l, s, f in refined],
                 margin=(refined[1][0] - refined[0][0]) / refined[0][0] if len(refined) > 1 else None,
                 seconds=time.time() - t0)
