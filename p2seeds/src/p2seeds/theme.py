@@ -11,7 +11,7 @@ from __future__ import annotations
 import html
 import re
 
-SITE = "P2 VOD Seeds"
+SITE = "Pikmin 2 Layout Ledger"
 
 LOGO = ('<svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true">'
         '<path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/>'
@@ -60,7 +60,11 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
     pages `run` names it and its two pages appear in the navigation."""
     links = [("runs", f"{prefix}index.html", "All runs")]
     if run:
-        links += [("judge", "judge.html", "Layouts &amp; luck"), ("detection", "report.html", "Seed detection")]
+        links += [("judge", "judge.html", "Layouts"), ("detection", "report.html", "Seed detection")]
+    else:
+        links += [("layouts", "layouts.html", "Layouts"), ("detection", "detection.html", "Detection"),
+                  ("timesave", "timesave.html", "Time saved"), ("pokos", "pokos.html", "Pokos"),
+                  ("accuracy", "accuracy.html", "Judge accuracy"), ("seeds", "seeds.html", "Seed check")]
     links.append(("suggest", f"{prefix}suggest.html", "Suggestion box"))
     nav = "".join(f'<a href="{href}"{" aria-current=page" if key == active else ""}'
                   f'{" class=nav-suggest" if key == "suggest" else ""}>{label}</a>' for key, href, label in links)
@@ -68,10 +72,10 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
             f'<nav class="site-nav">{nav}</nav></header>')
 
 
-FOOTER = ('<footer class="site-footer">Layouts by <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a> and '
-          '<a href="https://github.com/JHawk4/CaveGen">CaveGen</a>; runs from '
+FOOTER = ('<footer class="site-footer">Layouts, pictures, treasures and the judge from '
+          '<a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from '
           '<a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. '
-          'Source: <a href="https://github.com/JHawk4/p2-vod-seeds">github.com/JHawk4/p2-vod-seeds</a>.</footer>')
+          'Source: <a href="https://github.com/JHawk4/pikmin2-layout-ledger">github.com/JHawk4/pikmin2-layout-ledger</a>.</footer>')
 
 # The suggestion box remembers which page it was opened from (the hidden "page" field).
 NAV_JS = """<script>
@@ -107,15 +111,15 @@ button.primary {{ background:linear-gradient(135deg, var(--leaf), var(--leaf-2))
 </style></head><body><main>
 <h1>Suggestion box</h1>
 <p>Spotted a wrong seed, a misread poko count, a run that is missing, or have an idea for this site? Leave a note.
-Your name is optional.</p>
+It goes privately to the site's maker (through a Google Form) and is not published. Both other fields are optional.</p>
 <!-- The same Google Form as the other Pikmin sites; "page" tells them apart. -->
 <form id="suggest" class="suggest" action="{SUGGEST_FORM}" method="POST">
   <label class="field"><span>Name (optional)</span>
-    <input name="entry.1125475916" maxlength="80" placeholder="e.g. your Discord or speedrun.com name"></label>
+    <input name="entry.1125475916" maxlength="80" placeholder="e.g. your speedrun.com name"></label>
   <label class="field"><span>Suggestion</span>
     <textarea name="entry.1148029577" rows="7" maxlength="4000" required></textarea></label>
-  <label class="field"><span>Contact (optional)</span>
-    <input name="entry.303778019" maxlength="120" placeholder="Discord username, so we can follow up"></label>
+  <label class="field"><span>How to reach you (optional)</span>
+    <input name="entry.303778019" maxlength="120" placeholder="Discord username or email, if you'd like a reply"></label>
   <input type="hidden" name="entry.1626566187" id="suggest-page">
   <div class="buttons"><button type="submit" class="primary">Send</button>
     <span id="suggest-status" class="status" role="status" aria-live="polite"></span></div>
@@ -125,7 +129,7 @@ Your name is optional.</p>
 const form = document.getElementById('suggest'), status = document.getElementById('suggest-status');
 form.addEventListener('submit', async (e) => {{
   e.preventDefault();
-  document.getElementById('suggest-page').value = 'p2-vod-seeds/' + (new URLSearchParams(location.search).get('from') || '');
+  document.getElementById('suggest-page').value = 'pikmin2-layout-ledger/' + (new URLSearchParams(location.search).get('from') || '');
   const button = form.querySelector('button'); button.disabled = true; status.textContent = 'Sending…';
   try {{
     // Google Forms doesn't allow reading the reply, so a sent request counts as success.

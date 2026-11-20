@@ -131,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     j.add_argument("--kind", default="pod", help="CaveGen judge type: pod, at, key, cmat, score, attk")
     rd = sub.add_parser("render", help="render every seeded layout missing from OUT_DIR/img")
     rd.add_argument("out_dir")
+    rd.add_argument("--redraw", action="store_true", help="draw every layout again, not only missing ones")
     tr = sub.add_parser("treasures", help="count treasures collected per sublevel from the treasure panel")
     tr.add_argument("out_dir")
     tr.add_argument("--rescan", action="store_true", help="scan the video for panels again")
@@ -148,6 +149,7 @@ def main(argv: list[str] | None = None) -> int:
     dt.add_argument("--force", action="store_true", help="redo pictures that already exist")
     rd = sub.add_parser("redo", help="re-run a finished run's non-high sublevels; keep new high seeds that chain with a neighbour")
     rd.add_argument("out_dir")
+    rd.add_argument("--redraw", action="store_true", help="draw every layout again, not only missing ones")
     pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
     pb.add_argument("--root", default="data/output")
     pb.add_argument("--out", default="data/pages")
@@ -201,7 +203,10 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         have = treasures.load(out)
         # older scans only looked between sublevels of one cave (no final floors, no surface)
-        if args.rescan or not have or any("window" not in v and v.get("cave") != "surface" for v in have.values()):
+        # rescan when the entries moved (a re-detect can shift entry frames, and the scan is keyed by them)
+        frames = {str(e["frame"]) for e in json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"] if e.get("cave")}
+        stale = frames != {k for k, v in (have or {}).items() if v.get("cave") not in (None, "surface")}
+        if args.rescan or not have or stale or any("window" not in v and v.get("cave") != "surface" for v in have.values()):
             treasures.count_run(out, progress=lambda i, n: log(f"  scanning {100 * i / max(n, 1):4.1f}%"))
         treasures.read_values(out, progress=lambda i, n, v: log(
             f"  {v['cave']} {v['sublevel']}: treasures {[c[0] if c else '?' for c in v['collected']]}"))
@@ -227,7 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         for e in entries:
             dest = out / "img" / f"layout_{e['frame']}_{e['cave']}-{e['sublevel']}.png"
             seeded = e.get("layout_seed") and e.get("sublevel") and e.get("confidence") in ("high", "medium")
-            if seeded and not dest.exists():
+            if seeded and (args.redraw or not dest.exists()):
                 cavegen.render(e["cave"], e["sublevel"], int(e["layout_seed"], 16), dest)
                 log(f"  {dest.name}")
         return 0

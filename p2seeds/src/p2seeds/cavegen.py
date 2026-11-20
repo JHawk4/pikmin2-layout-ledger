@@ -39,9 +39,24 @@ def ensure_built() -> Path:
 
 
 def render(cave_id: str, sublevel: int, seed: int, dest: str | Path, extra_args: tuple[str, ...] = ()) -> Path:
-    """Generate `cave_id`-`sublevel` from `seed` and copy the image to `dest`."""
-    build = ensure_built()
+    """Generate `cave_id`-`sublevel` from `seed` and copy the image to `dest`.
+
+    Drawn by CaveGen3's command line (the same map as its web page, at 80 px per cell like Java
+    CaveGen) when it is built; Japanese-region runs and extra CaveGen options still use Java."""
     seed_hex = f"{seed & 0xFFFFFFFF:08X}"
+    from .views import cavegen3_exe
+    exe = cavegen3_exe()
+    if exe is not None and REGION == "us" and not extra_args:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            subprocess.run([str(exe), "generate", f"{cave_id}-{sublevel}", seed_hex, "--scale", "2", "-o", tmp],
+                           check=True, capture_output=True, timeout=120)
+            out = next(Path(tmp).glob("*.png"))
+            dest = Path(dest)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(out, dest)
+        return dest
+    build = ensure_built()
     cmd = ["java", "-cp", str(build), "CaveGen", "cave", cave_id, str(sublevel), "-seed", f"0x{seed_hex}",
            "-noprints", "-nostats", *_region_args(), *extra_args]
     subprocess.run(cmd, cwd=CAVEGEN, check=True, capture_output=True, timeout=120)
