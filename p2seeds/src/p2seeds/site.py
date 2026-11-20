@@ -1,6 +1,7 @@
 """Build the report site: a landing page over every judged run, and one page per run.
 
   data/output/index.html               runs table and how lucky each run's layouts were
+  data/output/how-judge.html           how the layout judge works, in plain words
   data/output/accuracy.html            does the judge predict real times (calibration)
   data/output/pokos.html               pokos per sublevel against the median run
   data/output/seeds.html               seed-order check
@@ -29,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cavegen, charts, judge2, judge_report, luck, rng, run_page, treasures
+from . import cavegen, charts, judge2, judge_page, judge_report, luck, rng, run_page, treasures
 
 STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "SC", "CoC", "HoH", "DD"]
 
@@ -732,7 +733,8 @@ def build(root: str | Path = "data/output") -> Path:
                 judge2.add_to_run(d)          # only fills what is missing
     runs = _load(root)
     key0 = "judge2" if any(x.get("judge2_score") is not None for r in runs for x in r["entries"]) else "judge"
-    acts = actuals(runs, slope=calibration(runs, key0).get("slope", 1.0))
+    cal0 = calibration(runs, key0)
+    acts = actuals(runs, slope=cal0.get("slope", 1.0))
     for r, a in zip(runs, acts):
         if r["kind"] == "pod":
             run_page.write(r["dir"], actual=a)
@@ -1015,6 +1017,7 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
              ("detection.html", "detection", "Pikmin 2 Layout Ledger · seed detection by run", picker(picks, "detection"), ""),
              ("timesave.html", "timesave", "Pikmin 2 Layout Ledger · time saved by sublevel", timesave_page(runs, acts),
               f"<script>{TIMESAVE_JS}</script>"),
+             ("how-judge.html", "howjudge", "Pikmin 2 Layout Ledger · how the judge works", judge_page.page(runs, cal0), ""),
              ("accuracy.html", "accuracy", "Pikmin 2 Layout Ledger · does the judge predict real times?", accuracy,
               f"<script>{charts.BRUSH_JS}</script><script>{charts.SCATTER_JS}</script>"),
              ("pokos.html", "pokos", "Pikmin 2 Layout Ledger · pokos by sublevel", pokos_html.replace('<h2 id="pokos">', '<h1 id="pokos">', 1)
@@ -1042,7 +1045,7 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> 
             func(path)
         shutil.rmtree(out, onexc=writable)
     out.mkdir(parents=True)
-    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "accuracy.html", "pokos.html",
+    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "how-judge.html", "accuracy.html", "pokos.html",
                  "seeds.html", "suggest.html"):
         if (root / name).exists():
             shutil.copy2(root / name, out / name)
