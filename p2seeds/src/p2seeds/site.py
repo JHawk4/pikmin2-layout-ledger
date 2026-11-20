@@ -487,20 +487,32 @@ def layout_spread(runs: list[dict]) -> str:
         total += med
         r25, r75 = np.percentile(ref, [25, 75])
         d25, d75 = np.percentile(d, [25, 75])
-        # a strip: random layouts' middle 80% and middle half, each run's layout as a dot, the median run's as a tick
-        lo, hi = min(np.percentile(ref, 2), d.min()), max(np.percentile(ref, 98), d.max())
-        W, H = 220, 20
-        sx = lambda v: 4 + (W - 8) * (v - lo) / ((hi - lo) or 1)
-        p10, p90 = np.percentile(ref, [10, 90])
+        # two half violins on one axis: random layouts above the line, these runs' layouts below,
+        # each with equal area so the shapes compare; ticks mark each median
+        # the axis covers the bulk of both; a run beyond it is drawn as a dot on the edge
+        lo = min(np.percentile(ref, 1), np.percentile(d, 10))
+        hi = max(np.percentile(ref, 99), np.percentile(d, 90))
+        W, H, mid = 240, 44, 22
+        sx = lambda v: 4 + (W - 8) * (min(hi, max(lo, v)) - lo) / ((hi - lo) or 1)
+        grid = [lo + (hi - lo) * k / 60 for k in range(61)]
+        sample = list(ref[np.linspace(0, len(ref) - 1, min(len(ref), 300)).astype(int)])
+        dr, dd = charts._density(sample, grid), charts._density([min(hi, max(lo, v)) for v in d], grid)
+        top = max(max(dr), max(dd)) or 1
+        half = mid - 3
+
+        def shape(dens, sign):
+            pts = [f"{sx(g):.1f},{mid - sign * half * v / top:.1f}" for g, v in zip(grid, dens)]
+            return f"M{sx(grid[0]):.1f},{mid} L" + " L".join(pts) + f" L{sx(grid[-1]):.1f},{mid} Z"
         svg = (f'<svg class="spread" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img" '
-               f'aria-label="{cave} {sub}: random layouts and these runs\' layouts">'
-               f'<title>{cave} {sub}: bars are random layouts (middle 80% and middle half), dots are these runs\' '
-               f'layouts, the dark tick is the median run\'s</title>'
-               f'<rect x="{sx(p10):.1f}" y="6" width="{sx(p90) - sx(p10):.1f}" height="8" rx="3" fill="var(--range)"/>'
-               f'<rect x="{sx(r25):.1f}" y="6" width="{sx(r75) - sx(r25):.1f}" height="8" rx="3" fill="var(--ink-3)" fill-opacity=".45"/>'
-               f'<line x1="{sx(0):.1f}" x2="{sx(0):.1f}" y1="2" y2="18" stroke="var(--ink-3)" stroke-dasharray="2 2"/>'
-               + "".join(f'<circle cx="{sx(v):.1f}" cy="10" r="2.6" fill="var(--series-1)" fill-opacity=".6"/>' for v in d)
-               + f'<line x1="{sx(med):.1f}" x2="{sx(med):.1f}" y1="1" y2="19" stroke="var(--ink-1)" stroke-width="2.5"/></svg>')
+               f'aria-label="{cave} {sub}: random layouts above, these runs\' layouts below">'
+               f'<title>{cave} {sub}: random layouts above the line (median dashed), these runs\' layouts below '
+               f'(median run dark, each run a dot)</title>'
+               f'<path d="{shape(dr, 1)}" fill="var(--ink-3)" fill-opacity=".45"/>'
+               f'<path d="{shape(dd, -1)}" fill="var(--series-1)" fill-opacity=".55"/>'
+               f'<line x1="4" x2="{W - 4}" y1="{mid}" y2="{mid}" stroke="var(--ink-3)" stroke-width=".8"/>'
+               f'<line x1="{sx(0):.1f}" x2="{sx(0):.1f}" y1="2" y2="{mid}" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="3 2"/>'
+               + "".join(f'<circle cx="{sx(v):.1f}" cy="{H - 3}" r="1.8" fill="var(--series-1)"/>' for v in d)
+               + f'<line x1="{sx(med):.1f}" x2="{sx(med):.1f}" y1="{mid}" y2="{H - 1}" stroke="var(--ink-1)" stroke-width="2.5"/></svg>')
         tone = "good-text" if med < -0.5 else "bad-text" if med > 0.5 else ""
         rows.append(
             f'<tr><td><b>{cave} {sub}</b></td><td class="num">{len(d)}</td>'
@@ -522,10 +534,11 @@ layouts. That is why the runner numbers on this site take the layout out instead
 <th class="num" title="25th to 75th percentile of the runs' layouts">These runs<br><span class="muted">middle half</span></th>
 <th class="num" title="The median run's layout against the median random layout">Median run<br><span class="muted">vs median layout</span></th>
 <th class="num" title="Share of random layouts the median run's layout beats">Median run<br><span class="muted">beats</span></th>
-<th>Spread</th></tr></thead>
+<th>Layouts <span class="muted">random ▲ · these runs ▼</span></th></tr></thead>
 <tbody>{"".join(rows)}</tbody></table></div>
-<p class="muted small">Spread: the light bar holds the middle 80% of 1000 random layouts and the darker bar the middle half;
-the dashed line is the median random layout, each dot one run's layout and the dark tick the median run's. Fixed floors
+<p class="muted small">Layouts: above the line, how 1000 random layouts spread (grey, dashed at their median); below it, the
+layouts of the runs here (blue, a dot per run, the dark tick at the median run's). Both shapes have the same area, so a
+blue shape further left than the grey one means these runs got better layouts than chance. Fixed floors
 and sublevels with fewer than 3 confidently read layouts are left out.</p>
 '''
 
