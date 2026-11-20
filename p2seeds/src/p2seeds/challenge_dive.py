@@ -148,7 +148,7 @@ def trajectory(p: Piki, i: int, origin, g: Geometry, n_updates: int):
 class DiveVideo:
     """Background-subtracted frames of one dive and a sprite template."""
 
-    def __init__(self, path: str, first: int, last: int, bg_frame: int | None, region, template=None, blur=3,
+    def __init__(self, path: str, first: int, last: int, bg_frame, region, template=None, blur=3,
                  frames=None, scale: float = 1.0):
         """bg_frame None: per-pixel median of the window (each pixel shows a Pikmin only briefly).
         frames: preloaded {frame: BGR image} (full video frames) to avoid decoding twice.
@@ -169,6 +169,23 @@ class DiveVideo:
                 raw[fr] = f[y0:y1, x0:x1].astype(np.float32)
         if bg_frame is None:
             bg = np.median(np.stack(list(raw.values())), axis=0)
+        elif isinstance(bg_frame, (tuple, list)):
+            # median of a range of frames (the clean menu before the "Pick one!" window)
+            cap = cv2.VideoCapture(path)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, bg_frame[0])
+            bgs = []
+            for _ in range(bg_frame[0], bg_frame[1] + 1):
+                ok, b = cap.read()
+                if ok:
+                    bgs.append(b.astype(np.float32)[y0:y1, x0:x1])
+            pre = np.median(np.stack(bgs), axis=0)
+            stack = np.stack(list(raw.values()))
+            dive_med = np.median(stack, axis=0)
+            # a pixel that shows the pre-dive value in a good share of the dive frames is static
+            # background (only sometimes covered by a Pikmin); elsewhere something else changed
+            # (cursor, selection effect, brightness), so the dive's own median is used there
+            same = (np.abs(stack - pre[None]).sum(3) < 40).mean(0)
+            bg = np.where((same >= 0.25)[..., None], pre, dive_med)
         else:
             cap = cv2.VideoCapture(path)
             cap.set(cv2.CAP_PROP_POS_FRAMES, bg_frame)
@@ -301,19 +318,31 @@ class Renderer:
 
 
 def predicted_frames(flat, g: Geometry, frames):
-    """{frame: (us, vs)} for the given video frames. Pikmin still waiting sit at their origin."""
+    """{frame: (us, vs)}: where the difference from the pre-dive menu shows a Pikmin sprite.
+    A Pikmin waiting at its origin looks exactly like the tally icon (the icon is drawn with the same
+    panes), so it shows no difference; once every Pikmin of a colour has launched, the icon is
+    missing, which shows as one sprite-sized difference at the origin."""
     nmax = int(max(frames) - g.f0) + 2
     if nmax <= 0:
         nmax = 1
     U, V = simulate(flat, g, nmax)
     out = {}
-    org = np.array([g.origins[COLOURS[int(c)]] for c in flat[:, 3]]).reshape(len(flat), 2)
+    T0 = flat[:, 0]
+    col = flat[:, 3].astype(int)
+    present = sorted(set(col.tolist()))
     for fr in frames:
         n = int(math.floor(fr - g.f0))          # updates done by this frame
         if n <= 0:
-            out[fr] = (org[:, 0], org[:, 1])
-        else:
-            out[fr] = (U[min(n, nmax) - 1], V[min(n, nmax) - 1])
+            out[fr] = (np.zeros(0), np.zeros(0))
+            continue
+        waiting = T0 + TIMER_SPEED * min(n, nmax) < 0
+        us = np.where(waiting, np.nan, U[min(n, nmax) - 1])
+        vs = np.where(waiting, np.nan, V[min(n, nmax) - 1])
+        gone = [g.origins[COLOURS[c]] for c in present if not np.any(waiting & (col == c))]
+        if gone:
+            us = np.concatenate([us, [o[0] for o in gone]])
+            vs = np.concatenate([vs, [o[1] for o in gone]])
+        out[fr] = (us, vs)
     return out
 
 
@@ -937,29 +966,55 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         f0_lo, f0_hi = visit[0] - 45.0, visit[1] + 2.0
     else:
         f0_lo = f0_hi = f0_guess
-    dv = DiveVideo(path, max(0, int(f0_lo) + 2), min(n_frames - 1, int(max(f0_hi, f0_guess)) + span), None, region,
-                   scale=float(np.sqrt(reg["sx"] * reg["sy"])))
+    scale = float(np.sqrt(reg["sx"] * reg["sy"]))
     g = g.copy(f0=f0_guess)
     log(f"stage CH{ch} counts {counts} onset {onset} f0~{g.f0:.1f} region {region} reg {reg}")
+    # The dive starts as the "Pick one!" window closes: 1-3 frames before a burst of whole-screen
+    # motion (cmal04: bursts at 5889, 11815, 32009 for f0 5887.7, 11812.7, ~32007). The burst before
+    # that one is the window opening; just before it the menu is clean and shows every tally icon,
+    # which is also what a Pikmin waiting at its origin looks like: that is the background.
+    all_bursts = motion_bursts(path, max(0, int(f0_lo) - 120), int(f0_hi) + 6)
+    closes = [b for b in all_bursts if f0_lo <= b <= f0_hi + 4]
+
+    def background_for(close):
+        prev = [b for b in all_bursts if b < close - 5]
+        if not prev:
+            return None
+        o = prev[-1]
+        return (max(0, o - 12), max(0, o - 2))
+
     if window is not None:
         st = window_states(*window)
         log(f"  window: {len(st)} states before roll state 0x{window[0]:08X} ({time.time() - t0:.0f}s)")
-        # the motion onset is unreliable when the "Pick one!" window is still sliding away: pick the
-        # frame phase where the window's best states fit best
-        sample = st[:: max(1, len(st) // 600_000)]
+        sample = st[:: max(1, len(st) // 200_000)]
+
+        def f0_score(dvx, f0):
+            sc = rescore(dvx, counts, g.copy(f0=float(f0)), sample)
+            # contrast, not level: frames full of non-Pikmin change raise every state's score alike
+            return float(np.sort(sc)[-100:].mean() - np.median(sc))
+
         trials = []
-        for f0 in np.arange(f0_lo + (f0_guess - f0_lo) % 1.0, f0_hi + 0.01, 1.0):
-            sc = rescore(dv, counts, g.copy(f0=float(f0)), sample)
-            top = np.sort(sc)[-200:]
-            trials.append((float(top.mean()), float(f0)))
+        videos = {}
+        for b in closes or [int(f0_guess + 2)]:
+            bgb = background_for(b)
+            dvb = DiveVideo(path, max(0, b - 6), min(n_frames - 1, b + span), bgb, region, scale=scale)
+            videos[b] = (dvb, bgb)
+            for d in (-4.3, -3.3, -2.3, -1.3, -0.3):
+                trials.append((f0_score(dvb, b + d), float(b + d), b))
         trials.sort(reverse=True)
+        b0 = trials[0][2]
+        dvb, bg = videos[b0]
+        c0 = trials[0][1]
+        trials += [(f0_score(dvb, f0), float(f0), b0) for f0 in (c0 - 0.5, c0 + 0.5)]
+        trials.sort(reverse=True)
+        log(f"  motion bursts at {all_bursts}; closing burst {b0}, background frames {bg}")
         g = g.copy(f0=trials[0][1])
-        # rebuild the observations from the dive's own frames (background median without the icons,
-        # which are moved off screen once the dive starts)
-        dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), None, region,
-                       scale=float(np.sqrt(reg["sx"] * reg["sy"])))
-        log(f"  f0 search: best {trials[0][1]:.1f} (guess {f0_guess:.1f}); top {[(round(f, 1), round(v, 2)) for v, f in trials[:4]]}")
+        dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), bg, region, scale=scale)
+        log(f"  f0 search: best {trials[0][1]:.1f} (guess {f0_guess:.1f}); top {[(round(f, 1), round(v, 2)) for v, f, _ in trials[:4]]}")
     else:
+        near = min(all_bursts, key=lambda b: abs(b - (g.f0 + 2.3)), default=None)
+        bg = background_for(near) if near is not None else None
+        dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), bg, region, scale=scale)
         st, sc = search_all(dv, counts, g, first_pikmin=first_pikmin, keep=keep)
         log(f"  stage-1 search done {time.time() - t0:.0f}s")
     frames = sorted(dv.obs)
@@ -1001,12 +1056,25 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         g3, l3 = fit_geometry(dv, flats[s], geo, frames, fast=True)
         refined.append((min(l, l3), s, (g3 if l3 < l else geo).f0, l, geometry_vector(g3 if l3 < l else geo)))
     refined.sort()
+    # a whole-dive shift by 4 draws hands every Pikmin its neighbour's values: nearly the same
+    # picture (the frame phase absorbs the timing). The true start is a minimum against its shifts.
+    best_s = refined[0][1]
+    shifts = []
+    for k in (-8, -4, 4, 8):
+        s2 = rng.next_seed(best_s, k) & 0xFFFFFFFF
+        if s2 not in flats:
+            flats[s2] = flatten(dive_params(s2, counts))
+        g4, l4 = fit_geometry(dv, flats[s2], geo, frames, fast=True)
+        shifts.append(dict(shift=k, state=s2, loss=min(l4, image_loss(dv, flats[s2], geo, frames))))
+    shift_margin = (min(x["loss"] for x in shifts) - refined[0][0]) / refined[0][0]
+    log(f"  shifts: {[(x['shift'], round(x['loss'], 1)) for x in shifts]} (margin {shift_margin:+.3f})")
     log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, *_ in refined[:3]]}")
     return dict(ok=True, ch=ch, counts=counts, reg=reg, onset=onset, f0=g.f0, region=region,
                 top=[dict(state=s, loss=l) for l, s in res[:save_top]], dropped=dv.dropped,
                 candidates=[dict(state=s, loss=l, f0=f, loss_fixed=lf, geometry=gv, layout_seed=layout_seed(s))
                             for l, s, f, lf, gv in refined],
                 margin=(refined[1][0] - refined[0][0]) / refined[0][0] if len(refined) > 1 else None,
+                shifts=shifts, shift_margin=shift_margin,
                 seconds=time.time() - t0)
 
 
@@ -1017,7 +1085,7 @@ def _loss_kernel():
 
     @nb.njit(parallel=True, fastmath=True, cache=True)
     def batch_loss(states, A, C, base, idx, u0, v0, sx, sy, v100, gu, gv, f0, frames, O, T, tcx, tcy,
-                   x0, y0, ds, out):
+                   x0, y0, ds, out, col, corg):
         P = A.shape[0]
         F = frames.shape[0]
         H, W = O.shape[1], O.shape[2]
@@ -1027,12 +1095,14 @@ def _loss_kernel():
             s = states[k]
             U = np.full((F, P), np.nan, np.float32)
             V = np.full((F, P), np.nan, np.float32)
+            T0s = np.empty(P, np.float32)
             for p in range(P):
                 r = np.empty(4, np.float32)
                 for d in range(4):
                     st = (A[p, d] * s + C[p, d]) & np.uint64(0xFFFFFFFF)
                     r[d] = np.float32((st >> np.uint64(16)) & np.uint64(0x7FFF)) / np.float32(32768.0)
                 t = 0.1 * r[0] + base[p]
+                T0s[p] = t
                 dx = 30.0 * r[1]
                 if r[2] > 0.5:
                     dx = -dx
@@ -1078,23 +1148,42 @@ def _loss_kernel():
                             state = 6
                     # record at the frames whose update count is n
                     while q < F and int(np.floor(frames[q] - f0)) <= n:
-                        if int(np.floor(frames[q] - f0)) == n and state != 6:
+                        # waiting Pikmin look like the icon: no difference, not drawn
+                        if int(np.floor(frames[q] - f0)) == n and state != 6 and (state != 0 or t >= 0):
                             U[q, p] = u
                             V[q, p] = v
-                        elif int(np.floor(frames[q] - f0)) < 1:
-                            U[q, p] = u0[p]
-                            V[q, p] = v0[p]
                         q += 1
             err = 0.0
             img = np.zeros((H, W), np.float32)
+            Ux = np.empty(P + 5, np.float32)
+            Vx = np.empty(P + 5, np.float32)
             for q in range(F):
                 img[:, :] = 0.0
+                nq = np.floor(frames[q] - f0)
+                m = 0
                 for p in range(P):
-                    uu = U[q, p]
+                    Ux[m] = U[q, p]
+                    Vx[m] = V[q, p]
+                    m += 1
+                # a colour whose Pikmin have all launched leaves its icon missing
+                for c in range(5):
+                    anyc = False
+                    waiting = False
+                    for p in range(P):
+                        if col[p] == c:
+                            anyc = True
+                            if nq < 1 or T0s[p] + 0.15 * nq < 0:
+                                waiting = True
+                    if anyc and not waiting:
+                        Ux[m] = corg[c, 0]
+                        Vx[m] = corg[c, 1]
+                        m += 1
+                for p in range(m):
+                    uu = Ux[p]
                     if uu != uu:
                         continue
                     xx = int(np.floor((uu - x0) / ds - tcx + 0.5))
-                    yy = int(np.floor((V[q, p] - y0) / ds - tcy + 0.5))
+                    yy = int(np.floor((Vx[p] - y0) / ds - tcy + 0.5))
                     for a in range(th):
                         yv = yy + a
                         if yv < 0 or yv >= H:
@@ -1147,7 +1236,8 @@ def batch_image_loss(dv: DiveVideo, counts, g: Geometry, states, frame_step: int
     _BATCH(states, A, C, base, idx, u0, v0, np.float32(g.sx), np.float32(g.sy), np.float32(g.v100),
            np.float32(g.goal[0]), np.float32(g.goal[1]), np.float64(g.f0), frames, O, T,
            np.float32(tcx), np.float32(tcy), np.float32(dv.region[0]), np.float32(dv.region[1]),
-           np.float32(ds), out)
+           np.float32(ds), out, np.array([c for c, i in pk], np.int64),
+           np.array([g.origins[c] for c in COLOURS], np.float32))
     return out
 
 
@@ -1167,3 +1257,34 @@ def draw_window(ch: int, frames: float, slack: float = 0.35, fallback: int = 3_0
     lo = max(0, int(frames * r["min"] * (1 - slack)))
     hi = int(frames * r["max"] * (1 + slack)) + 5000
     return lo, hi - lo
+
+
+def motion_bursts(path: str, first: int, last: int, min_gap: int = 3):
+    """Frames where whole-screen motion starts after a quiet stretch (menu windows opening/closing,
+    the dive starting). Threshold relative to the window's quiet level."""
+    cap = cv2.VideoCapture(path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, first - 1))
+    prev = None
+    d = {}
+    for fr in range(max(0, first - 1), last + 1):
+        ok, f = cap.read()
+        if not ok:
+            break
+        g = cv2.resize(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY), (160, 90)).astype(np.float32)
+        if prev is not None:
+            d[fr] = float(np.abs(g - prev).mean())
+        prev = g
+    if not d:
+        return []
+    vals = np.array(list(d.values()))
+    quiet = float(np.percentile(vals, 30))
+    thr = max(2.5 * quiet, quiet + 2.0)
+    out, calm = [], min_gap
+    for fr in sorted(d):
+        if d[fr] > thr:
+            if calm >= min_gap:
+                out.append(fr)
+            calm = 0
+        else:
+            calm += 1
+    return out

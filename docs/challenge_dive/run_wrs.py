@@ -20,7 +20,8 @@ sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
 from p2seeds import challenge_dive as cd  # noqa: E402
 
 WR = os.path.join(ROOT, "data", "challenge", "wr")
-SPAN = 3_000_000           # floor-1 seed lies at most this many draws before the stage's results roll
+SPAN = 6_000_000           # floor-1 seed lies at most this many draws before the stage's results roll
+# (WR play uses far more draws per frame than CMAL runs, e.g. ~230/frame on CH1, so no per-stage band)
 
 
 def _ok_mismatch(r):
@@ -70,13 +71,7 @@ def main():
                 roll = rolls[0]
                 st = roll.get("first_roll_state") or roll["anchor_state"]
                 end = int(st, 16) if isinstance(st, str) else st
-                visible = sum(min(k, 50) for k in counts)
-                if visible <= 12:
-                    # few Pikmin: also use how many draws this stage takes per frame (CMAL runs)
-                    skip, span = cd.draw_window(ch, roll["first_frame"] - v["visit"][1])
-                    window = (end, span, skip)
-                else:
-                    window = (end, SPAN)
+                window = (end, SPAN)
         t = time.time()
         try:
             r = cd.read_dive(os.path.join(WR, name), tuple(v["visit"]), ch=ch, window=window,
