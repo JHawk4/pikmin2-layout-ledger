@@ -2,7 +2,8 @@
 
 **Verdict: not feasible with the falling-letter method; feasible a different way, from the
 results-screen score roll, for the first floor of every stage after the first.** Floors 2+ of a
-stage, and the run's first stage, have no RNG readout in the video.
+stage, and the run's first stage, have no RNG readout in the video. The pre-stage menus don't
+fill that gap either (§6).
 
 ## 1. What a challenge floor shows on entry
 
@@ -107,6 +108,82 @@ Limits:
 - 2-player runs are split screen (harder to verify, though the digits read the same).
 - The solo run here is the Wii U VC release ("New Play Control!" in its splits). Its roll and
   CaveGen3's `pikmin2` data agreed on this floor.
+
+## 6. RNG on the menus before a stage is picked
+
+The question: can something on the title screen, file select or challenge stage select read the
+RNG for the stages the results roll can't cover (the run's first stage, floors 2+)?
+
+**Verdict: no.** The menus advance the global RNG, but only two things there carry real
+information. The stage-select flash timer gives about 8 bits per flash, and a runner sees 0–1
+flashes per visit. The stage-confirm Pikmin dive makes 1000 draws but can't be read at VOD
+resolution. Neither pins a seed. The decomp does explain CaveGen's "+1004", which confirms the
+menu → floor-1 link used in §4.
+
+### Seeding
+
+`System::construct` calls `srand(OSGetTick())` at power-on (`sysGCU/system.cpp:421`). Nothing
+reseeds afterwards: no `srand` on file load, on entering Challenge Mode, or per stage (the only
+other `srand` is the memory-card unlock's private LCG, `Dolphin/card/CARDUnlock.c`). So the RNG
+carries over through everything since boot, including all gameplay.
+
+### Per screen
+
+| screen | global-RNG draws while showing (decomp) | visible? | verdict |
+|---|---|---|---|
+| Boot | `srand(OSGetTick())` | no | unknowable |
+| Title / Press Start | `ebiScreenPushStart.cpp:142` one `randEbisawaFloat` per loop (picks 1 of 4 screens, 2 bits). Title-scene Pikmin `ebiP2TitlePikmin.cpp:518–541,665`, Chappy `ebiP2TitleChappy.cpp:211–227`, Kogane `ebiP2TitleKogane.cpp:192–204` and `ebiP2Title.cpp:193,548,571,732` draw on spawn and on each AI state change (speeds, wait timers, turn angles) | yes, dozens of small agents on a chaotic simulation | not readable in practice; also not in run footage (see below) |
+| Title menu | `ebiScreenTitleMenu.cpp:308`: one draw per highlight cycle, `< 0.2` shows a sparkle (about 0.7 bits) | yes | far too little information |
+| File select | none (`ebiFileSelectMgr.cpp`, `ebiScreenFileSelect*.cpp` have no `rand`); Challenge Mode does not go through it | — | nothing to read |
+| Challenge stage select, created | `TChallengeSelect::doCreate` (`plugProjectMorimuraU/challengeSelect2D.cpp:1387,1402`): `TChallengePlayModeScreen` ctor 3 draws (`mAngleTimers`, the "Pick one!" swing phases, :680), then `TChallengeScreen` ctor 1 draw (first flash delay `300·r` frames, :518) | swing phase: only during "Pick one!", about 20 frames | not enough |
+| Challenge stage select, idle | `TChallengeScreen::update` (:600–620): after each highlight flash, the next delay is `300·(0.9r + 0.1)` frames, one draw per flash. This is exactly CaveGen's `seed_duration` / `seed_duration_first` (`Seed.java:628–635`) | the highlight on the stage panels (`Nhl_00`–`Nhl_14`) | about 8.1 bits per frame-timed flash (270 possible delays); pinning 31 bits needs about 4 consecutive flash gaps, which is 20+ s idle on the menu |
+| Stage confirm (dive) | `TChallengeSelect::jumpStart` → `TChallengePiki::jumpStart` (:75–96): 5 colours × 50 Pikmin × 4 `randFloat` (start delay 0–0.1 s, x deviation ±30 units, its sign, y deviation 15–25) = **1000 draws** | in theory | lots of information, but not readable from these videos (below) |
+
+### What the footage shows
+
+- **Neither run shows a title screen or file select.** The solo video opens on "Continue / Give Up"
+  from an earlier attempt (frames 0–30) and goes straight to the stage select (frame 100). The 2P
+  video opens on the stage select. A run's first stage therefore follows a give-up, after gameplay,
+  so the RNG at that point is unknown.
+- **Time on the stage select is about 4 s per visit.**
+  - Solo, after stage 1: the results fade out at 5838, the menu is visible at 5850, the cursor moves
+    and A is pressed at about 5866, "Pick one!" shows 5869–5888, the dive runs 5895–5955, and the
+    stage starts at 5964.
+  - Solo, run start: menu at 100, "Pick one!" 115–135, dive 136–200.
+  - 2P before Snack Pit: menu fades in about 13716, "Pick one!" about 13746–13764, dive 13770–13836.
+  - So the panel is on screen for about 45–60 frames before A. The first flash comes `300·r` frames
+    after the menu is built, so a typical visit shows 0 flashes, sometimes 1.
+- **No flash was seen.** In the 2P Snack Pit visit, the known seed puts the first flash 107 frames
+  after the menu was built (about frame 13817, during the dive). No change shows on the flower grid
+  in frames 13796–13840, and the solo menu visits show none in the grid-brightness trace. The
+  highlight is subtle at 360/480p (the solo VOD is 640×360). Even a visible flash gives one 8-bit
+  reading.
+- **The dive is not readable.** The Pikmin are about 6 px tall and fly in tight single-file queues
+  per colour, overlapping (solo frames 5900–5952, 2P frames 13796–13836). The start delay (≤ 3
+  frames) and ±30-unit scatter of one Pikmin can't be separated from its neighbours'. A clean,
+  full-resolution capture might do it: 1000 draws ending exactly at floor-1 generation would pin
+  the seed with no timing involved. That would be its own research project, and these VODs can't
+  support it.
+
+![Solo stage select after stage 1, frames 5840-5968: cursor, "Pick one!", dive](challenge-mode/stage-select.jpg)
+
+![The dive, solo frames 5896-5952](challenge-mode/menu-dive.jpg)
+
+### Menu → floor 1 (this confirms §4)
+
+From the results roll's end L, in order: the menu is built (4 draws: 3 swing phases + first flash
+delay), then k flash draws, then the dive (1000). Floor 1 is generated from **L + 4 + k + 1000**,
+which is CaveGen's `next_seed(lastReadSeed, 1004)` with timer seed `L + 4`. The CH11-1 check in §4
+(k = 0, `8F129F12`) is this chain. One unchecked case: a flash timer that runs out during the dive
+(as predicted for the 2P Snack Pit visit) would make its draw after the dive's, if
+`TChallengeScreen::update` keeps running in the demo. That would shift floor 1 by +1. Rank ±1
+candidates when that happens.
+
+### What stays out of reach
+
+- The run's first stage: it follows a give-up, and the only readout before it is the unreadable
+  dive.
+- Floors 2+: no menu between floors.
 
 ## Footage used
 
