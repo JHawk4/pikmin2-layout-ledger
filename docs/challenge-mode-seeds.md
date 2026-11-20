@@ -332,7 +332,7 @@ For each stage between two decoded rolls, the dive is searched using only the **
 (its end + 5). The two sources are independent.
 
 Checked against a truth from a decoded results roll (all on the solo Wii U run cmal04 unless
-noted). The pipeline changed during the day; each result is labelled with the version it ran on.
+noted; the cross-check was still running when this was written). The pipeline changed during the day; each result is labelled with the version it ran on.
 
 - **Final pipeline** (`crosscheck_cmal.py`, data in `data/challenge/crosscheck/`):
 
@@ -340,6 +340,7 @@ noted). The pipeline changed during the day; each result is labelled with the ve
 |---|---|---|---|---|---|
 | cmal04 tcbtrio | CH11 | red 5, white 5 | **correct** | 59.9% | 2 |
 | cmal04 tcbtrio | CH21 | red 30, blue 30 | wrong | 4.4% | not in top 200 |
+| cmal04 tcbtrio | CH27 | red 50 | **correct** | 41.1% | 0 |
 
 - **Earlier versions** (same dives, without the later frame-phase and pruning fixes):
   - CH16 Snack Pit (5 of each colour): found from scratch over all 2³¹ states, 13.6% margin.
@@ -349,7 +350,9 @@ noted). The pipeline changed during the day; each result is labelled with the ve
   reader's best state is exactly that truth (`4AA0C7DC`, layout `29549C67`), but with only a 1.3%
   margin, so on its own it would not have been published.
 
-Pattern: when the right answer wins, it wins by 13–60%; wrong answers come in under about 5%. The
+Pattern: when the right answer wins, it wins by 13–60%; wrong answers come in under about 5%.
+CH27 (50 red, a single dense colour) was recovered with a 41% margin on the reference run, so dense
+dives can work on a clean capture. The
 site therefore publishes a seed only when:
 - it beats every candidate that is not a 4-draw shift of it by at least 10%;
 - it beats its own shifts;
