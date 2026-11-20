@@ -401,7 +401,7 @@ Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challeng
 | CH15 | 6,264 Gorei_50 | red 25, white 25 | `78F3DE3E` | 19.7% | +7.7% | published |
 | CH16 | 6,003 Gorei_50 | red 5, yellow 5, blue 5, white 5, purple 5 | `0615E706` | 54.3% | +65.9% | published |
 | CH17 | 16,700 Gorei_50 | yellow 30, white 15, purple 15 | `7F1CE063` | 29.5% | +17.0% | published |
-| CH18 | 54,082 Gorei_50 | | | | | no stage-select dive in the video |
+| CH18 | 54,082 Gorei_50 | red 25, blue 25 | `254CB07C` | 0.7% | +2.2% | uncertain (menu registered poorly; rerun with the stage given) |
 | CH19 | 11,720 Gorei_50 | red 20, blue 25, purple 5 | `6913B1F6` | 2.5% | +1.2% | uncertain |
 | CH20 | 15,599 Gorei_50 | blue 50 | `5D221DD2` | 21.3% | +4.5% | published |
 | CH21 | 35,441 albut3 | | | | | no stage-select dive in the video |
@@ -419,13 +419,16 @@ Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challeng
 12 of the 28 records with a dive were published to the pikmin-wrs site
 (https://jhawk4.github.io/pikmin-wrs/en/seeds.html), one of them (CH28) confirmed by a preceding roll.
 The rest:
-- **Uncertain:** dense single-colour dives (CH4 and CH7, 50 blue; CH8, 40 red; CH24–CH27), and a
-  few mixed ones with small margins. Most of these records are Gorei's Wii captures, whose menus
-  register less precisely than the reference run. The geometry refit then has more to recover, and
-  dense trains leave it little to lock onto.
+- **Uncertain:**
+  - Dense single-colour dives: CH3 (50 yellow), CH4 and CH7 (50 blue), CH8 (40 red), CH27 (50 red).
+  - Mixed dives with small margins: CH5, CH9, CH11, CH18, CH19, CH22, CH24, CH25.
+  - CH26 (4 red).
+
+  Most of these records are Gorei's Wii captures, whose menus register less precisely than the
+  reference run. The geometry refit then has more to recover, and dense trains leave it little to
+  lock onto. CH11, for example, was decoded with a 60% margin on the reference run but only 1% here.
 - **Too few Pikmin:** CH6 (3) and CH12 (2).
-- **No dive in the video:** CH21 starts on floor 2; CH18's menu registered poorly and is retried
-  separately.
+- **No dive in the video:** CH21 starts on floor 2.
 - **No video:** CH23 (it also has no dive Pikmin).
 
 Check images for each WR (CaveGen3 render of floor 1 next to frames of the video's first floor):
