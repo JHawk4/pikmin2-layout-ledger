@@ -33,6 +33,10 @@ COLOURS = ("red", "yellow", "blue", "white", "purple")          # dive order
 # CaveGen3 challenge_stages.csv colour index (game enum): blue 0, red 1, yellow 2, purple 3, white 4
 _GAME_INDEX = {"red": 1, "yellow": 2, "blue": 0, "white": 4, "purple": 3}
 TIMER_SPEED, MOVE, ARC = 0.15, 12.0, 70.0
+# observation model: True = background is the pre-dive menu (icons shown) and a waiting Pikmin shows no
+# difference while a launched colour leaves its icon missing; False = background is the dive's own
+# median and waiting Pikmin are drawn at their origin
+ICON_MODEL = False
 
 
 def _stages_csv() -> str:
@@ -333,9 +337,16 @@ def predicted_frames(flat, g: Geometry, frames):
     for fr in frames:
         n = int(math.floor(fr - g.f0))          # updates done by this frame
         if n <= 0:
-            out[fr] = (np.zeros(0), np.zeros(0))
+            if ICON_MODEL:
+                out[fr] = (np.zeros(0), np.zeros(0))
+            else:
+                org = np.array([g.origins[COLOURS[int(c)]] for c in col]).reshape(len(col), 2)
+                out[fr] = (org[:, 0], org[:, 1])
             continue
         waiting = T0 + TIMER_SPEED * min(n, nmax) < 0
+        if not ICON_MODEL:
+            out[fr] = (U[min(n, nmax) - 1], V[min(n, nmax) - 1])
+            continue
         us = np.where(waiting, np.nan, U[min(n, nmax) - 1])
         vs = np.where(waiting, np.nan, V[min(n, nmax) - 1])
         gone = [g.origins[COLOURS[c]] for c in present if not np.any(waiting & (col == c))]
@@ -981,6 +992,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     closes = [b for b in all_bursts if f0_lo <= b <= f0_hi + 4]
 
     def background_for(close):
+        if not ICON_MODEL:
+            return None
         prev = [b for b in all_bursts if b < close - 5]
         if not prev:
             return None
@@ -1103,7 +1116,7 @@ def _loss_kernel():
 
     @nb.njit(parallel=True, fastmath=True, cache=True)
     def batch_loss(states, A, C, base, idx, u0, v0, sx, sy, v100, gu, gv, f0, frames, O, T, tcx, tcy,
-                   x0, y0, ds, out, col, corg):
+                   x0, y0, ds, out, col, corg, icon):
         P = A.shape[0]
         F = frames.shape[0]
         H, W = O.shape[1], O.shape[2]
@@ -1167,9 +1180,13 @@ def _loss_kernel():
                     # record at the frames whose update count is n
                     while q < F and int(np.floor(frames[q] - f0)) <= n:
                         # waiting Pikmin look like the icon: no difference, not drawn
-                        if int(np.floor(frames[q] - f0)) == n and state != 6 and (state != 0 or t >= 0):
-                            U[q, p] = u
-                            V[q, p] = v
+                        if int(np.floor(frames[q] - f0)) == n and state != 6:
+                            if state != 0 or t >= 0 or not icon:
+                                U[q, p] = u
+                                V[q, p] = v
+                        elif int(np.floor(frames[q] - f0)) < 1 and not icon:
+                            U[q, p] = u0[p]
+                            V[q, p] = v0[p]
                         q += 1
             err = 0.0
             img = np.zeros((H, W), np.float32)
@@ -1184,7 +1201,7 @@ def _loss_kernel():
                     Vx[m] = V[q, p]
                     m += 1
                 # a colour whose Pikmin have all launched leaves its icon missing
-                for c in range(5):
+                for c in range(5 if icon else 0):
                     anyc = False
                     waiting = False
                     for p in range(P):
@@ -1255,7 +1272,7 @@ def batch_image_loss(dv: DiveVideo, counts, g: Geometry, states, frame_step: int
            np.float32(g.goal[0]), np.float32(g.goal[1]), np.float64(g.f0), frames, O, T,
            np.float32(tcx), np.float32(tcy), np.float32(dv.region[0]), np.float32(dv.region[1]),
            np.float32(ds), out, np.array([c for c, i in pk], np.int64),
-           np.array([g.origins[c] for c in COLOURS], np.float32))
+           np.array([g.origins[c] for c in COLOURS], np.float32), ICON_MODEL)
     return out
 
 
