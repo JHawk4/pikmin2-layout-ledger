@@ -41,8 +41,8 @@ def assess(r):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
-    ap.add_argument("--min-margin", type=float, default=0.04)
-    ap.add_argument("--min-shift", type=float, default=0.0)
+    ap.add_argument("--min-margin", type=float, default=0.10)
+    ap.add_argument("--min-shift", type=float, default=0.005)
     a = ap.parse_args()
     wrs = {w["ch"]: w for w in json.load(open(os.path.join(WR, "wr_list.json"), encoding="utf8"))}
     entries, unread, report = [], {}, []

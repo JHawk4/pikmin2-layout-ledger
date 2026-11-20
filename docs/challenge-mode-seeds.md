@@ -266,6 +266,101 @@ states and the direction signs leave exactly the true one, in under a second.
   On later stages it gives an independent check of the roll and pins the ±1 draw. Floors 2+ are
   still out of reach.
 
+## 8. The dive reader at scale: several runners, and the score WRs
+
+§7 worked on one dive. This section turns it into a pipeline
+(`p2seeds/src/p2seeds/challenge_dive.py`, scripts in `docs/challenge_dive/`) and tests it across
+runners, against the score rolls.
+
+### Pipeline (`challenge_dive.read_dive`)
+
+1. **Menu visits:** frames showing the stage select (blue with pink flowers). One pass takes about
+   1.5 minutes per hour of video.
+2. **Registration:** a scale-and-shift match of the menu against a reference frame (cmal04 frame
+   11792), with separate x and y scales. This places the five tally icons, the 5×6 stage grid and the
+   sprite scale on any capture layout (Wii/Wii U 16:9; GC 4:3 to be tested).
+3. **Stage:** the panel where the dive lands (its white flower burst). For WR videos the stage comes
+   from the record.
+4. **Starting Pikmin per colour:** CaveGen3's `challenge_stages.csv`. The dive draws only
+   `mPikiCounts[c]` Pikmin per colour, at most 50 (`challengeSelect2D.cpp:2111`).
+5. **Observations:** for each frame, the difference from the per-pixel median over the dive (each
+   pixel shows a Pikmin only briefly). Frames dominated by the "Pick one!" window are dropped.
+6. **Frame phase f0:** a search over the whole menu visit. Motion onset can't be trusted, because
+   the "Pick one!" window is still sliding away when the dive starts.
+7. **Candidate states:** either all 2³¹ states (numba kernel: about 3.9 s per 16M states for 6
+   Pikmin, so about 8 minutes), or, when a later results roll is decoded, only the states whose
+   floor-1 seed lies within a window before that roll's first state. Every CMAL stage consumed
+   18k–183k draws from the floor-1 seed to the next roll, so a window of 3 million is safe.
+8. **Scoring:** a cheap lookup score at each Pikmin's late-hop positions, then a compiled
+   full-image loss (half resolution, every other frame, about 30 s per 200k states) on the best
+   400k, then the exact image loss on the best 2000.
+9. **Geometry refit:** refit scale, origins, frame phase and landing panel on the leader, then
+   prune and re-rank again with the refitted geometry. This step matters: a look-alike state (one
+   whose 10 Pikmin are all within a few units of the truth) can win with fixed geometry, but the true
+   state is the one that lines up exactly once the geometry is refined. On Cryptic Cavern the
+   fixed-geometry loss was 21,712 for the impostor against 22,247 for the truth; after refitting it
+   is 26,620 against 11,543.
+10. **Floor-1 layout seed** = the state after the dive's 1000th draw. Bit 31 never reaches
+    `rand()`'s output, so seeds are given in 31 bits.
+
+The dive begins **5 draws after the last draw of the previous score roll**, as defined by the roll
+reader's `state_after_last_draw`. That holds for both hand-checked cases (Cryptic Cavern, Snack Pit),
+and then the floor-1 seed = that state + 1004, matching CaveGen's constant.
+
+### Score-roll reader (`p2seeds/src/p2seeds/challenge_results.py`)
+
+Built by a helper agent and checked against the hand-read values in §3–§4. On 9 videos it decoded
+274 of 306 results screens. Rolls in cmal09 (spark573, Wii) are partly blended frames, so only 14 of
+30 decoded. **The Switch release (Pikmin 2 HD) does not use the GameCube/Wii random-number generator
+or digit mapping**: its digits read cleanly, but no GC/Wii RNG state explains them under any of the
+48 orderings tried. Switch runs are out of scope.
+
+### Cross-check against the rolls (`docs/challenge_dive/crosscheck_cmal.py`)
+
+For each stage between two decoded rolls, the dive is searched using only the **following** roll
+(a window of 3M states). The result is then compared with the truth from the **preceding** roll
+(its end + 5). The two sources are independent.
+
+CROSSCHECK_TABLE
+
+Per-stage RNG use is consistent between runners
+(`p2seeds/src/p2seeds/data/challenge_stage_draws.json`: draws per video frame from the floor-1 seed
+to the next roll, 6 CMAL runs). For example, CH6 uses 5.4–7.0, CH11 3.3–4.2 and CH26 8.9–16.6. For
+dives with few Pikmin, the window is narrowed to (frames from the dive to the results) × the stage's
+rate, ±35%.
+
+### Score WRs (pik5.net, current Pikmin 2 #1s)
+
+WR_TABLE
+
+## 9. Floors after the first (stretch goal): not done, but bounded
+
+No readout on screen carries the RNG between floors: the floor titles are `TitleMsgWave` (§1), and
+there is no results roll or menu between floors. What we do know is a window:
+
+- Floor *k* ≥ 2 is generated from a state strictly between floor 1's seed (known from the dive or
+  the previous roll) and the first draw of the stage's results roll (known from the roll).
+- That window is small:
+  - On the CMAL runs, all floors of a stage together consume 18k–183k draws (median about 50k;
+    `data/challenge/stage_rates.json`). The 5-floor Cryptic Cavern took 21k–26k draws in every run.
+  - On the CH1 score WR the floor-1 seed is about 1.1M draws before the results roll. Score runs
+    have far more Pikmin and enemies active per frame.
+- Each floor's seed is therefore one of a few tens of thousands (CMAL) to about a million (WR)
+  consecutive states. In that range, CaveGen3 can generate every candidate layout in seconds to
+  minutes. The floors are also ordered: floor 2's seed < floor 3's < … within the window.
+
+The missing piece is a **layout matcher**: scoring a candidate layout against the video's first
+frames on that floor. The landing camera is known (CaveGen3 `landing_corners`, `views.py`: 900
+units back, 25° down, 26° field of view; the Olimar landing camera faces a fixed heading of 110°).
+That gives a homography from the screen to the floor. So the floor/wall mask visible at landing
+could be compared with each candidate's rendered floor (`--view olimar`). I checked the geometry
+on Cryptic Cavern 1 but did not build the matcher.
+
+With a matcher the search is small. With 50k candidates per floor on CMAL runs, even a weak matcher
+that keeps the top 1% leaves 500 candidates, and the next floor's landing plus the ordering
+constraint would narrow those further. That would also settle the dives that can't be pinned down
+on their own (2–4 Pikmin, single dense colours), since floor 1's layout can be checked the same way.
+
 ## Footage used
 
 - 2P GC USA: [tcbtrio, CurtisDN_ 59:25](https://www.youtube.com/watch?v=GJhM7TEK0bY) (speedrun.com

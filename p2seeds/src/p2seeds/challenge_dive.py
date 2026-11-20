@@ -595,12 +595,12 @@ def fit_geometry(dv: DiveVideo, flat, g0: Geometry, frames, free_scale=True, ori
     B += [(x - origin_slack, x + origin_slack) for x in ta[6:]]
     th0 = [min(max(x, lo), hi) for x, (lo, hi) in zip(th0, B)]
     best = None
-    starts = (0,) if fast else (-3, 0, 3)
+    starts = (0,)
     for df0 in starts:
         t = list(th0)
         t[2] = min(max(t[2] + df0, B[2][0]), B[2][1])
         r = minimize(lambda th: image_loss(dv, flat, geometry_from_vector(th), frames), t, method="Powell",
-                     bounds=B, options=dict(maxiter=1500 if fast else 8000, xtol=0.05 if fast else 0.02,
+                     bounds=B, options=dict(maxiter=1500 if fast else 3000, xtol=0.05 if fast else 0.02,
                                             ftol=1e-5 if fast else 1e-6))
         if best is None or r.fun < best.fun:
             best = r
@@ -1090,13 +1090,23 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     # a whole-dive shift by 4 draws hands every Pikmin its neighbour's values: nearly the same
     # picture (the frame phase absorbs the timing). The true start is a minimum against its shifts.
     best_s = refined[0][1]
-    shifts = []
-    for k in (-8, -4, 4, 8):
-        s2 = rng.next_seed(best_s, k) & 0xFFFFFFFF
-        if s2 not in flats:
-            flats[s2] = flatten(dive_params(s2, counts))
-        g4, l4 = fit_geometry(dv, flats[s2], geo, frames, fast=True, anchor=g)
-        shifts.append(dict(shift=k, state=s2, loss=min(l4, image_loss(dv, flats[s2], geo, frames))))
+    best_l = refined[0][0]
+    for _ in range(4):                      # walk to the best shift (a shift can fit better)
+        shifts = []
+        for k in (-8, -4, 4, 8):
+            s2 = rng.next_seed(best_s, k) & 0xFFFFFFFF
+            if s2 not in flats:
+                flats[s2] = flatten(dive_params(s2, counts))
+            g4, l4 = fit_geometry(dv, flats[s2], geo, frames, fast=True, anchor=g)
+            shifts.append(dict(shift=k, state=s2, loss=min(l4, image_loss(dv, flats[s2], geo, frames)), f0=g4.f0,
+                               geometry=geometry_vector(g4)))
+        better = min(shifts, key=lambda x: x["loss"])
+        if better["loss"] >= best_l:
+            break
+        log(f"  shift {better['shift']:+d} fits better ({better['loss']:.1f} < {best_l:.1f}): moving")
+        refined.insert(0, (better["loss"], better["state"], better["f0"], better["loss"], better["geometry"]))
+        best_s, best_l = better["state"], better["loss"]
+    refined.sort()
     shift_margin = (min(x["loss"] for x in shifts) - refined[0][0]) / refined[0][0]
     log(f"  shifts: {[(x['shift'], round(x['loss'], 1)) for x in shifts]} (margin {shift_margin:+.3f})")
     log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, *_ in refined[:3]]}")
