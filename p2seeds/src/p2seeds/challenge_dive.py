@@ -571,15 +571,18 @@ def geometry_from_vector(th) -> Geometry:
 
 
 def fit_geometry(dv: DiveVideo, flat, g0: Geometry, frames, free_scale=True, origin_slack=12.0, f0_slack=8.0,
-                 fast: bool = False):
+                 fast: bool = False, anchor: Geometry | None = None):
     """Fit geometry (and the dive's frame phase) for a known dive (flat params)."""
     from scipy.optimize import minimize
     th0 = geometry_vector(g0)
-    B = [(g0.sx * 0.85, g0.sx * 1.15) if free_scale else (g0.sx, g0.sx),
-         (g0.sy * 0.8, g0.sy * 1.2) if free_scale else (g0.sy, g0.sy),
-         (g0.f0 - f0_slack, g0.f0 + f0_slack), (g0.v100 - 25, g0.v100 + 25),
-         (g0.goal[0] - 80, g0.goal[0] + 80), (g0.goal[1] - 60, g0.goal[1] + 60)]
-    B += [(x - origin_slack, x + origin_slack) for x in th0[6:]]
+    a = anchor or g0                     # bounds around the registered geometry, so refits can't drift
+    ta = geometry_vector(a)
+    B = [(a.sx * 0.85, a.sx * 1.15) if free_scale else (a.sx, a.sx),
+         (a.sy * 0.8, a.sy * 1.2) if free_scale else (a.sy, a.sy),
+         (a.f0 - f0_slack, a.f0 + f0_slack), (a.v100 - 25, a.v100 + 25),
+         (a.goal[0] - 80, a.goal[0] + 80), (a.goal[1] - 60, a.goal[1] + 60)]
+    B += [(x - origin_slack, x + origin_slack) for x in ta[6:]]
+    th0 = [min(max(x, lo), hi) for x, (lo, hi) in zip(th0, B)]
     best = None
     starts = (0,) if fast else (-3, 0, 3)
     for df0 in starts:
@@ -932,7 +935,8 @@ def window_states(end_state: int, span: int, skip: int = 0) -> np.ndarray:
 
 def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geometry | None = None,
               keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print,
-              window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0):
+              window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
+              final_exact: int = 300):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings."""
     import time
@@ -995,6 +999,11 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
 
         trials = []
         videos = {}
+        loc = burst_locality(path, closes, g, lead, lead_delay) if closes else {}
+        if loc:
+            top = max(loc.values())
+            closes = [b for b in closes if loc.get(b, 0) >= 0.8 * top]
+            log(f"  burst locality {[(b, round(v, 2)) for b, v in loc.items()]} -> {closes}")
         for b in closes or [int(f0_guess + 2)]:
             bgb = background_for(b)
             dvb = DiveVideo(path, max(0, b - 6), min(n_frames - 1, b + span), bgb, region, scale=scale)
@@ -1012,6 +1021,9 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), bg, region, scale=scale)
         log(f"  f0 search: best {trials[0][1]:.1f} (guess {f0_guess:.1f}); top {[(round(f, 1), round(v, 2)) for v, f, _ in trials[:4]]}")
     else:
+        loc = burst_locality(path, closes, g, lead, lead_delay) if closes else {}
+        if loc:
+            g = g.copy(f0=max(loc, key=loc.get) - ONSET_LAG)
         near = min(all_bursts, key=lambda b: abs(b - (g.f0 + 2.3)), default=None)
         bg = background_for(near) if near is not None else None
         dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), bg, region, scale=scale)
@@ -1025,14 +1037,20 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         o = np.argsort(-sc2)[:mid]
         st2 = st[o]
         bl = batch_image_loss(dv, counts, geom, st2)
-        pool = st2[np.argsort(bl)[:final]]
-        for s in pool:
-            if int(s) not in flats:
-                flats[int(s)] = flatten(dive_params(int(s), counts))
+        st3 = st2[np.argsort(bl)[:20_000]]
+        # the coarse loss (half resolution, every other frame) is noisy for dense dives: re-rank its
+        # best at full resolution on every frame before the exact loss
+        return st3
         return pool
 
     def rank(geom, pool):
-        r = [(image_loss(dv, flats[int(s)], geom, frames), int(s)) for s in pool]
+        # full-resolution compiled loss on the whole pool, exact loss on its best few hundred
+        bl = batch_image_loss(dv, counts, geom, pool, frame_step=1, ds=1)
+        best = pool[np.argsort(bl)[:final_exact]]
+        for s in best:
+            if int(s) not in flats:
+                flats[int(s)] = flatten(dive_params(int(s), counts))
+        r = [(image_loss(dv, flats[int(s)], geom, frames), int(s)) for s in best]
         r.sort()
         return r
 
@@ -1044,7 +1062,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     geo = g
     for it in range(iterations):
         lead = res[0][1]
-        geo, _ = fit_geometry(dv, flats[lead], geo, frames, fast=False)
+        geo, _ = fit_geometry(dv, flats[lead], geo, frames, fast=False, anchor=g)
         if window is not None:                 # pruning the window again is cheap
             pool = np.unique(np.concatenate([pool, prune(geo)]))
         res = rank(geo, pool)
@@ -1053,7 +1071,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
             break                               # a clear leader: the geometry has converged
     refined = []
     for l, s in res[:refit]:
-        g3, l3 = fit_geometry(dv, flats[s], geo, frames, fast=True)
+        g3, l3 = fit_geometry(dv, flats[s], geo, frames, fast=True, anchor=g)
         refined.append((min(l, l3), s, (g3 if l3 < l else geo).f0, l, geometry_vector(g3 if l3 < l else geo)))
     refined.sort()
     # a whole-dive shift by 4 draws hands every Pikmin its neighbour's values: nearly the same
@@ -1064,7 +1082,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         s2 = rng.next_seed(best_s, k) & 0xFFFFFFFF
         if s2 not in flats:
             flats[s2] = flatten(dive_params(s2, counts))
-        g4, l4 = fit_geometry(dv, flats[s2], geo, frames, fast=True)
+        g4, l4 = fit_geometry(dv, flats[s2], geo, frames, fast=True, anchor=g)
         shifts.append(dict(shift=k, state=s2, loss=min(l4, image_loss(dv, flats[s2], geo, frames))))
     shift_margin = (min(x["loss"] for x in shifts) - refined[0][0]) / refined[0][0]
     log(f"  shifts: {[(x['shift'], round(x['loss'], 1)) for x in shifts]} (margin {shift_margin:+.3f})")
@@ -1287,4 +1305,38 @@ def motion_bursts(path: str, first: int, last: int, min_gap: int = 3):
             calm = 0
         else:
             calm += 1
+    return out
+
+
+def burst_locality(path: str, bursts, g: Geometry, lead: str, lead_delay: float, length: int = 12):
+    """For each burst: (motion near the lead colour's icon where its first hop is due, relative to the
+    whole screen) over (the same just before the burst). The dive's own burst is followed by local
+    motion (Pikmin hopping) and preceded by none; the "Pick one!" window opening or a fade moves the
+    whole screen, and bursts later in the dive are preceded by Pikmin already moving."""
+    cap = cv2.VideoCapture(path)
+    u, v = g.origins[lead]
+    hw, hh = 40 * g.sx / 0.84, 30 * g.sy / 0.62
+
+    def rel(a, n):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, a - 1))
+        ok, prev = cap.read()
+        if not ok:
+            return None
+        loc, glob = [], []
+        for _ in range(n):
+            ok, f = cap.read()
+            if not ok:
+                break
+            d = np.abs(f.astype(np.float32) - prev.astype(np.float32)).sum(2)
+            loc.append(float(d[int(max(0, v - hh)):int(v + hh * 0.6), int(max(0, u - hw)):int(u + hw)].mean()))
+            glob.append(float(d.mean()))
+            prev = f
+        return float(np.mean(loc)) / (float(np.mean(glob)) + 1.0) if loc else None
+
+    out = {}
+    for b in bursts:
+        after = rel(int(b + lead_delay) - 1, length)
+        before = rel(max(0, b - 10), 9)
+        if after is not None and before is not None:
+            out[b] = after / (before + 0.5)
     return out
