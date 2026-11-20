@@ -838,3 +838,249 @@ def rescore(dv: DiveVideo, counts, g: Geometry, states, pikmin=None):
     _SCORE(0, len(states), A, C, base, u0, v0, ns, sl, np.float32(g.sx), np.float32(g.sy), O,
            np.float32(x0), np.float32(y0), out, states)
     return out
+
+
+# ---------------------------------------------------------------- end to end
+
+def motion_onset(path: str, first: int, last: int, g: Geometry, colour: str, thr: float = 8.0):
+    """First frame with clear motion around a colour's icon (the dive's first hop)."""
+    cap = cv2.VideoCapture(path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, first)
+    u, v = g.origins[colour]
+    hw, hh = 45 * g.sx / 0.84, 32 * g.sy / 0.62
+    prev = None
+    quiet = 0
+    for fr in range(first, last + 1):
+        ok, f = cap.read()
+        if not ok:
+            break
+        c = f[int(max(0, v - hh)):int(v + hh * 0.5), int(max(0, u - hw)):int(u + hw)].astype(np.float32)
+        if prev is not None and prev.shape == c.shape:
+            m = float(np.abs(c - prev).sum(2).mean())
+            if m < 2.0:
+                quiet += 1
+            elif m > thr and quiet >= 2:
+                return fr
+            else:
+                quiet = 0
+        prev = c
+    return None
+
+
+ONSET_LAG = 2.3     # motion onset minus fitted f0 (calibrated on the reference video)
+
+
+def dive_region(g: Geometry, counts):
+    us = [g.origins[c][0] for c, k in zip(COLOURS, counts) if k]
+    vs = [g.origins[c][1] for c, k in zip(COLOURS, counts) if k]
+    padx, pady = 70 * g.sx / 0.84, 80 * g.sy / 0.62
+    x0 = int(max(0, min(us) - padx))
+    x1 = int(max(us) + padx)
+    y0 = int(max(0, g.v100 - 70 * g.sy - 30))
+    y1 = int(max(vs) + 30)
+    return x0, y0, x1, y1
+
+
+def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geometry | None = None,
+              keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print):
+    """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
+    best candidates (state, image loss), the stage, the geometry used and timings."""
+    import time
+    t0 = time.time()
+    first, last = visit
+    cap = cv2.VideoCapture(path)
+    n_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    reg_frame = first + min(15, (last - first) // 4)
+    # menu detection misses the darkened "Pick one!" frames, where the dive starts: look 30 earlier
+    first, last = max(0, first - 30), min(n_frames - 1, last + 12)
+    if reg is None:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, reg_frame)
+        ok, f = cap.read()
+        reg = register(f)
+    if ch is None:
+        ch, share = landing_stage(path, first, last, reg)
+    counts = stage_counts(ch)
+    g = geometry if geometry is not None else reference_geometry(ch, reg)
+    lead = next(c for c, k in zip(COLOURS, counts) if k)
+    onset = motion_onset(path, first, last, g, lead)
+    if onset is None:
+        return dict(ok=False, note="no dive motion found", ch=ch, reg=reg)
+    # the lead colour's group starts 0.5/0.15 frames per colour after red
+    lead_c = COLOURS.index(lead)
+    g = g.copy(f0=onset - ONSET_LAG - lead_c * 0.5 / TIMER_SPEED)
+    span = int((0.1 * (max(counts) - 1) + 0.5 * 4) / TIMER_SPEED + 45)
+    region = dive_region(g, counts)
+    dv = DiveVideo(path, int(g.f0) + 2, min(last, int(g.f0) + span), None, region,
+                   scale=float(np.sqrt(reg["sx"] * reg["sy"])))
+    log(f"stage CH{ch} counts {counts} onset {onset} f0~{g.f0:.1f} region {region} reg {reg}")
+    st, sc = search_all(dv, counts, g, first_pikmin=first_pikmin, keep=keep)
+    log(f"  stage-1 search done {time.time() - t0:.0f}s")
+    sc2 = rescore(dv, counts, g, st)
+    o = np.argsort(-sc2)[:mid]
+    st2 = st[o]
+    bl = batch_image_loss(dv, counts, g, st2)
+    o2 = np.argsort(bl)[:final]
+    log(f"  rescored {len(st)} -> batch loss on {len(st2)} -> exact on {len(o2)} ({time.time() - t0:.0f}s)")
+    frames = sorted(dv.obs)
+    res = []
+    for s in st2[o2]:
+        flat = flatten(dive_params(int(s), counts))
+        res.append((image_loss(dv, flat, g, frames), int(s)))
+    res.sort()
+    # refit f0 and origins slightly for the best few
+    refined = []
+    for l, s in res[:8]:
+        flat = flatten(dive_params(s, counts))
+        best = (l, g.f0)
+        for df in np.arange(-1.5, 1.51, 0.25):
+            l2 = image_loss(dv, flat, g.copy(f0=g.f0 + df), frames)
+            if l2 < best[0]:
+                best = (l2, g.f0 + df)
+        refined.append((best[0], s, best[1]))
+    refined.sort()
+    log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, _ in refined[:3]]}")
+    return dict(ok=True, ch=ch, counts=counts, reg=reg, onset=onset, f0=g.f0, region=region,
+                candidates=[dict(state=s, loss=l, f0=f, layout_seed=layout_seed(s)) for l, s, f in refined],
+                margin=(refined[1][0] - refined[0][0]) / refined[0][0] if len(refined) > 1 else None,
+                seconds=time.time() - t0)
+
+
+# ---------------------------------------------------------------- compiled batch image loss
+
+def _loss_kernel():
+    import numba as nb
+
+    @nb.njit(parallel=True, fastmath=True, cache=True)
+    def batch_loss(states, A, C, base, idx, u0, v0, sx, sy, v100, gu, gv, f0, frames, O, T, tcx, tcy,
+                   x0, y0, ds, out):
+        P = A.shape[0]
+        F = frames.shape[0]
+        H, W = O.shape[1], O.shape[2]
+        th, tw = T.shape
+        nmax = int(frames[F - 1] - f0) + 2
+        for k in nb.prange(states.shape[0]):
+            s = states[k]
+            U = np.full((F, P), np.nan, np.float32)
+            V = np.full((F, P), np.nan, np.float32)
+            for p in range(P):
+                r = np.empty(4, np.float32)
+                for d in range(4):
+                    st = (A[p, d] * s + C[p, d]) & np.uint64(0xFFFFFFFF)
+                    r[d] = np.float32((st >> np.uint64(16)) & np.uint64(0x7FFF)) / np.float32(32768.0)
+                t = 0.1 * r[0] + base[p]
+                dx = 30.0 * r[1]
+                if r[2] > 0.5:
+                    dx = -dx
+                dy = 15.0 + 10.0 * r[3]
+                calc = 0.0
+                if idx[p] % 3 == 0:
+                    calc = -8.0 * sx
+                elif idx[p] % 3 == 1:
+                    calc = 8.0 * sx
+                state = 0
+                u = u0[p]
+                v = v0[p]
+                ui = 0.0
+                vi = 0.0
+                q = 0
+                for n in range(1, nmax + 1):
+                    t += 0.15
+                    st0 = state
+                    if st0 == 0:
+                        if t >= 0:
+                            u = u0[p] - sx * dx * np.sin(t)
+                            v = v0[p] - sy * abs(np.sin(2.0 * t) * dy)
+                            if t > 1.5707963267948966:
+                                state = 3
+                    elif st0 == 3:
+                        if v > v100:
+                            v -= 12.0 * sy
+                        else:
+                            state = 4
+                            ui = u
+                            vi = v
+                            t = 0.0
+                    elif st0 == 4:
+                        if t > 3.141592653589793:
+                            state = 5
+                            t = 3.141592653589793
+                        u = ui + t * (gu - ui + calc) / 3.141592653589793
+                        v = vi - 70.0 * sy * np.sin(t)
+                    elif st0 == 5:
+                        if v < gv - 40.0 * sy:
+                            v += 12.0 * sy
+                        else:
+                            state = 6
+                    # record at the frames whose update count is n
+                    while q < F and int(np.floor(frames[q] - f0)) <= n:
+                        if int(np.floor(frames[q] - f0)) == n and state != 6:
+                            U[q, p] = u
+                            V[q, p] = v
+                        elif int(np.floor(frames[q] - f0)) < 1:
+                            U[q, p] = u0[p]
+                            V[q, p] = v0[p]
+                        q += 1
+            err = 0.0
+            img = np.zeros((H, W), np.float32)
+            for q in range(F):
+                img[:, :] = 0.0
+                for p in range(P):
+                    uu = U[q, p]
+                    if uu != uu:
+                        continue
+                    xx = int(np.floor((uu - x0) / ds - tcx + 0.5))
+                    yy = int(np.floor((V[q, p] - y0) / ds - tcy + 0.5))
+                    for a in range(th):
+                        yv = yy + a
+                        if yv < 0 or yv >= H:
+                            continue
+                        for b in range(tw):
+                            xv = xx + b
+                            if xv < 0 or xv >= W:
+                                continue
+                            val = T[a, b]
+                            if val > img[yv, xv]:
+                                img[yv, xv] = val
+                for yv in range(H):
+                    for xv in range(W):
+                        dd = img[yv, xv] - O[q, yv, xv]
+                        err += dd * dd
+            out[k] = err
+    return batch_loss
+
+
+_BATCH = None
+
+
+def batch_image_loss(dv: DiveVideo, counts, g: Geometry, states, frame_step: int = 2, ds: int = 2):
+    """Approximate image_loss for many states at once (half resolution, every other frame)."""
+    global _BATCH
+    if _BATCH is None:
+        _BATCH = _loss_kernel()
+    pk = [(c, i) for c in range(5) for i in range(min(counts[c], 50))]
+    P = len(pk)
+    A = np.zeros((P, 4), np.uint64)
+    C = np.zeros((P, 4), np.uint64)
+    base = np.zeros(P, np.float32)
+    idx = np.zeros(P, np.int64)
+    u0 = np.zeros(P, np.float32)
+    v0 = np.zeros(P, np.float32)
+    for p, (c, i) in enumerate(pk):
+        for d in range(4):
+            a, cc = rng.jump(200 * c + 4 * i + d)
+            A[p, d], C[p, d] = a % (1 << 32), cc % (1 << 32)
+        base[p] = -(0.1 * i + 0.5 * c)
+        idx[p] = i
+        u0[p], v0[p] = g.origins[COLOURS[c]]
+    frames = np.array(sorted(dv.obs)[::frame_step], np.float64)
+    O = np.stack([cv2.resize(dv.obs[int(f)], None, fx=1 / ds, fy=1 / ds, interpolation=cv2.INTER_AREA)
+                  for f in frames]).astype(np.float32)
+    T = cv2.resize(dv.renderer.bank[0, 0], None, fx=1 / ds, fy=1 / ds, interpolation=cv2.INTER_AREA).astype(np.float32)
+    tcx, tcy = dv.renderer.cx / ds, dv.renderer.cy / ds
+    states = np.ascontiguousarray(states, np.uint64)
+    out = np.empty(len(states), np.float64)
+    _BATCH(states, A, C, base, idx, u0, v0, np.float32(g.sx), np.float32(g.sy), np.float32(g.v100),
+           np.float32(g.goal[0]), np.float32(g.goal[1]), np.float64(g.f0), frames, O, T,
+           np.float32(tcx), np.float32(tcy), np.float32(dv.region[0]), np.float32(dv.region[1]),
+           np.float32(ds), out)
+    return out
