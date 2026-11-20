@@ -41,6 +41,22 @@ def assess(r):
     return s, rng.next_seed(s, 999) & 0x7FFFFFFF, m_other, m_shift
 
 
+def preceding_roll_check(r, s):
+    """True/False when the video shows a decoded results roll before the dive (its end + 5, plus up to
+    3 menu-flash draws, is the dive's first state); None when there is none."""
+    name = os.path.splitext(r.get("video", ""))[0]
+    p = os.path.join(WR, "rolls", name + ".json")
+    if not os.path.exists(p):
+        return None
+    d = json.load(open(p))
+    d = d["results"] if isinstance(d, dict) else d
+    prev = [x for x in d if x.get("decoded") and x["last_frame"] < r["visit"][0] and x.get("state_after_last_draw")]
+    if not prev:
+        return None
+    e = int(prev[-1]["state_after_last_draw"], 16)
+    return any((rng.next_seed(e, 5 + k) & 0x7FFFFFFF) == (s & 0x7FFFFFFF) for k in range(4))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("out")
@@ -78,9 +94,12 @@ def main():
             continue
         s, lay, m_other, m_shift = a_
         visible = sum(min(k, 50) for k in r.get("counts", []))
+        verified = preceding_roll_check(r, s)
         ok = ((m_other is None or m_other >= a.min_margin) and (m_shift is None or m_shift >= a.min_shift)
-              and visible >= a.min_pikmin)
-        report.append((ch, f"{lay:08X}", f"other {m_other} shift {m_shift}", ok))
+              and visible >= a.min_pikmin) or verified is True
+        if verified is False:
+            ok = False
+        report.append((ch, f"{lay:08X}", f"other {m_other} shift {m_shift} verified {verified}", ok))
         if not ok:
             unread[str(200 + ch)] = ({"en": "too few Pikmin jump in to pin it down", "ja": "飛び込むピクミンが少なく絞り込めません"}
                                      if visible < a.min_pikmin else
@@ -93,7 +112,10 @@ def main():
             "dive_state": f"0x{s & 0x7FFFFFFF:08X}",
             "margin": round(m_other, 3) if m_other is not None else None,
             "shift_margin": round(m_shift, 3) if m_shift is not None else None,
-            "how": {"en": "stage-select dive + results roll", "ja": "ステージ選択の飛び込み＋結果画面"},
+            "how": ({"en": "stage-select dive, confirmed by the previous results roll",
+                     "ja": "ステージ選択の飛び込み（直前の結果画面で確認済み）"} if verified else
+                    {"en": "stage-select dive + results roll", "ja": "ステージ選択の飛び込み＋結果画面"}),
+            "verified": bool(verified),
         })
     out = {"_about": "Pikmin 2 challenge-mode sublevel layout seeds read from record videos with "
                      "pikmin2-layout-ledger's dive reader (floor 1 of each stage). Keyed by pik5 post id, so a seed "

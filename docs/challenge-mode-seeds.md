@@ -331,7 +331,31 @@ For each stage between two decoded rolls, the dive is searched using only the **
 (a window of 3M states). The result is then compared with the truth from the **preceding** roll
 (its end + 5). The two sources are independent.
 
-CROSSCHECK_TABLE
+Checked against a truth from a decoded results roll (all on the solo Wii U run cmal04 unless
+noted). The pipeline changed during the day; each result is labelled with the version it ran on.
+
+- **Final pipeline** (`crosscheck_cmal.py`, data in `data/challenge/crosscheck/`):
+
+| run | stage | Pikmin | result | margin | rank of truth |
+|---|---|---|---|---|---|
+| cmal04 tcbtrio | CH11 | red 5, white 5 | **correct** | 59.9% | 2 |
+| cmal04 tcbtrio | CH21 | red 30, blue 30 | wrong | 4.4% | not in top 200 |
+
+- **Earlier versions** (same dives, without the later frame-phase and pruning fixes):
+  - CH16 Snack Pit (5 of each colour): found from scratch over all 2³¹ states, 13.6% margin.
+  - CH29 (30 yellow, 20 purple): correct, 22% margin.
+  - CH26 (4 red): wrong, margin under 2%.
+- **A WR video:** CH28 (spark573, 25 purple) opens on the previous attempt's results roll. The
+  reader's best state is exactly that truth (`4AA0C7DC`, layout `29549C67`), but with only a 1.3%
+  margin, so on its own it would not have been published.
+
+Pattern: when the right answer wins, it wins by 13–60%; wrong answers come in under about 5%. The
+site therefore publishes a seed only when:
+- it beats every candidate that is not a 4-draw shift of it by at least 10%;
+- it beats its own shifts;
+- at least 8 Pikmin are visible; or
+- a preceding roll confirms it.
+
 
 Per-stage RNG use is consistent between runners
 (`p2seeds/src/p2seeds/data/challenge_stage_draws.json`: draws per video frame from the floor-1 seed
@@ -358,7 +382,57 @@ Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challeng
 
 ### Score WRs (pik5.net, current Pikmin 2 #1s)
 
-WR_TABLE
+| stage | record | Pikmin | floor-1 seed | margin | shift margin | status |
+|---|---|---|---|---|---|---|
+| CH1 | 35,353 Gorei_50 | red 50 | `2C1ABE60` | 15.1% | +5.7% | published |
+| CH2 | 38,039 Gorei_50 | white 30 | `29334AE5` | 38.3% | +2.3% | published |
+| CH3 | 48,317 Gorei_50 | yellow 100 | `3CBFEB45` | 6.9% | +3.8% | uncertain |
+| CH4 | 13,982 Gorei_50 | blue 50 | `1F8A1928` | 0.7% | +0.7% | uncertain |
+| CH5 | 11,754 Gorei_50 | red 10, yellow 10, blue 10 | `7E0998D1` | 7.3% | +6.0% | uncertain |
+| CH6 | 9,546 Gorei_50 | red 1, yellow 1, blue 1 | `21EB11C3` | 23.7% | +23.0% | uncertain |
+| CH7 | 15,044 Gorei_50 | blue 50 | `65465192` | 0.1% | +0.8% | uncertain |
+| CH8 | 18,883 Gorei_50 | red 40 | `24208D0E` | 1.2% | +6.3% | uncertain |
+| CH9 | 50,902 Gorei_50 | red 40, white 20, purple 20 | `1A92224A` | 0.8% | +0.7% | uncertain |
+| CH10 | 26,773 Gorei_50 | yellow 50 | `25EE5FBF` | 23.6% | +11.2% | published |
+| CH11 | 8,552 Gorei_50 | red 5, white 5 | `743EA7AC` | 1.0% | +0.8% | uncertain |
+| CH12 | 4,994 Gorei_50 | white 2 | `2CB5DC24` | 0.0% | +18.5% | uncertain |
+| CH13 | 48,415 Gorei_50 | white 50 | `79DEE351` | 72.9% | +23.2% | published |
+| CH14 | 18,355 albut3 | red 25, yellow 25, blue 25, white 25 | `1E828824` | 16.8% | +4.3% | published |
+| CH15 | 6,264 Gorei_50 | red 25, white 25 | `78F3DE3E` | 19.7% | +7.7% | published |
+| CH16 | 6,003 Gorei_50 | red 5, yellow 5, blue 5, white 5, purple 5 | `0615E706` | 54.3% | +65.9% | published |
+| CH17 | 16,700 Gorei_50 | yellow 30, white 15, purple 15 | `7F1CE063` | 29.5% | +17.0% | published |
+| CH18 | 54,082 Gorei_50 | | | | | no stage-select dive in the video |
+| CH19 | 11,720 Gorei_50 | red 20, blue 25, purple 5 | `6913B1F6` | 2.5% | +1.2% | uncertain |
+| CH20 | 15,599 Gorei_50 | blue 50 | `5D221DD2` | 21.3% | +4.5% | published |
+| CH21 | 35,441 albut3 | | | | | no stage-select dive in the video |
+| CH22 | 14,437 albut3 | red 20, yellow 20, blue 20 | `3B82BBBD` | 1.4% | +0.2% | uncertain |
+| CH23 | 10,044 kobachi_no_udon | | | | | not run |
+| CH24 | 14,343 albut3 | red 30, yellow 30 | `0BD5B59A` | 0.4% | +5.0% | uncertain |
+| CH25 | 28,031 Gorei_50 | red 10, yellow 10, blue 10, white 10, purple 10 | `22DE2928` | 0.3% | +3.1% | uncertain |
+| CH26 | 32,803 Gorei_50 | red 4 | `3FE0B9E8` | 0.2% | +1.3% | uncertain |
+| CH27 | 10,400 Bl6AltMzq5Jx4aM | red 50 | `5F14F7DF` | 2.1% | +0.2% | uncertain |
+| CH28 | 32,742 spark573 | purple 25 | `29549C67` | 1.3% | +2.8% | published (confirmed by the previous roll) |
+| CH29 | 33,362 Gorei_50 | yellow 30, purple 20 | `4A0376CD` | 18.6% | +18.2% | published |
+| CH30 | 32,248 Gorei_50 | red 20, blue 20, purple 10 | `29055A01` | 11.4% | +5.5% | published |
+
+
+12 of the 28 records with a dive were published to the pikmin-wrs site
+(https://jhawk4.github.io/pikmin-wrs/en/seeds.html), one of them (CH28) confirmed by a preceding roll.
+The rest:
+- **Uncertain:** dense single-colour dives (CH4 and CH7, 50 blue; CH8, 40 red; CH24–CH27), and a
+  few mixed ones with small margins. Most of these records are Gorei's Wii captures, whose menus
+  register less precisely than the reference run. The geometry refit then has more to recover, and
+  dense trains leave it little to lock onto.
+- **Too few Pikmin:** CH6 (3) and CH12 (2).
+- **No dive in the video:** CH21 starts on floor 2; CH18's menu registered poorly and is retried
+  separately.
+- **No video:** CH23 (it also has no dive Pikmin).
+
+Check images for each WR (CaveGen3 render of floor 1 next to frames of the video's first floor):
+`docs/challenge_dive/wr_gallery.py`. For the published stages, the layouts I looked at (CH1, CH2,
+CH10, CH13, CH14) agree with the video where it is legible, such as the key and the hole in CH1 and
+the strawberry in CH2. That is a check, not a proof.
+
 
 ## 9. Floors after the first (stretch goal): not done, but bounded
 
