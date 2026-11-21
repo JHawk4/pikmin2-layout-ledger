@@ -37,12 +37,46 @@ OBS Browser Source.
 
 There is no letter calibration: the name's scale and position are fitted on every screen.
 
+Settings are saved as named profiles (input, crop, category, region), so later sessions start
+straight in. The wizard only reruns when the profile's camera or crop no longer matches.
+
+**Modes** (those of CaveGen's `seed manip <mode>` GUI, `Manip.java`):
+
+| mode | category | what it reads | what it shows |
+|---|---|---|---|
+| `pod` | story, Pay Off Debt | falling letters on each entry screen | the layout, judged with the pod judge (skippable treasures not highlighted) |
+| `at` | story, All Treasures | the same | the layout with the AT judge |
+| `attk` | challenge mode, single levels | the score digits on the results screen (purple), the level-enter screen | the RNG state, then which levels and frames would give a top-ranked layout, with the wait for each |
+| `key`, `cmat`, `700k` | challenge-mode full-game runs ("CMAL manip") | the same digits | the next level to pick and when, from a precomputed times table (`seed timestable`, ~2 days to build) weighing wait, scroll time, split variance and layout luck |
+
+Helpers around these: `titleloop` (advance a last-known seed by title-screen loops), `timer`
+(frame window to enter a challenge level for a target seed), and CaveViewer to inspect a layout.
+The new app should cover all of these modes, with story mode (pod/at) first.
+
 **Main window:**
 
 - the current cave and sublevel, its seed and confidence, and the layout, drawn large;
 - this run's sublevels so far;
 - "copy Browser Source URL" and "new run" (which resets the chain);
 - an optional view of the tracked letters, to check what it measured.
+
+**Language and performance.** The latency is set mostly by waiting for frames (the ~1.7 s fall)
+and by the algorithm: cached name scale, a shorter tail, keeping CaveGen3 loaded. It is not set by
+the language; Python with those fixes would also land near 1.5 s. Rust still wins on the things
+the user ranked first:
+
+- one small exe with no runtime, against a ~150 MB PyInstaller bundle that antivirus often flags;
+- CaveGen3 linked in directly;
+- real threads with no GIL stalls in the capture loop.
+
+The detector should avoid OpenCV in Rust, a heavy native build. It only needs normalized
+cross-correlation of small glyphs over narrow strips, which is easy to write and vectorize. The
+fit is a small least-squares problem. Camera input comes from Media Foundation on Windows and
+AVFoundation on macOS (e.g. the `nokhwa` crate).
+
+For the GUI, Tauri (a Rust core with an HTML interface, using the system WebView, still one small
+exe) is a good fit: the Browser Source overlay is a web page anyway, so the two share code. egui
+(drawn by Rust itself) is the simpler fallback.
 
 **Milestones:**
 
