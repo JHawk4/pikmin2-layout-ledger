@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "p2seeds"
 from p2seeds import challenge_dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
 
 
-def read(video, r, parts=("flower",), top_n=150, truth=None, passes=None, log=print):
+def read(video, r, parts=("flower",), top_n=150, truth=None, passes=None, log=print, shortlist=None, inject_truth=True):
     """Detection read of one dive. r: a read_dive result (or setup_only result) for the visit."""
     t0 = time.time()
     counts, region = r["counts"], tuple(r["region"])
@@ -37,10 +37,17 @@ def read(video, r, parts=("flower",), top_n=150, truth=None, passes=None, log=pr
                goal=(g.goal[0] + du, g.goal[1] + dv), v100=g.v100 + dv)
     log(f"maps {time.time() - t0:.0f}s, {len(rd.frames)} frames, origin correction ({du:.1f}, {dv:.1f})")
     end, n = r["window"]
-    st = cd.window_states(end, n)
-    sc = ds.score(g, st)
-    med = float(np.median(sc))
-    top = np.argsort(-sc)[:top_n]
+    if shortlist is None:
+        st = cd.window_states(end, n)
+        sc = ds.score(g, st)
+        med = float(np.median(sc))
+        top = np.argsort(-sc)[:top_n]
+    else:       # only refit and rank the given states (e.g. the grey reader's shortlist); scale from a sample
+        smp = cd.window_states(end, n)[:: max(1, n // 200_000)]
+        med = float(np.median(ds.score(g, smp)))
+        st = np.unique(np.asarray(shortlist, np.uint64))
+        sc = ds.score(g, st)
+        top = np.argsort(-sc)
     log(f"window {n} scored ({time.time() - t0:.0f}s); best {sc[top[0]]:.1f}, median {med:.1f}")
     truth_k = None
     if truth is not None:
@@ -49,7 +56,7 @@ def read(video, r, parts=("flower",), top_n=150, truth=None, passes=None, log=pr
         truth_k = int(hit[0]) if len(hit) else None
         if truth_k is not None:
             log(f"truth at window k={truth_k}: first-pass score {sc[truth_k]:.1f}, rank {(sc > sc[truth_k]).sum()}")
-            if truth_k not in top:
+            if inject_truth and truth_k not in top:
                 top = np.concatenate([top, [truth_k]])
     fits = []
     for k in top:
