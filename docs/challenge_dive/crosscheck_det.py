@@ -5,7 +5,8 @@
 Same test as crosscheck_cmal.py: for each menu visit between two decoded results screens, the
 truth is the preceding roll's state + 5 (from the results-screen digits) and the search window is
 the `span` layout seeds before the following roll. The stage, crop region, dive start frame and
-reference geometry come from read_dive(setup_only=True); the rest is read_det.read.
+geometry come from the full grey reader (read_dive, cached in crosscheck/dives/), whose fitted
+geometry is the detection's starting point; the grey reader's own verdict is recorded alongside.
 Results go to data/challenge/crosscheck/<video>_det_<parts>.json.
 """
 from __future__ import annotations
@@ -35,6 +36,8 @@ def main():
     ap.add_argument("--top", type=int, default=60)
     ap.add_argument("--span", type=int, default=3_000_000)
     ap.add_argument("--ch", type=int, nargs="*")
+    ap.add_argument("--setup-only", action="store_true",
+                    help="start from the reference geometry instead of the grey reader's fit (fast, weaker)")
     a = ap.parse_args()
     name = os.path.basename(a.video)
     rolls = [r for r in json.load(open(os.path.join(ROOT, "data", "challenge", "results_rolls.json")))[name]["results"]
@@ -61,13 +64,23 @@ def main():
         t = time.time()
         log = lambda s: print("   ", s, flush=True)  # noqa: E731
         try:
-            r = cd.read_dive(a.video, v, window=(end, a.span), setup_only=True, log=log)
+            cache = os.path.join(out_dir, "dives", f"{name}_{v[0]}{'_setup' if a.setup_only else ''}.json")
+            if os.path.exists(cache):
+                r = json.load(open(cache))
+            else:
+                r = cd.read_dive(a.video, v, window=(end, a.span), setup_only=a.setup_only, probe=[truth], log=log)
+                r["window"] = [end, a.span]
+                os.makedirs(os.path.dirname(cache), exist_ok=True)
+                json.dump(r, open(cache, "w"), default=float)
+            grey = r.get("candidates", [{}])[0].get("state")
             d = read_det.read(a.video, r, a.parts.split(","), a.top, truth, log=log)
             best = d["rows"][0]["state"]
             rec = dict(visit=list(v), ch=r["ch"], counts=r["counts"], truth=truth, best=best,
                        correct=(best & 0x7FFFFFFF) == (truth & 0x7FFFFFFF), truth_rank=d["truth_rank"],
                        first_pass_rank=d["first_pass_rank"], margin=d["margin"],
-                       scores=[x["score"] for x in d["rows"][:3]], seconds=time.time() - t)
+                       scores=[x["score"] for x in d["rows"][:3]], seconds=time.time() - t,
+                       grey_best=grey, grey_correct=None if grey is None else (grey & 0x7FFFFFFF) == (truth & 0x7FFFFFFF),
+                       grey_margin=r.get("margin"))
         except Exception as e:
             rec = dict(visit=list(v), ch=known.get(tuple(v)), truth=truth, correct=False, note=repr(e),
                        seconds=time.time() - t)
