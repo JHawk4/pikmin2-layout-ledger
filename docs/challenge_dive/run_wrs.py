@@ -20,6 +20,7 @@ sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
 from p2seeds import challenge_dive as cd  # noqa: E402
 
 WR = os.path.join(ROOT, "data", "challenge", "wr")
+DIVES = os.environ.get("WR_DIVES", "dives")   # output folder under data/challenge/wr
 SPAN = 6_000_000           # floor-1 seed lies at most this many draws before the stage's results roll
 # (WR play uses far more draws per frame than CMAL runs, e.g. ~230/frame on CH1, so no per-stage band)
 
@@ -42,12 +43,12 @@ def pick_visit(info, ch):
 def main():
     visits = json.load(open(os.path.join(WR, "visits.json")))
     want = [int(a) for a in sys.argv[1:]]
-    os.makedirs(os.path.join(WR, "dives"), exist_ok=True)
+    os.makedirs(os.path.join(WR, DIVES), exist_ok=True)
     for name, info in sorted(visits.items()):
         ch = info["ch"]
         if want and ch not in want:
             continue
-        out = os.path.join(WR, "dives", f"wr_{ch:02d}.json")
+        out = os.path.join(WR, DIVES, f"wr_{ch:02d}.json")
         if os.path.exists(out):
             continue
         v = pick_visit(info, ch)

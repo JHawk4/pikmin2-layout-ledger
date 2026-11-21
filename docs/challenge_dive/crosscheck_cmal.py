@@ -33,6 +33,8 @@ def main():
     ap.add_argument("--every", type=int, default=1)
     ap.add_argument("--span", type=int, default=3_000_000)
     ap.add_argument("--max", type=int, default=99)
+    ap.add_argument("--ch", type=int, nargs="*", help="only these stages (by the landing stage of earlier results)")
+    ap.add_argument("--tag", default="", help="suffix for the output file")
     a = ap.parse_args()
     name = os.path.basename(a.video)
     rolls = json.load(open(os.path.join(ROOT, "data", "challenge", "results_rolls.json")))[name]["results"]
@@ -45,7 +47,7 @@ def main():
         json.dump(visits, open(vis_path, "w"))
     out_dir = os.path.join(ROOT, "data", "challenge", "crosscheck")
     os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, name + ".json")
+    out_path = os.path.join(out_dir, name + a.tag + ".json")
     out = json.load(open(out_path)) if os.path.exists(out_path) else []
     done = {tuple(r["visit"]) for r in out}
     pairs = []
@@ -54,6 +56,10 @@ def main():
         if vs:
             pairs.append((prev, nxt, vs[-1], len(vs)))  # the last visit before the next stage's results
     pairs = pairs[::a.every][:a.max]
+    if a.ch:                                   # stage of each visit from an earlier untagged run
+        base = os.path.join(out_dir, name + ".json")
+        known = {tuple(r["visit"]): r.get("ch") for r in json.load(open(base))} if os.path.exists(base) else {}
+        pairs = [x for x in pairs if known.get(tuple(x[2])) in a.ch]
     print(f"{name}: {len(pairs)} stages to check", flush=True)
     for prev, nxt, v, n_vis in pairs:
         if tuple(v) in done:

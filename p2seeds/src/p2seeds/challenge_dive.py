@@ -947,7 +947,7 @@ def window_states(end_state: int, span: int, skip: int = 0) -> np.ndarray:
 def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geometry | None = None,
               keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print,
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
-              final_exact: int = 300, probe=(), f0_offsets=(0.0,)):
+              final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0)):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
