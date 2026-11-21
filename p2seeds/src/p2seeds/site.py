@@ -30,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cavegen, charts, judge2, judge_page, judge_report, luck, rng, run_page, treasures
+from . import cavegen, charts, judge2, judge_page, judge_report, luck, rng, run_page, theme, treasures
 
 STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "SC", "CoC", "HoH", "DD"]
 
@@ -51,7 +51,7 @@ def _load(root: Path) -> list[dict]:
         meta = data.get("meta", {})
         run = meta.get("run", {})
         runs.append({"dir": d, "slug": d.name, "meta": meta, "run": run, "kind": data.get("kind", "pod"),
-                     "entries": judge_report.mark_neighbors(data["entries"]), "fps": meta.get("fps", 30.0),
+                     "entries": judge_report.mark_revisits(judge_report.mark_neighbors(data["entries"])), "fps": meta.get("fps", 30.0),
                      "player": ", ".join(p["name"] for p in run.get("players", [])) or d.name,
                      "runner": _run_label(run, d.name)})
     runs.sort(key=lambda r: (r["run"].get("time_seconds") or 1e9, r["slug"]))     # fastest first
@@ -112,7 +112,7 @@ def timed(entries: list[dict], tre: dict) -> list[tuple[dict, int]]:
     out = []
     for k, a in enumerate(entries):
         b = entries[k + 1] if k + 1 < len(entries) else None
-        if not a.get("sublevel"):
+        if not a.get("sublevel") or a.get("revisit"):
             continue
         if b is not None and b["cave"] == a["cave"] and b.get("sublevel") == a["sublevel"] + 1:
             out.append((a, b["frame"]))
@@ -420,15 +420,17 @@ are the sort's values; drag across a chart to see the slope of just that stretch
     return ex_table, section
 
 
-ADD_RUN_NOTE = ('<p class="muted">Missing a run, or want one added? Share its video or speedrun.com link in the '
-                '<a href="suggest.html">suggestion box</a>.</p>')
+def add_run_note(category: str = "pod") -> str:
+    root = "../" if category == "at" else ""
+    return ('<p class="muted">Missing a run, or want one added? Share its video or speedrun.com link in the '
+            f'<a href="{root}suggest.html">suggestion box</a>.</p>')
 
 
 def _pct(p: dict) -> str:
     return "" if p["pct"] is None else f'{p["pct"]:.0f}%'
 
 
-def picker(picks: list[dict], what: str) -> str:
+def picker(picks: list[dict], what: str, category: str = "pod") -> str:
     """A landing page that lists the runs, each linking to its layouts or detection page."""
     layouts = what == "layouts"
     href = "judge.html" if layouts else "report.html"
@@ -457,7 +459,7 @@ def picker(picks: list[dict], what: str) -> str:
 <div class="tablewrap"><table>
 <thead><tr><th class="num">Rank</th><th class="sticky">Runner</th><th>Time</th>{cols}<th>Date</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
-{ADD_RUN_NOTE}
+{add_run_note(category)}
 '''
 
 def layout_spread(runs: list[dict]) -> str:
@@ -560,7 +562,7 @@ and sublevels with fewer than 3 confidently read layouts are left out.</p>
 '''
 
 
-def timesave_page(runs: list[dict], acts: list[dict]) -> str:
+def timesave_page(runs: list[dict], acts: list[dict], category: str = "pod") -> str:
     """Every Pay Off Debt run against the median run, per sublevel: raw, or beyond what the layout gave."""
     order = {c: k for k, c in enumerate(STORY_ORDER)}
     per_run = {}
@@ -627,7 +629,7 @@ here, whose layout was usually better than the median layout (these are personal
 {"".join(tables)}
 <p class="muted small">Runs are sorted by their total, fastest first. Only the usual route's sublevels are shown; – = not
 timed (an uncertain seed, or the last sublevel's results screen was not found).</p>
-{ADD_RUN_NOTE}
+{add_run_note(category)}
 '''
 
 
@@ -735,27 +737,56 @@ def _missing_note(manifest: Path = Path("data/videos/manifest.json")) -> str:
             f'(deleted, private, or not available).</p>')
 
 
+def _platform_badge(run: dict) -> str:
+    """Runs on other consoles share their category's tables, marked with the console (load
+    times and controls differ; the per-runner term in the calibration absorbs a steady difference)."""
+    p = run.get("platform") or ""
+    return "" if p in ("", "GameCube") else f" <span class=badge>{html.escape(p)}</span>"
+
+
 def _fmt_time(t):
     if not t:
         return ""
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{int(t % 60):02d}"
 
 
+CATEGORY_TEXT = {
+    "pod": {"name": "Pay Off Debt",
+            "luck": "CaveGen's layout judge re-tuned on these runs' real times",
+            "runner": "allowing for the layouts (so a bad layout is not counted against the runner), with pokos counted: "
+                      "2 pokos = 1 second"},
+    "at": {"name": "All Treasures",
+           "luck": "CaveGen's All Treasures judge with walking, carrying, enemy and gate times weighted as the re-tuned "
+                   "Pay Off Debt judge, which matches these runs' real times (a missing treasure or missing purple flowers "
+                   "cost extra)",
+           "runner": "allowing for the layouts (so a bad layout is not counted against the runner)"},
+}
+
+
 def build(root: str | Path = "data/output") -> Path:
+    """Write one category's section of the site into `root` (where its runs are). Pay Off Debt
+    is the site root; All Treasures is exported under at/ (see export)."""
     root = Path(root)
     if judge2.available():
         for d in sorted(root.iterdir()):
             if (d / "judge.json").exists():
                 judge2.add_to_run(d)          # only fills what is missing
     runs = _load(root)
+    category = theme.category_of(runs[0]["kind"] if runs else "pod")
+    ctext = CATEGORY_TEXT[category]
     key0 = "judge2" if any(x.get("judge2_score") is not None for r in runs for x in r["entries"]) else "judge"
     cal0 = calibration(runs, key0)
     acts = actuals(runs, slope=cal0.get("slope", 1.0))
     for r, a in zip(runs, acts):
-        if r["kind"] == "pod":
+        if r["kind"] in ("pod", "at"):
             run_page.write(r["dir"], actual=a)
         else:
             judge_report.write_page(r["dir"], home="../index.html", actual=a)
+        det = r["dir"] / "report.html"
+        if det.exists():          # the detection page keeps its pictures; only its header follows the site
+            old = det.read_text(encoding="utf-8")
+            fix = theme.reheader if 'class="site-header"' in old else theme.apply      # older pages had no theme
+            det.write_text(fix(old, prefix="../", run=r["dir"].name, active="detection", category=category), encoding="utf-8")
         for old in ("judge_a.html", "judge_b.html", "judge_c.html"):      # the retired drafts
             (r["dir"] / old).unlink(missing_ok=True)
 
@@ -853,7 +884,7 @@ def build(root: str | Path = "data/output") -> Path:
     # layout luck: each run's total against random runs over the same sublevels
     lucks = []
     for r in runs:
-        jd = [x for x in r["entries"] if x.get("cave") and luck.judged(x) and judge_report.trusted(x)]
+        jd = [x for x in r["entries"] if x.get("cave") and luck.judged(x) and judge_report.trusted(x) and not x.get("revisit")]
         tot = sum(luck.delta(x) for x in jd)
         pct = luck.percentile(tot, luck.simulate(jd, r["kind"])) if jd else None
         lucks.append((jd, tot, pct))
@@ -868,7 +899,7 @@ def build(root: str | Path = "data/output") -> Path:
     every = {k: x for k, x in every.items() if seen_in[k] * 2 >= len(runs)}
     luck_chart = ""
     if every:
-        full = luck.simulate(list(every.values()))
+        full = luck.simulate(list(every.values()), runs[0]["kind"])
         def full_route(jd):
             return {(x["cave"], x["sublevel"]) for x in jd} >= set(every)
         marks = [{"x": tot, "hollow": not full_route(jd), "href": f'{r["slug"]}/judge.html',
@@ -899,7 +930,8 @@ def build(root: str | Path = "data/output") -> Path:
                       "runner": run_total, "high": high, "n": len(e)})
         trs.append(f'<tr><td class="num" data-v="{html.escape(rank or "99")}">{html.escape(rank)}</td>'
                    f'<td class="sticky"><a href="{html.escape(r["slug"])}/judge.html">{html.escape(r["player"])}</a>'
-                   f'{" <span class=badge>former WR</span>" if wr else ""}</td>'
+                   f'{" <span class=badge>former WR</span>" if wr else ""}'
+                   f'{_platform_badge(r["run"])}</td>'
                    f'<td data-v="{r["run"].get("time_seconds") or 0}">{_fmt_time(r["run"].get("time_seconds"))}</td>'
                    f'<td class="num" data-v="{sv(judge2_total if judged else None)}">{judge_report._num(judge2_total if judged else None)}</td>'
                    f'<td class="num" data-v="{sv(pct)}">{"" if pct is None else f"{pct:.0f}%"}</td>'
@@ -960,13 +992,13 @@ td.weak {{ color:var(--bad); }}
     index = f'''
 <h1>How lucky were the layouts?</h1>
 <p class="intro">Every cave sublevel's layout is set by the game's random number generator. This site reads that seed from
-the falling title letters in each Pay Off Debt run's video, rebuilds the exact layout, and asks how lucky the layouts were
+the falling title letters in each {ctext["name"]} run's video, rebuilds the exact layout, and asks how lucky the layouts were
 and how much time the runner saved beyond what the layouts gave.</p>
 <ul class="legend-list muted">
 <li><b>Layout luck</b>: seconds the run's layouts should save against the median layout of the same sublevels, by
-CaveGen's layout judge re-tuned on these runs' real times. <b>Luck percentile</b>: how many random runs it beats.</li>
+{ctext["luck"]}. <b>Luck percentile</b>: how many random runs it beats.</li>
 <li><b>Runner beyond the layouts</b>: seconds the runner saved against the median run on the same sublevels, after
-allowing for the layouts (so a bad layout is not counted against the runner), with pokos counted: 2 pokos = 1 second.</li>
+{ctext["runner"]}.</li>
 <li>Negative is faster, as on splits. <b>Seeds read</b> is how many sublevels' seeds were read with confidence; only those count.
 Click a column to sort; open a runner for their layouts.</li>
 </ul>
@@ -975,12 +1007,12 @@ Click a column to sort; open a runner for their layouts.</li>
 <thead><tr><th class="num" data-sort>Rank</th><th class="sticky" data-sort>Runner</th><th data-sort>Time</th>
 <th class="num" data-sort title="Seconds the layouts should save vs median layouts">Layout luck</th>
 <th class="num" data-sort title="Share of random runs over the same sublevels this run's layouts beat">Luck percentile</th>
-<th class="num" data-sort title="Seconds saved vs the median run beyond what the layouts gave, pokos counted (2 = 1 s)">Runner beyond layouts</th>
+<th class="num" data-sort title="Seconds saved vs the median run beyond what the layouts gave{', pokos counted (2 = 1 s)' if category == 'pod' else ''}">Runner beyond layouts</th>
 <th class="num" data-sort title="Sublevels whose seed was read with confidence">Seeds read</th>
 <th data-sort>Date</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
 {_missing_note()}
-{ADD_RUN_NOTE}
+{add_run_note(category)}
 <script>
 (() => {{
   const t = document.getElementById('runs'), body = t.tBodies[0];
@@ -1027,29 +1059,34 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
 <thead><tr><th>Runner</th><th>Video time</th><th>Sublevel</th><th>Letter seed</th><th class="num">RNG steps</th></tr></thead>
 <tbody>{data_rows}</tbody></table></div></details>
 '''
-    from . import theme
-    pages = [("index.html", "runs", "Pikmin 2 Layout Ledger · layout luck in Pikmin 2 Pay Off Debt runs", index, ""),
-             ("layouts.html", "layouts", "Pikmin 2 Layout Ledger · layouts by run", picker(picks, "layouts") + layout_spread(runs), ""),
-             ("detection.html", "detection", "Pikmin 2 Layout Ledger · seed detection by run", picker(picks, "detection"), ""),
-             ("timesave.html", "timesave", "Pikmin 2 Layout Ledger · time saved by sublevel", timesave_page(runs, acts),
+    pages = [("index.html", "runs", f"Pikmin 2 Layout Ledger · layout luck in Pikmin 2 {ctext['name']} runs", index, ""),
+             ("layouts.html", "layouts", "Pikmin 2 Layout Ledger · layouts by run", picker(picks, "layouts", category) + layout_spread(runs), ""),
+             ("detection.html", "detection", "Pikmin 2 Layout Ledger · seed detection by run", picker(picks, "detection", category), ""),
+             ("timesave.html", "timesave", "Pikmin 2 Layout Ledger · time saved by sublevel", timesave_page(runs, acts, category),
               f"<script>{TIMESAVE_JS}</script>"),
-             ("how-judge.html", "howjudge", "Pikmin 2 Layout Ledger · how the judge works", judge_page.page(runs, cal0), ""),
+             ("how-judge.html", "howjudge", "Pikmin 2 Layout Ledger · how the judge works", (judge_page.page_at if category == "at" else judge_page.page)(runs, cal0), ""),
              ("accuracy.html", "accuracy", "Pikmin 2 Layout Ledger · does the judge predict real times?", accuracy,
               f"<script>{charts.BRUSH_JS}</script><script>{charts.SCATTER_JS}</script>"),
              ("pokos.html", "pokos", "Pikmin 2 Layout Ledger · pokos by sublevel", pokos_html.replace('<h2 id="pokos">', '<h1 id="pokos">', 1)
               .replace("Pokos by sublevel</h2>", "Pokos by sublevel</h1>", 1), ""),
              ("seeds.html", "seeds", "Pikmin 2 Layout Ledger · seed order check", seeds, "")]
+    if category != "pod":
+        pages = [p for p in pages if p[0] != "pokos.html"]
+        (root / "pokos.html").unlink(missing_ok=True)
     for name, active, title, body, scripts in pages:
         page = head.replace("@TITLE@", html.escape(title)) + body + tail.replace("@SCRIPTS@", scripts)
-        (root / name).write_text(theme.apply(page, prefix="", active=active), encoding="utf-8")
+        (root / name).write_text(theme.apply(page, prefix="", active=active, category=category), encoding="utf-8")
     dest = root / "index.html"
-    (root / "suggest.html").write_text(theme.apply(theme.suggest_page(), prefix="", active="suggest"), encoding="utf-8")
+    if category == "pod":         # one suggestion box, at the site root
+        (root / "suggest.html").write_text(theme.apply(theme.suggest_page(), prefix="", active="suggest"), encoding="utf-8")
     return dest
 
 
-def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> Path:
+def export(root: str | Path = "data/output", out: str | Path = "data/pages",
+           at_root: str | Path | None = "data/output_at") -> Path:
     """Copy the built site (landing page, each run's pages and layout images) into `out`,
-    ready to serve as static files (GitHub Pages). Videos, caches and JSON stay behind."""
+    ready to serve as static files (GitHub Pages). Videos, caches and JSON stay behind.
+    The All Treasures section, built in `at_root`, goes to `out`/at/."""
     import shutil
     root, out = Path(root), Path(out)
     if out.exists():
@@ -1074,7 +1111,25 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> 
                 shutil.copy2(run / name, dest / name)
         if (run / "img").exists():
             shutil.copytree(run / "img", dest / "img")
+    if at_root is not None and (Path(at_root) / "index.html").exists():
+        _copy_section(Path(at_root), out / "at")
     return out
+
+
+def _copy_section(root: Path, out: Path) -> None:
+    import shutil
+    out.mkdir(parents=True)
+    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "how-judge.html", "accuracy.html", "seeds.html"):
+        if (root / name).exists():
+            shutil.copy2(root / name, out / name)
+    for run in sorted(p for p in root.iterdir() if (p / "judge.html").exists()):
+        dest = out / run.name
+        dest.mkdir()
+        for name in ("judge.html", "report.html"):
+            if (run / name).exists():
+                shutil.copy2(run / name, dest / name)
+        if (run / "img").exists():
+            shutil.copytree(run / "img", dest / "img")
 
 
 def publish(out: str | Path = "data/pages", remote: str = "origin", branch: str = "gh-pages") -> None:

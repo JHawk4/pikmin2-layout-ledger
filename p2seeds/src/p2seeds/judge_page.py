@@ -102,3 +102,51 @@ different layout of the same sublevel, does the time move as the judge says?</p>
 </ul>
 </details>
 '''
+
+
+def page_at(runs: list[dict], cal: dict) -> str:
+    """The All Treasures judge (judge2's at2; judge2/LOG_AT.md)."""
+    fit = (f"Across {cal['n']:,} sublevel plays on this site, one second the judge predicts is worth "
+           f"{cal['slope']:.2f} real seconds (1 would be perfect), and its estimates correlate "
+           f"{cal['corr']:.2f} with the real times.") if cal.get("slope") else ""
+    return f'''
+<h1>How the judge works</h1>
+<p class="intro">The judge looks at a sublevel's layout (where the ship, the treasures, the enemies and the hole are)
+and estimates how many seconds a good runner needs to collect every treasure on it and leave. It never watches the
+run: it only sees the layout, so it can say how kind the layout was, apart from how well it was played.</p>
+
+<ul class="legend-list">
+<li><b>Estimate</b>: the time to walk the route, plus the time Pikmin spend carrying each treasure back to the ship,
+plus extra time for enemies near a carry path and for gates in the way, plus a fixed cost per treasure.</li>
+<li><b>Missing treasures and purple flowers</b>: a quirk of the spawning sometimes leaves a treasure out of the layout,
+or fewer purple flowers than usual where runners pick purples. Both cost the runner a lot of time; the judge adds
+300 s when a treasure is missing and 60 s per missing purple flower, as CaveGen's All Treasures judge does.</li>
+<li><b>Layout luck</b>: the same estimate for 1000 random layouts of the sublevel. This layout against the median one
+is its luck (negative = faster), and the share of random layouts it beats is its percentile.</li>
+<li><b>Runner</b>: the real time from the video minus what the judge says the layout was worth. What is left is the
+runner's own doing.</li>
+</ul>
+<p>{fit} See <a href="accuracy.html">Judge accuracy</a> for the checks.</p>
+
+<details><summary>How it was made and checked</summary>
+<p>It is CaveGen's All Treasures judge, rebuilt in CaveGen3, with the Japanese release's treasure weights for Japanese
+runs. Its parts are weighted as the Pay Off Debt judge's, which were fitted on that category's real times: walking
+×1.22, carrying ×0.78, hazards ×0.60, gates ×0.58. On the All Treasures runs here those weights come out right (a
+predicted second is worth about one real second), while CaveGen's own weights overstate layout differences by about a
+fifth. A fit on these runs alone could not do better: with a handful of runs, every reasonable set of weights
+explains about as much.</p>
+<p>The missing-treasure and missing-purple costs could not be checked yet: none of these runs met a missing treasure,
+and only two met missing purple flowers, both on the same sublevel. Missing purple flowers are common on a few
+sublevels (about a third of random BK 4 and FC 4 layouts, two thirds of SR 5), so more runs will tell.</p>
+<p>The comparison works within each sublevel and each runner, so it asks only: when the same runner meets a
+different layout of the same sublevel, does the time move as the judge says?</p>
+</details>
+
+<details><summary>What it can't see</summary>
+<ul>
+<li>Execution: deaths, misplays, lucky enemy behaviour, how well a runner manages Pikmin.</li>
+<li>Route habits and tricks the base judge doesn't model.</li>
+<li>It is an estimate. Single sublevels can be off by several seconds; totals over a run are much steadier.</li>
+</ul>
+</details>
+'''

@@ -6,7 +6,11 @@ Built with
 Each run's judge.json entries gain judge2_score, judge2_median (over 1000 evenly spaced
 reference seeds of the sublevel, cached in data/build/judge2_ref.json), judge2_vs_median,
 judge2_lo / judge2_hi (5th / 95th percentile minus the median) and judge2_skip (treasures
-judge2 expects the runner to skip). Pay Off Debt only.
+judge2 expects the runner to skip).
+
+All Treasures runs (judge.json "kind": "at") get the same fields from at2, judge2's All
+Treasures judge, with the Japanese treasure weights when the run's cave names are Japanese,
+plus judge2_missing ({"treasures": n, "purples": n} missing from the layout) when any are.
 """
 
 from __future__ import annotations
@@ -41,24 +45,41 @@ def _ask(req: dict) -> dict:
     return reply
 
 
-def reference(sub: str) -> np.ndarray:
+def _request(kind: str, region: str) -> tuple[dict, str]:
+    """Extra request fields and the answer's score key for a judge kind ("pod" or "at")."""
+    if kind == "at":
+        return {"judge": "at", "region": region}, "at2"
+    return {}, "pod2"
+
+
+def reference(sub: str, kind: str = "pod", region: str = "us") -> np.ndarray:
     """judge2 scores of 1000 evenly spaced seeds of `sub` (e.g. "SH-6"), cached."""
     global _ref
     if _ref is None:
         _ref = json.loads(REF_CACHE.read_text(encoding="utf-8")) if REF_CACHE.exists() else {}
-    if sub not in _ref:
-        _ref[sub] = _ask({"sub": sub, "reference": 1000})["pod2"]
+    extra, key = _request(kind, region)
+    name = sub if kind == "pod" else f"{kind}:{region}:{sub}"
+    if name not in _ref:
+        _ref[name] = _ask({"sub": sub, "reference": 1000, **extra})[key]
         REF_CACHE.parent.mkdir(parents=True, exist_ok=True)
         REF_CACHE.write_text(json.dumps(_ref), encoding="utf-8")
-    return np.asarray(_ref[sub], dtype=float)
+    return np.asarray(_ref[name], dtype=float)
+
+
+def kinds() -> tuple[str, ...]:
+    """The run kinds judge2 has a judge for."""
+    return ("pod", "at")
 
 
 def add_to_run(out_dir: Path, force: bool = False) -> bool:
-    """Add judge2 fields to a Pay Off Debt run's judge.json. Returns True if it changed."""
+    """Add judge2 fields to a run's judge.json. Returns True if it changed."""
     path = Path(out_dir) / "judge.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    if data.get("kind", "pod") != "pod" or not available():
+    kind = data.get("kind", "pod")
+    if kind not in kinds() or not available():
         return False
+    region = "jpn" if any(e.get("lang") == "ja" for e in data["entries"]) else "us"
+    extra, key = _request(kind, region)
     changed = False
     for e in data["entries"]:
         if not e.get("layout_seed") or not e.get("sublevel") or "judge_score" not in e:
@@ -67,13 +88,17 @@ def add_to_run(out_dir: Path, force: bool = False) -> bool:
             continue
         sub = f"{e['cave']}-{e['sublevel']}"
         try:
-            r = _ask({"sub": sub, "seed": e["layout_seed"]})
-            ref = reference(sub)
+            r = _ask({"sub": sub, "seed": e["layout_seed"], **extra})
+            ref = reference(sub, kind, region)
         except ValueError:
             continue
         med = float(np.median(ref))
         choice = max(r["pod2_parts"]["choices"], key=lambda c: c["p"]) if r.get("pod2_parts") else None
-        e.update(judge2_score=r["pod2"], judge2_median=med, judge2_vs_median=r["pod2"] - med,
+        if kind == "at":
+            raw = r["at2_parts"]["raw"]
+            missing = {"treasures": raw["missing_treasures"], "purples": raw["missing_purples"]}
+            e["judge2_missing"] = missing if any(missing.values()) else None
+        e.update(judge2_score=r[key], judge2_median=med, judge2_vs_median=r[key] - med,
                  judge2_lo=float(np.percentile(ref, 5)) - med, judge2_hi=float(np.percentile(ref, 95)) - med,
                  judge2_fixed=float(ref.min()) == float(ref.max()),
                  # name a skip only when judge2 is fairly sure (near-ties are averaged, ~50/50)

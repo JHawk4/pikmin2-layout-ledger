@@ -96,6 +96,28 @@ carry weights or values. That changes judge scores and pokos, not the layout. So
 5. **Speed.** A 3.5 h run takes 8–9 h to read on this machine with other jobs running (2.8 h when it
    had the machine to itself). Fine offline, but a batch of 20 runs is a multi-day job.
 
+### Short names when the previous seed is known
+
+A known previous floor limits the next seed to a window: at most ~140k RNG steps within a cave and
+~360k across a day. A 4-character name gives 3 usable speeds. Within that window a wrong seed fits as
+well as the right one only a few percent of the time, so a 4-character floor *is* readable after a
+known floor. That is how WFG 2–5 (JackDraz) and SC 4 (kobachi) were found. Submerged Castle still
+fails because of the chain, not the letters:
+
+- kobachi: SC 3 measured too few letters. With one floor missing, the gap from GK 6 to SR 1 has
+  several paths that fit, and only SC 4 is the same on all of them.
+- JackDraz: GK 6 is low too, so the gap from GK 5 to SR 1 is 7 floors, past the 6 the gap fill takes on.
+
+Dream Den (3 characters) stays out of reach even after a known floor: 3–6 wrong seeds fit per 100k
+steps, and floors are ~60k apart.
+
+**Can the time between entry screens narrow the window?** No, not enough. Over 1,361 pairs of
+consecutive high-confidence floors (all 28 runs), the RNG advances 740 steps per second of play
+(median), but the rate depends on the sublevel and the run. Fitted per sublevel, distance from time is
+off by ±38% for 90% of floors (`data/jp_at/timedist.py`, `timedist2.py`). For a Dream Den floor of
+~100k steps that leaves a window of ~75k steps, still 2–5 wrong seeds. It would help Submerged Castle
+by a factor of about 1.5–3, too little to be worth the extra code now.
+
 ## Fixes on this branch
 
 | Problem | Fix |

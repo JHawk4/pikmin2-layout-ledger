@@ -1,6 +1,7 @@
 //! judge2: an unmodified copy of CaveGen3's jhawk_judge.rs (a port of JHawk's CaveGen
-//! Judge.java), except that the Pay Off Debt judge also returns its parts (`PodParts`) and
-//! the internals are crate-visible so `pod2` can reuse them.
+//! Judge.java), except that the Pay Off Debt and All Treasures judges also return their parts
+//! (`PodParts`, `AtParts`), the treasure table can be the Japanese one (`set_region_jpn`), and
+//! the internals are crate-visible so `pod2` and `at2` can reuse them.
 //!
 //! A port of the layout "Judge" from JHawk's CaveGen (Judge.java).
 //!
@@ -132,31 +133,45 @@ struct ChallengeStage {
 
 struct JudgeData {
     carry: HashMap<String, CarryInfo>,
+    /// judge2 addition: the Japanese release's treasure weights and values (config_jpn.txt)
+    carry_jpn: HashMap<String, CarryInfo>,
     difficulty: HashMap<String, TekiDifficulty>,
     challenge: HashMap<String, ChallengeStage>,
+}
+
+// name,minCarry,maxCarry,seeds,seedsMin,pokos,depth,height
+fn parse_carry(text: &str) -> HashMap<String, CarryInfo> {
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let f: Vec<&str> = l.trim().split(',').collect();
+            (
+                f[0].to_ascii_lowercase(),
+                CarryInfo {
+                    min_carry: f[1].parse().unwrap(),
+                    max_carry: f[2].parse().unwrap(),
+                    pokos: f[5].parse().unwrap(),
+                    depth: f[6].parse().unwrap(),
+                    height: f[7].parse().unwrap(),
+                },
+            )
+        })
+        .collect()
+}
+
+/// judge2 addition: which release's treasure table `carry_info` reads (set per request).
+static JPN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_region_jpn(jpn: bool) {
+    JPN.store(jpn, std::sync::atomic::Ordering::Relaxed);
 }
 
 fn data() -> &'static JudgeData {
     static DATA: OnceLock<JudgeData> = OnceLock::new();
     DATA.get_or_init(|| {
         // name,minCarry,maxCarry,seeds,seedsMin,pokos,depth,height
-        let carry = include_str!("../data/treasure_teki_config.csv")
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(|l| {
-                let f: Vec<&str> = l.trim().split(',').collect();
-                (
-                    f[0].to_ascii_lowercase(),
-                    CarryInfo {
-                        min_carry: f[1].parse().unwrap(),
-                        max_carry: f[2].parse().unwrap(),
-                        pokos: f[5].parse().unwrap(),
-                        depth: f[6].parse().unwrap(),
-                        height: f[7].parse().unwrap(),
-                    },
-                )
-            })
-            .collect();
+        let carry = parse_carry(include_str!("../data/treasure_teki_config.csv"));
+        let carry_jpn = parse_carry(include_str!("../data/treasure_teki_config_jpn.csv"));
         // id,hexId,commonName,internalName,sec,piki
         let difficulty = include_str!("../data/teki_difficulty_judge.csv")
             .lines()
@@ -194,6 +209,7 @@ fn data() -> &'static JudgeData {
             .collect();
         JudgeData {
             carry,
+            carry_jpn,
             difficulty,
             challenge,
         }
@@ -202,7 +218,9 @@ fn data() -> &'static JudgeData {
 
 // CaveGen crashes when a name is missing from its tables; here it counts as zero.
 pub(crate) fn carry_info(name: &str) -> CarryInfo {
-    data().carry.get(&name.to_ascii_lowercase()).copied().unwrap_or_default()
+    let d = data();
+    let table = if JPN.load(std::sync::atomic::Ordering::Relaxed) { &d.carry_jpn } else { &d.carry };
+    table.get(&name.to_ascii_lowercase()).copied().unwrap_or_default()
 }
 pub(crate) fn pokos(name: &str) -> i32 {
     carry_info(name).pokos
@@ -875,7 +893,7 @@ impl JhawkJudge {
         match self.judge_type {
             JudgeType::Score => self.judge_score(&mut ctx),
             JudgeType::Pod => self.judge_pod(&mut ctx).total(),
-            JudgeType::At => self.judge_at(&mut ctx),
+            JudgeType::At => self.judge_at(&mut ctx).total(),
             JudgeType::Attk => self.judge_attk(&mut ctx),
             JudgeType::Cmat => self.judge_cmat(&mut ctx),
             JudgeType::Key => self.judge_key(&mut ctx),
@@ -917,6 +935,14 @@ impl JhawkJudge {
         let graph = Graph::build(layout, start_pos);
         let mut ctx = Ctx { j: self, p: placed, g: graph };
         self.judge_pod(&mut ctx)
+    }
+
+    pub fn judge_at_parts(&self, layout: &Layout) -> AtParts {
+        let placed = Placed::from_layout(layout);
+        let start_pos = placed.sps[placed.start].pos;
+        let graph = Graph::build(layout, start_pos);
+        let mut ctx = Ctx { j: self, p: placed, g: graph };
+        self.judge_at(&mut ctx)
     }
 
     pub(crate) fn judge_pod(&self, c: &mut Ctx) -> PodParts {
@@ -1156,7 +1182,7 @@ impl JhawkJudge {
         if time_save > 0.0 { time_save } else { 0.0 }
     }
 
-    fn judge_at(&self, c: &mut Ctx) -> f64 {
+    fn judge_at(&self, c: &mut Ctx) -> AtParts {
         let n = names();
         let treasure_count = (c.p.items.len() + c.p.tekis.iter().filter(|t| t.item_inside.is_some()).count()) as i32;
         let num_purple_candypop = c.p.tekis.iter().filter(|t| t.name.eq_ignore_ascii_case("blackpom")).count() as i32;
@@ -1176,11 +1202,14 @@ impl JhawkJudge {
         }
 
         // purple candypops
+        let mut purple_walk = 0.0f32;
         if !n.purple20.contains(self.sublevel_id.as_str()) && self.expected_num_purple_candypop > 0 {
             for t in 0..c.p.tekis.len() {
                 if c.p.tekis[t].name.eq_ignore_ascii_case("blackpom") {
                     let sp = c.p.tekis[t].sp;
-                    walking_seconds += c.dist_to_start(sp) / self.olimar_speed_cm / (2 + self.expected_num_treasures) as f32;
+                    let w = c.dist_to_start(sp) / self.olimar_speed_cm / (2 + self.expected_num_treasures) as f32;
+                    walking_seconds += w;
+                    purple_walk += w;
                 }
             }
         }
@@ -1212,8 +1241,22 @@ impl JhawkJudge {
         };
         let treasure_penalty = if treasure_count < self.expected_num_treasures { 300.0 } else { 0.0 };
 
-        (walking_seconds + carry_seconds + hazard_seconds + gate_seconds + treasure_penalty + purple_penalty + 10.0 * treasure_count as f32)
-            as f64
+        AtParts {
+            walking_seconds,
+            purple_walk_seconds: purple_walk,
+            carry_seconds,
+            hazard_seconds,
+            gate_seconds,
+            treasure_penalty,
+            purple_penalty,
+            treasures: treasure_count,
+            missing_treasures: (self.expected_num_treasures - treasure_count).max(0),
+            missing_purples: if n.purple20.contains(self.sublevel_id.as_str()) {
+                0
+            } else {
+                (self.expected_num_purple_candypop - num_purple_candypop).max(0)
+            },
+        }
     }
 
     /// Carry seconds for every treasure (used by at and colossal). `slowdown`
@@ -1492,6 +1535,33 @@ impl JhawkJudge {
         };
 
         (trip_key_gates + key_walk + key_carry + carry_seconds + hazard_seconds + gate_seconds + treasure_penalty) as f64
+    }
+}
+
+/// The parts of the All Treasures score, in seconds (f32 like CaveGen).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AtParts {
+    /// includes `purple_walk_seconds`, as in CaveGen
+    pub walking_seconds: f32,
+    /// the part of walking that goes to the purple candypops
+    pub purple_walk_seconds: f32,
+    pub carry_seconds: f32,
+    pub hazard_seconds: f32,
+    pub gate_seconds: f32,
+    /// 300 s when any treasure is missing from the layout
+    pub treasure_penalty: f32,
+    /// 60 s per missing purple candypop (not on sublevels with 20 purples)
+    pub purple_penalty: f32,
+    pub treasures: i32,
+    pub missing_treasures: i32,
+    pub missing_purples: i32,
+}
+
+impl AtParts {
+    /// CaveGen's at score
+    pub fn total(&self) -> f64 {
+        (self.walking_seconds + self.carry_seconds + self.hazard_seconds + self.gate_seconds
+            + self.treasure_penalty + self.purple_penalty + 10.0 * self.treasures as f32) as f64
     }
 }
 

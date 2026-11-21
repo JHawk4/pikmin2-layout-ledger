@@ -7,8 +7,14 @@
 //!   {"sub": "SH-6", "reference": 1000}
 //!     -> {"old": [...], "pod2": [...]} for evenly spaced seeds (like p2seeds' cg3 bridge)
 //!
+//!
+//! All Treasures: add "judge": "at" (and "region": "jpn" for the Japanese release's treasure
+//! weights). The answers then carry "at2" and "at2_parts" instead of "pod2"; "old" is CaveGen's
+//! at score, and a reference answer is {"old": [...], "at2": [...]}.
+//!
 //! Or with arguments: judge2 SH-6 0x1234ABCD [more seeds...]   (prints old and pod2 scores)
 
+mod at2;
 mod features;
 mod graph;
 mod old_judge;
@@ -28,6 +34,30 @@ fn answer(data: &GameData, req: &Value) -> Result<Value, String> {
     let sub = req["sub"].as_str().ok_or("missing \"sub\"")?;
     let sublevel = data.sublevel(sub).map_err(|e| e.to_string())?;
     let ci = data.caveinfo(&sublevel).map_err(|e| e.to_string())?;
+    // before the judge is built: it reads treasure weights when it is constructed
+    old_judge::set_region_jpn(req["region"].as_str() == Some("jpn"));
+    if req["judge"].as_str() == Some("at") {
+        let judge = JhawkJudge::new(JudgeType::At, ci);
+        if let Some(n) = req["reference"].as_u64() {
+            let step = (u32::MAX as u64 / n.max(1)) as u32;
+            let (mut old, mut new) = (Vec::new(), Vec::new());
+            for i in 0..n as u32 {
+                let layout = Layout::generate(i.wrapping_mul(step), ci);
+                let p = judge.judge_at_parts(&layout);
+                old.push(p.total());
+                new.push(at2::MODEL.score(&p));
+            }
+            return Ok(json!({ "old": old, "at2": new }));
+        }
+        let seed = parse_seed(req["seed"].as_str().ok_or("missing \"seed\"")?)?;
+        let layout = Layout::generate(seed, ci);
+        let (score, parts) = at2::judge(&judge, &layout);
+        let mut out = json!({ "old": parts["old"], "at2": score, "at2_parts": parts });
+        if req["dump"].as_bool().unwrap_or(false) {
+            out["layout"] = pod2::dump(&judge, &layout);
+        }
+        return Ok(out);
+    }
     let judge = JhawkJudge::new(JudgeType::Pod, ci);
 
     if let Some(n) = req["reference"].as_u64() {

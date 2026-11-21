@@ -5,6 +5,7 @@
   p2seeds judge OUT_DIR [--kind pod]                   judge a processed run's layouts with CaveGen
   p2seeds render OUT_DIR                               render layouts missing from img/ (after --no-render)
   p2seeds site [--root data/output]                    landing page + one page per judged run
+                                                       (one category per root: data/output_at for All Treasures)
   p2seeds batch [--manifest ...] [--jobs 4]            run + judge + treasures for every new run, then site
   p2seeds treasures OUT_DIR                            count treasure panels per sublevel (for calibration)
   p2seeds redo OUT_DIR                                 re-run a run's non-high sublevels with the current detector
@@ -152,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     rd.add_argument("--redraw", action="store_true", help="draw every layout again, not only missing ones")
     pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
     pb.add_argument("--root", default="data/output")
+    pb.add_argument("--at-root", default="data/output_at", help="the All Treasures section's runs (built with site --root), published under at/")
     pb.add_argument("--out", default="data/pages")
     pb.add_argument("--no-push", action="store_true", help="only copy the files")
     dg = sub.add_parser("debug", help="debug image of the letter tracking and fall fit for one entry screen")
@@ -180,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "publish":
         from . import site
-        out = site.export(args.root, args.out)
+        out = site.export(args.root, args.out, args.at_root)
         log(f"exported: {out}")
         if not args.no_push:
             site.publish(out)

@@ -231,7 +231,9 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
              '<span class="chip medium">medium</span> <span class="chip low">low</span> uncertain: left out of every total (a medium seed in order with its neighbours is counted)</p>')
     page = PAGE.format(title=title, summary=e(summary), help=SCORE_HELP, cards=strip + filt + "".join(cards))
     from . import theme
-    page = theme.apply(page, prefix="../", run=out_dir.name, active="detection")
+    jp = out_dir / "judge.json"
+    kind = json.loads(jp.read_text(encoding="utf-8")).get("kind", "pod") if jp.exists() else "pod"
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="detection", category=theme.category_of(kind))
     path = out_dir / "report.html"
     path.write_text(page, encoding="utf-8")
     return path

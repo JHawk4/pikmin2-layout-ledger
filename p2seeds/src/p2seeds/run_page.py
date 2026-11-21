@@ -1,4 +1,4 @@
-"""A Pay Off Debt run's "Layouts" page (<run>/judge.html), top to bottom:
+"""A Pay Off Debt or All Treasures run's "Layouts" page (<run>/judge.html), top to bottom:
 
   1. headline numbers: layout luck against median layouts, its percentile among random runs,
      and the runner's own time saved
@@ -36,12 +36,12 @@ def _rows(out_dir: Path, actual: dict) -> tuple[dict, list[dict]]:
     tre = treasures.load(out_dir)
     imgs = {p.name for p in (out_dir / "img").glob("layout_*.png")}
     rows = []
-    for r in judge_report.mark_neighbors(data["entries"]):
+    for r in judge_report.mark_revisits(judge_report.mark_neighbors(data["entries"])):
         if not r.get("cave") or not r.get("sublevel"):
             continue
         img = f"layout_{r['frame']}_{r['cave']}-{r['sublevel']}.png"
         ok = trusted(r)
-        judged = ok and luck.judged(r)
+        judged = ok and luck.judged(r) and not r.get("revisit")      # purple-farm visits are not totalled
         act = actual.get(str(r["frame"]))
         t = tre.get(str(r["frame"]))
         k2 = luck.key(r) == "judge2"
@@ -60,10 +60,33 @@ def _rows(out_dir: Path, actual: dict) -> tuple[dict, list[dict]]:
             "took": act["took"] if act else None, "median_took": act["median_took"] if act else None,
             "pokos": act["pokos"] if act else (t or {}).get("pokos"),
             "median_pokos": act["median_pokos"] if act else None,
-            "pokos_text": _pokos(t), "link": r.get("link"), "time": r.get("time", ""), "cg3": cg3_url(r),
+            "pokos_text": _missing(r) if kind == "at" else _pokos(t), "link": r.get("link"), "time": r.get("time", ""), "cg3": cg3_url(r),
         })
     return {"run": run, "kind": kind, "runner": ", ".join(p["name"] for p in run.get("players", [])) or out_dir.name,
             "time": run.get("time_seconds")}, rows
+
+
+def _missing(r: dict) -> str:
+    """All Treasures: what the layout lacks (a spawning quirk that costs the runner time)."""
+    m = r.get("judge2_missing") or {}
+    bits = []
+    if m.get("treasures"):
+        bits.append(f"{m['treasures']} treasure{'s' if m['treasures'] != 1 else ''}")
+    if m.get("purples"):
+        bits.append(f"{m['purples']} purple flower{'s' if m['purples'] != 1 else ''}")
+    note = f"Missing from this layout: {' and '.join(bits)}." if bits else ""
+    if r.get("revisit"):
+        note = (note + " " if note else "") + "A purple-farm visit (the cave is entered again later): not counted."
+    return note
+
+
+AT_TEXT = [   # (Pay Off Debt wording, All Treasures wording) in the finished page
+    (", pokos counted (2 = 1 s)", ""),
+    (", pokos counted", ""),
+    ("Pay Off Debt judge, refit on these runs' real times", "All Treasures judge, with its walking, carrying, enemy and gate "
+     "times weighted as the Pay Off Debt judge refit on real times, which matches All Treasures runs too"),
+    (", counting\n2 pokos as 1 second,", ","),
+]
 
 
 def _fmt_time(t) -> str:
@@ -335,7 +358,7 @@ def _scatter(rows: list[dict]) -> str:
 
 # --- 5. compact table ----------------------------------------------------------------------
 
-def _table(rows: list[dict]) -> str:
+def _table(rows: list[dict], kind: str = "pod") -> str:
     trs, cave = [], None
     for n, r in enumerate(rows):
         if r["cave"] != cave:
@@ -346,7 +369,12 @@ def _table(rows: list[dict]) -> str:
         else:
             judge = f'<span class="muted">{"fixed floor" if r["fixed"] else "uncertain seed" if not r["trusted"] else ""}</span>'
         pk = ""
-        if r["pokos"] is not None:
+        if kind == "at":          # no pokos: the column says what the layout lacks
+            m = r["entry"].get("judge2_missing") or {}
+            pk = html.escape(", ".join(x for x in (f'{m["treasures"]} treasure missing' if m.get("treasures") else "",
+                                                   f'{m["purples"]} purple missing' if m.get("purples") else "",
+                                                   "farm visit" if r["entry"].get("revisit") else "") if x))
+        elif r["pokos"] is not None:
             pk = f'{r["pokos"]}' + (f' <span class="muted">({r["pokos"] - r["median_pokos"]:+g})</span>'
                                     if r["median_pokos"] is not None else "")
         tip = r["pokos_text"] + (f"\nThe judge expects a skip: {', '.join(r['skip'])}" if r["skip"] else "")
@@ -358,13 +386,14 @@ def _table(rows: list[dict]) -> str:
             f'<td class="num" data-v="{_v(r["delta"])}">{judge}</td>'
             f'<td class="num" data-v="{_v(r["pct"])}">{_v(r["pct"], "{:.0f}%")}</td>'
             f'<td class="num {_tone(r["net"])}" data-v="{_v(r["net"])}">{_num(r["net"]) if r["net"] is not None else ""}</td>'
-            f'<td class="num" data-v="{_v(r["pokos"], "{}")}"{tipattr}>{pk}</td>'
+            f'<td class="num" data-v="{_v(r["pokos"], "{}") if kind != "at" else html.escape(pk)}"{tipattr}>{pk}</td>'
             f'<td>{vid}</td></tr>')
     return (f'<div class="tablewrap"><table id="subs"><thead><tr><th data-sort>Sublevel</th>'
             f'<th class="num" data-sort title="The judge\'s estimated clear time (vs the median layout)">Judge</th>'
             f'<th class="num" data-sort title="Share of 1000 random layouts this one beats">Beats</th>'
             f'<th class="num" data-sort title="Seconds vs the median run beyond what the layout gave, pokos counted (2 = 1 s)">Runner</th>'
-            f'<th class="num" data-sort>Pokos <span class="muted">(vs median)</span></th><th>Video</th></tr></thead>'
+            + (f'<th class="num" data-sort>Layout lacks</th>' if kind == "at" else
+               f'<th class="num" data-sort>Pokos <span class="muted">(vs median)</span></th>') + '<th>Video</th></tr></thead>'
             f'<tbody>{"".join(trs)}</tbody></table></div>')
 
 
@@ -437,7 +466,7 @@ def write(out_dir: Path, actual: dict | None = None) -> Path | None:
     title = f"{info['runner']} {_fmt_time(info['time'])}".strip()
     n_low = sum(1 for r in rows if not r["trusted"])
     body = f'''<h1>{html.escape(title)} · layouts</h1>
-<p class="muted">Pay Off Debt{f", {html.escape(run.get('date', ''))}" if run.get('date') else ""}
+<p class="muted">{"All Treasures" if info["kind"] == "at" else "Pay Off Debt"}{f", {html.escape(run.get('date', ''))}" if run.get('date') else ""}
 {f' · <a href="{html.escape(run["weblink"])}" target="_blank" rel="noopener">speedrun.com</a>' if run.get("weblink") else ""}
 · <a href="report.html">how the seeds were read</a></p>
 {_heads(info, rows)}
@@ -463,7 +492,7 @@ how much faster or slower the runner actually was than the median run. On the or
 difference; dots below it beat what the layout predicts, dots above it lost time beyond the layout.</p>
 
 <h2>Table</h2>
-{_table(rows)}
+{_table(rows, info["kind"])}
 <p class="muted small">Judge: estimated clear time, with the difference from the median random layout. Beats: share of
 random layouts this one beats. Click a heading to sort, a sublevel to see its card.</p>
 
@@ -478,7 +507,10 @@ random layouts this one beats. Click a heading to sort, a sublevel to see its ca
 <dialog id="zoom"><img alt=""></dialog>
 <script>{ZOOM_JS}</script><script>{SORT_JS}</script><script>{charts.TOOLTIP_JS}</script>
 </body></html>'''
-    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge")
+    if info["kind"] == "at":
+        for pod_text, at_text in AT_TEXT:
+            page = page.replace(pod_text, at_text)
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge", category=theme.category_of(info["kind"]))
     dest = out_dir / "judge.html"
     dest.write_text(page, encoding="utf-8")
     return dest
