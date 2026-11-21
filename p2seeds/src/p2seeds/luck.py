@@ -1,7 +1,7 @@
 """Layout luck: how a run's layouts compare with random layouts of the same sublevels.
 
-judge2 (the refit Pay Off Debt judge) is the site's judge; CaveGen's judge is only a fallback
-for runs judge2 can't score (other categories). Every number is in seconds against the median
+judge2 (CaveGen's judge refit on real times: pod2 for Pay Off Debt, at2 for All Treasures) is
+the site's judge; CaveGen's judge is only a fallback for runs judge2 can't score. Every number is in seconds against the median
 random layout of the sublevel, negative = faster, as on splits.
 """
 
@@ -34,7 +34,7 @@ def delta(r: dict) -> float:
 def reference(r: dict, kind: str = "pod") -> np.ndarray | None:
     """The sublevel's 1000 random layouts, as seconds against their median."""
     if key(r) == "judge2":
-        ref = judge2.reference(f"{r['cave']}-{r['sublevel']}")
+        ref = judge2.reference(f"{r['cave']}-{r['sublevel']}", kind, "jpn" if r.get("lang") == "ja" else "us")
         return ref - r["judge2_median"]
     ref = cavegen.reference_scores(r["cave"], r["sublevel"], kind)
     return None if ref is None else np.asarray(ref, dtype=float) - r["judge_median"]

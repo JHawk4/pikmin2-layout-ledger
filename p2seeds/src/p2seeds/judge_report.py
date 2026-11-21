@@ -109,6 +109,27 @@ def mark_neighbors(entries: list[dict]) -> list[dict]:
     return entries
 
 
+def mark_revisits(entries: list[dict]) -> list[dict]:
+    """Set `revisit` on every visit to a cave but the last (All Treasures runners farm purple
+    Pikmin in Bulblax Kingdom: down a few floors, out, and in again). A visit ends where the cave
+    changes or the sublevel stops going up. Those floors are shown but not timed or totalled.
+    Returns `entries`."""
+    visits: list[list[dict]] = []
+    for e in entries:
+        v = visits[-1] if visits else None
+        if v and e.get("cave") and v[-1].get("cave") == e["cave"] and (e.get("sublevel") or 0) > (v[-1].get("sublevel") or 0):
+            v.append(e)
+        else:
+            visits.append([e])
+    last = {v[0].get("cave"): k for k, v in enumerate(visits)}
+    for k, v in enumerate(visits):
+        for e in v:
+            e.pop("revisit", None)
+            if v[0].get("cave") and last[v[0]["cave"]] != k:
+                e["revisit"] = True
+    return entries
+
+
 def trusted(r: dict) -> bool:
     """High-confidence seeds, and medium ones in order with their high neighbours (see
     mark_neighbors), feed totals, charts and the calibration; the rest are shown on request,
@@ -391,6 +412,6 @@ dlg.addEventListener('click', () => dlg.close());
 </body></html>'''
     dest = out_dir / "judge.html"
     from . import theme
-    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge")
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge", category=theme.category_of(kind))
     dest.write_text(page, encoding="utf-8")
     return dest

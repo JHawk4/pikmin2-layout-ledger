@@ -21,6 +21,11 @@ RESCUE_SCORE = 0.33        # second pass on blurry captures: a Pay Off Debt cave
 RESCUE_MARGIN = 0.06       # missing sublevels of may match this weakly (stray screens that score
                            # this well match Dream Den or Sublevel Cave, not run caves)
 MIN_CAVE_SCORE_JA = 0.48   # short Japanese names match random text up to ~0.40; true ones score ~0.6
+# Japanese names share endings (百戦錬磨の穴 / けだものの穴 / 夢の穴), so a clear match can still
+# have a close runner-up: keisen's Hole of Heroes scored 0.72 against 0.60. A match this strong
+# needs a smaller margin.
+STRONG_CAVE_SCORE_JA = 0.65
+STRONG_CAVE_MARGIN_JA = 0.08
 FALL_LEAD = 110            # frames before a settled run starts that may contain the fall
 FALL_TAIL = 40             # and after (late bounces)
 LOW_MATCH = 0.4            # fallback template-match threshold for falling letters
@@ -208,6 +213,8 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
         margin = cal.score - (cal.runner_up[1] if cal.runner_up else 0.0) if cal else 0.0
         min_score = MIN_CAVE_SCORE_JA if cal is not None and cal.cave.lang == "ja" else MIN_CAVE_SCORE
         min_margin = MIN_CAVE_MARGIN
+        if cal is not None and cal.cave.lang == "ja" and cal.score >= STRONG_CAVE_SCORE_JA:
+            min_margin = STRONG_CAVE_MARGIN_JA
         if only is not None:
             min_score, min_margin = RESCUE_SCORE, RESCUE_MARGIN
             if cal is not None and cal.cave.cavegen != only:

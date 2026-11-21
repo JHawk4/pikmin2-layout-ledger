@@ -164,3 +164,68 @@ def test_index_matches_stepping():
         assert rng.distance(s, t, limit=1 << 21) == rng.distance_brute(s, t, limit=1 << 21)
     s = rnd.getrandbits(32)
     assert rng.distance(s, rng.next_seed(s, 1000), limit=999) is None
+
+
+class _Entry:
+    """A linking input: either a known seed, or a measured short name with no seed yet."""
+
+    def __init__(self, seed, n, keep=None, s=0, known=False):
+        self.num_chars, self.cave, self.sublevel = n, "SC", 1
+        v, sig = _measured(seed, n, keep if keep is not None else list(range(n)), seed=s)
+
+        class F:
+            pass
+        self.fit = F()
+        self.fit.v, self.fit.sigma, self.fit.rms_px = v, sig * 1.1, 0.07
+        self.candidates = []
+        if known:
+            self.letter_seed = seed & rng.MASK31
+            self.layout_seed = letters_model.layout_seed(self.letter_seed, n)
+            self.confidence, self.note = "high", ""
+        else:
+            self.letter_seed = self.layout_seed = None
+            self.confidence, self.note = "low", ""
+
+
+def test_bridge_fills_a_gap_of_weak_links():
+    """Submerged Castle style: 4-letter names whose single links are a few percent likely to be
+    chance (above WEAK_LINK), between two known seeds. Together the path is convincing."""
+    a = 0x01234567
+    seeds = [a]
+    for d in (330_000, 140_000, 150_000, 120_000):
+        seeds.append(rng.next_seed(letters_model.layout_seed(seeds[-1], 4), d))
+    seeds.append(rng.next_seed(letters_model.layout_seed(seeds[-1], 4), 300_000))
+    results = [_Entry(seeds[0], 7, known=True)] + \
+              [_Entry(s, 4, s=i) for i, s in enumerate(seeds[1:-1])] + [_Entry(seeds[-1], 7, known=True)]
+    results[1].num_chars = 4
+    results[0].layout_seed = letters_model.layout_seed(results[0].letter_seed, 4)
+    chain.link(results)
+    got = [r.letter_seed for r in results[1:-1]]
+    assert got == [s & rng.MASK31 for s in seeds[1:-1]]
+    assert all("following the gap" in r.note for r in results[1:-1])
+
+
+def test_link_chance_rejects_matches_right_after_the_previous_floor():
+    v, sig = _measured(0x1111, 6, keep=[1, 2, 3, 4])
+    c = search.Candidate(0x1111, 1.0, 0.0, np.where(np.isfinite(sig), 0.0, np.nan), distance=41)
+    assert chain.link_chance(c, sig) == float("inf")
+
+
+def test_a_wrong_read_between_two_agreeing_seeds_does_not_hide_them():
+    """CurtisDN's Subterranean Complex at 360p: floors 1 and 3 read right, floor 2 read a wrong
+    seed with medium confidence. Floors 1 and 3 must still back each other up, and floor 2's
+    stray read must be dropped rather than kept as medium."""
+
+    class R:
+        def __init__(self, seed, conf):
+            self.num_chars, self.cave, self.sublevel, self.fit = 7, "SCx", 1, None
+            self.letter_seed = seed & rng.MASK31
+            self.layout_seed = letters_model.layout_seed(seed, 7)
+            self.confidence, self.note, self.candidates = conf, "", []
+
+    a = R(0x446210F6, "medium")
+    stray = R(0x3BF1D30C, "medium")
+    c = R(rng.next_seed(a.layout_seed, 200_376), "medium")
+    chain.link([a, stray, c])
+    assert a.confidence == c.confidence == "high"
+    assert stray.confidence == "low"

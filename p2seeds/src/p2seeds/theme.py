@@ -46,6 +46,11 @@ a { color:var(--accent); } a:hover { color:var(--leaf-dark); }
 .site-nav a { text-decoration:none; color:#fff; padding:3px 12px; border-radius:999px; }
 .site-nav a:hover { color:#fff; background:rgba(0,0,0,.15); }
 .site-nav a[aria-current="page"] { background:#fff; color:var(--leaf-2); }
+.site-cats { display:flex; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  border:2px solid var(--accent); background:var(--card); }
+.site-cats a { text-decoration:none; color:var(--accent); padding:1px 12px; border-radius:999px; }
+.site-cats a:hover { background:var(--goodbg); }
+.site-cats a[aria-current="page"] { background:var(--leaf-2); color:#fff; }
 .site-footer { max-width:1240px; margin:28px auto 0; color:var(--muted); font-size:.85rem; }
 h1, h2 { color:var(--leaf-dark); }
 h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-block; }
@@ -55,20 +60,36 @@ h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-bloc
 SUGGEST_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSepPb6F7_Y6DlLoHn-nqpy2KG3BqaMLfDLAdArL9B5iyEt_LA/formResponse"
 
 
-def header(prefix: str = "", run: str | None = None, active: str = "runs") -> str:
-    """Site header. `prefix` leads from the page to the site root ("" or "../"); on a run's
-    pages `run` names it and its two pages appear in the navigation."""
+CATEGORIES = (("pod", "Pay Off Debt", ""), ("at", "All Treasures", "at/"))
+
+
+def category_of(kind: str | None) -> str:
+    """The site section a run of this judge kind belongs to."""
+    return "at" if kind == "at" else "pod"
+
+
+def header(prefix: str = "", run: str | None = None, active: str = "runs", category: str = "pod") -> str:
+    """Site header. `prefix` leads from the page to its section's root ("" or "../"); on a run's
+    pages `run` names it and its two pages appear in the navigation. Each category has its own
+    section (Pay Off Debt at the site root, All Treasures under at/), with a switch between them."""
+    root = prefix + next(("../" * sub.count("/") for key, _, sub in CATEGORIES if key == category), "")
     links = [("runs", f"{prefix}index.html", "All runs")]
     if run:
         links += [("judge", "judge.html", "Layouts"), ("detection", "report.html", "Seed detection")]
     else:
         links += [("layouts", "layouts.html", "Layouts"), ("detection", "detection.html", "Detection"),
-                  ("timesave", "timesave.html", "Time saved"), ("pokos", "pokos.html", "Pokos"),
-                  ("howjudge", "how-judge.html", "The judge"), ("accuracy", "accuracy.html", "Judge accuracy"), ("seeds", "seeds.html", "Seed check")]
-    links.append(("suggest", f"{prefix}suggest.html", "Suggestion box"))
+                  ("timesave", "timesave.html", "Time saved")]
+        if category == "pod":
+            links.append(("pokos", "pokos.html", "Pokos"))
+        links += [("howjudge", "how-judge.html", "The judge"), ("accuracy", "accuracy.html", "Judge accuracy"),
+                  ("seeds", "seeds.html", "Seed check")]
+    links.append(("suggest", f"{root}suggest.html", "Suggestion box"))
     nav = "".join(f'<a href="{href}"{" aria-current=page" if key == active else ""}'
                   f'{" class=nav-suggest" if key == "suggest" else ""}>{label}</a>' for key, href, label in links)
-    return (f'<header class="site-header"><a class="site-logo" href="{prefix}index.html">{LOGO}{SITE}</a>'
+    cats = "".join(f'<a href="{root}{sub}index.html"{" aria-current=page" if key == category else ""}>{label}</a>'
+                   for key, label, sub in CATEGORIES)
+    return (f'<header class="site-header"><a class="site-logo" href="{root}index.html">{LOGO}{SITE}</a>'
+            f'<nav class="site-cats" aria-label="Category">{cats}</nav>'
             f'<nav class="site-nav">{nav}</nav></header>')
 
 
@@ -85,11 +106,18 @@ for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('
 </script>"""
 
 
-def apply(page: str, prefix: str = "", run: str | None = None, active: str = "runs") -> str:
+def apply(page: str, prefix: str = "", run: str | None = None, active: str = "runs", category: str = "pod") -> str:
     """The page with the theme's CSS (last, so it wins), header and footer added."""
     page = page.replace("</style>", CSS + "</style>", 1)
-    page = re.sub(r"<body([^>]*)>", lambda m: f"<body{m.group(1)}>" + header(prefix, run, active), page, count=1)
+    page = re.sub(r"<body([^>]*)>", lambda m: f"<body{m.group(1)}>" + header(prefix, run, active, category), page, count=1)
     return page.replace("</body>", FOOTER + NAV_JS + "</body>", 1)
+
+
+def reheader(page: str, prefix: str = "", run: str | None = None, active: str = "runs", category: str = "pod") -> str:
+    """A themed page with its header written again (pages built before the category switch, or
+    by a slow step such as the detection page, which isn't rebuilt with the site)."""
+    return re.sub(r'<header class="site-header">.*?</header>', lambda m: header(prefix, run, active, category),
+                  page, count=1, flags=re.S)
 
 
 def suggest_page() -> str:
