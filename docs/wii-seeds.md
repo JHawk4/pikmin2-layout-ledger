@@ -98,6 +98,7 @@ window of 3M states before it), and its answer is compared with the blended roll
 | 7626–7674 | CH26 (4 red) | 7335, clean | wrong | 1.8% | inconclusive (too few Pikmin, as on the reference run) |
 | **14760–14838** | **CH27 (50 red)** | **14487, blended** | **`8A5E004B` = roll end + 5** | **37.0%**, beats its ±4/±8 shifts | **confirmed** |
 | 17220–17304 | CH28 (25 purple) | 16953, blended | wrong | 0.3% | inconclusive (the dive reader's margin is that low on this stage in the WR video too) |
+| 22494–22572 | CH29 (30 yellow, 20 purple) | 22233, clean | truth ranked 2nd | 1.1% | inconclusive (doesn't test the blend reader) |
 
 The CH27 match is exact: the dive, read from the video with no knowledge of the blended roll,
 lands on the state 5 draws after the blended roll's last draw. That is the same check that the
