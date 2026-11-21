@@ -34,3 +34,18 @@ def test_normalize_restores_a_fading_title():
     back = normalize(dim)
     assert abs(templates.bright_level(back) - templates.FULL_BRIGHT) < 0.05 * templates.FULL_BRIGHT
     assert normalize(np.zeros_like(frame)) is not None      # black stays black
+
+
+def test_rescue_takes_a_cut_short_title_from_its_neighbours():
+    from p2seeds.analyze import RESCUE_MARGIN_NEAR, EventResult, rescue_caves
+    from p2seeds.events import Event
+
+    def found(frame, cave):
+        return EventResult(Event(frame, frame, 1), settled_frame=frame, cave_id=cave)
+
+    hob2, hob4 = found(40261, "HoB"), found(43532, "HoB")
+    cut = EventResult(Event(41110, 41270, 3), best_cave="HoB", cave_score=0.47, best_margin=0.04)
+    assert rescue_caves([cut], [hob2, hob4]) == []                     # GameCube: margin too small
+    assert rescue_caves([cut], [hob2, hob4], wide=True) == [(cut, "HoB", RESCUE_MARGIN_NEAR)]
+    # not next to a HoB entry: no rescue
+    assert rescue_caves([cut], [found(30000, "EC"), found(50000, "WFG")], wide=True) == []

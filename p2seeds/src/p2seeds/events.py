@@ -32,6 +32,7 @@ class Event:
 
 WIDE_ASPECT = 1.55    # a game feed wider than this is a 16:9 (Wii / Wii U VC) picture
 FADE_MIN_BRIGHT = 70.0
+FADE_OUTSIDE = 0.015
 
 
 def is_wide(feed: Feed) -> bool:
@@ -66,7 +67,9 @@ def is_entry_screen(feed_gray: np.ndarray, dark_max: float = 60.0, fade: bool = 
     W = feed_gray.shape[1]
     top = p[: int(0.12 * H), int(0.25 * W): int(0.75 * W)].mean(axis=1)
     outside = np.r_[top, rows[int(0.80 * H):]].max() if H else 1
-    return bool(name and sub and outside < 0.005)
+    # Wii: a bright picture (a Pikmin, a burst of light) can sit behind the title and reach
+    # into the bottom band a little; gameplay's HUD fills 20-35% of a row there
+    return bool(name and sub and outside < (FADE_OUTSIDE if fade else 0.005))
 
 
 def detect(video: Video, feed: Feed, step: int = 10, start: int = 0, stop: int | None = None, merge_gap: int = 300,

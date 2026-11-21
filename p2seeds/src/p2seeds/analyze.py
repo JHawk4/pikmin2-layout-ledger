@@ -20,6 +20,9 @@ MIN_CAVE_MARGIN = 0.12     # and the best cave must beat the second best by this
 RESCUE_SCORE = 0.33        # second pass on blurry captures: a Pay Off Debt cave the run is still
 RESCUE_MARGIN = 0.06       # missing sublevels of may match this weakly (stray screens that score
                            # this well match Dream Den or Sublevel Cave, not run caves)
+RESCUE_SCORE_NEAR = 0.40   # Wii: a title cut short (the fade starts before the last letters land) matches
+RESCUE_MARGIN_NEAR = 0.02  # the right cave clearly but its rivals closely; accepted when the entry just
+                           # before or after it is that cave (wrong guesses fail the fit or the chain)
 MIN_CAVE_SCORE_JA = 0.48   # short Japanese names match random text up to ~0.40; true ones score ~0.6
 # Japanese names share endings (百戦錬磨の穴 / けだものの穴 / 夢の穴), so a clear match can still
 # have a close runner-up: keisen's Hole of Heroes scored 0.72 against 0.60. A match this strong
@@ -177,7 +180,7 @@ def calibrate_fading(frames: list[np.ndarray], a: int, b: int, n: int = 6) -> tu
 
 
 def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None = None,
-                  only: str | None = None) -> list[EventResult]:
+                  only: str | None = None, only_margin: float = RESCUE_MARGIN) -> list[EventResult]:
     """All sublevel entries inside one candidate window (usually one, sometimes two
     when consecutive entries are only seconds apart). Unrecognized windows yield a
     single result with a note. With `only` (a cave id), only that cave is accepted, at the
@@ -216,7 +219,7 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
         if cal is not None and cal.cave.lang == "ja" and cal.score >= STRONG_CAVE_SCORE_JA:
             min_margin = STRONG_CAVE_MARGIN_JA
         if only is not None:
-            min_score, min_margin = RESCUE_SCORE, RESCUE_MARGIN
+            min_score, min_margin = RESCUE_SCORE, only_margin
             if cal is not None and cal.cave.cavegen != only:
                 cal = None
         if cal is None or cal.score < min_score or margin < min_margin:
@@ -488,20 +491,34 @@ def _confidence(cands: list[Candidate]) -> str:
 POD_CAVES = ("EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK")
 
 
-def rescue_caves(rejected: list[EventResult], found: list[EventResult]) -> list[tuple[EventResult, str]]:
-    """Unrecognized screens worth a second look: the best match is a Pay Off Debt cave the run
-    has not found all sublevels of yet, at RESCUE_SCORE / RESCUE_MARGIN. On blurry captures every
-    cave name matches weakly and a whole cave can fall just under the normal threshold."""
+def rescue_caves(rejected: list[EventResult], found: list[EventResult], wide: bool = False
+                 ) -> list[tuple[EventResult, str, float]]:
+    """Unrecognized screens worth a second look, with the margin to accept: the best match is a Pay
+    Off Debt cave the run has not found all sublevels of yet, at RESCUE_SCORE / RESCUE_MARGIN. On
+    blurry captures every cave name matches weakly and a whole cave can fall just under the normal
+    threshold. On `wide` (Wii) captures a cut-short title of the same cave as the entry just before
+    or after it is accepted at RESCUE_SCORE_NEAR / RESCUE_MARGIN_NEAR."""
     from .caves import CAVES_EN
     total = {c.cavegen: c.sublevels for c in CAVES_EN}
     have: dict[str, int] = {}
     for r in found:
         have[r.cave_id] = have.get(r.cave_id, 0) + 1
+    seen = sorted((r.settled_frame, r.cave_id) for r in found if r.settled_frame is not None and r.cave_id)
     out = []
     for r in rejected:
+        f = r.event.first
+        before = [c for fr, c in seen if fr < f][-1:]
+        after = [c for fr, c in seen if fr > r.event.last][:1]
+        neighbours = set(before + after) if wide else set()
         # any screen in the window may be the one: the best rejected match can be a menu or a
         # memory-card warning that happens to score higher than the blurry title
-        caves = {c for c, sc, m in (r.near or [(r.best_cave, r.cave_score, r.best_margin)])
-                 if c in POD_CAVES and have.get(c, 0) < total.get(c, 0) and sc >= RESCUE_SCORE and m >= RESCUE_MARGIN}
-        out += [(r, c) for c in sorted(caves)]
+        caves: dict[str, float] = {}
+        for c, sc, m in (r.near or [(r.best_cave, r.cave_score, r.best_margin)]):
+            if c not in POD_CAVES or have.get(c, 0) >= total.get(c, 0):
+                continue
+            if sc >= RESCUE_SCORE and m >= RESCUE_MARGIN:
+                caves[c] = min(caves.get(c, 1.0), RESCUE_MARGIN)
+            elif c in neighbours and sc >= RESCUE_SCORE_NEAR and m >= RESCUE_MARGIN_NEAR:
+                caves[c] = RESCUE_MARGIN_NEAR
+        out += [(r, c, caves[c]) for c in sorted(caves)]
     return out

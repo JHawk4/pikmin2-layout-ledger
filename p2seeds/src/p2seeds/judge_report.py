@@ -412,6 +412,6 @@ dlg.addEventListener('click', () => dlg.close());
 </body></html>'''
     dest = out_dir / "judge.html"
     from . import theme
-    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge", category=theme.category_of(kind))
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge", category=theme.category_of(kind, out_dir))
     dest.write_text(page, encoding="utf-8")
     return dest

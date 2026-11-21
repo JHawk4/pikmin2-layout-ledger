@@ -60,11 +60,20 @@ h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-bloc
 SUGGEST_FORM = "https://docs.google.com/forms/d/e/1FAIpQLSepPb6F7_Y6DlLoHn-nqpy2KG3BqaMLfDLAdArL9B5iyEt_LA/formResponse"
 
 
-CATEGORIES = (("pod", "Pay Off Debt", ""), ("at", "All Treasures", "at/"))
+CATEGORIES = (("pod", "Pay Off Debt", ""), ("wii", "Pay Off Debt (Wii)", "wii/"), ("at", "All Treasures", "at/"))
+POKO_CATEGORIES = ("pod", "wii")     # sections whose runs collect pokos (Pay Off Debt)
 
 
-def category_of(kind: str | None) -> str:
-    """The site section a run of this judge kind belongs to."""
+def category_of(kind: str | None, where=None) -> str:
+    """The site section a run of this judge kind belongs to. `where` (a section root or a run
+    folder in one) overrides it when the root holds a section.txt naming the section (Wii Pay
+    Off Debt runs are judged as Pay Off Debt but have their own section)."""
+    if where is not None:
+        from pathlib import Path
+        for d in (Path(where), Path(where).parent):
+            f = d / "section.txt"
+            if f.exists():
+                return f.read_text(encoding="utf-8").strip()
     return "at" if kind == "at" else "pod"
 
 
@@ -79,7 +88,7 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs", categ
     else:
         links += [("layouts", "layouts.html", "Layouts"), ("detection", "detection.html", "Detection"),
                   ("timesave", "timesave.html", "Time saved")]
-        if category == "pod":
+        if category in POKO_CATEGORIES:
             links.append(("pokos", "pokos.html", "Pokos"))
         links += [("howjudge", "how-judge.html", "The judge"), ("accuracy", "accuracy.html", "Judge accuracy"),
                   ("seeds", "seeds.html", "Seed check")]
