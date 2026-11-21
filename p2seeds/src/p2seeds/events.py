@@ -40,7 +40,12 @@ def is_entry_screen(feed_gray: np.ndarray, dark_max: float = 60.0) -> bool:
     s0, s1 = int(SUB_BAND[0] * H), int(SUB_BAND[1] * H)
     name = rows[n0:n1].max() > 0.015      # a short Japanese name covers ~2.5% of a row
     sub = rows[s0:s1].max() > 0.015
-    outside = np.r_[rows[: int(0.12 * H)], rows[int(0.80 * H):]].max() if H else 1
+    # Above the name only the middle half of the width counts: runners often put a timer or
+    # splits in a top corner (keisen's All Treasures run), and gameplay is still ruled out by
+    # the HUD along the bottom.
+    W = feed_gray.shape[1]
+    top = p[: int(0.12 * H), int(0.25 * W): int(0.75 * W)].mean(axis=1)
+    outside = np.r_[top, rows[int(0.80 * H):]].max() if H else 1
     return bool(name and sub and outside < 0.005)
 
 

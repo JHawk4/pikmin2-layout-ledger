@@ -34,13 +34,15 @@ def link(results, near: int = NEAR) -> None:
     """
     for r in results:
         r.chain_dist = None
-    before = [(r.letter_seed, r.layout_seed, r.confidence, r.note, r.candidates) for r in results]
     # only seeds found by the full search AND agreeing with another such seed anchor the
     # window searches; a lone read, even a confident one, could be wrong
     settled = _backbone(results)
+    _demote_strays(results, settled)
+    before = [(r.letter_seed, r.layout_seed, r.confidence, r.note, r.candidates) for r in results]
     _chains(results)
     filled = _forward(results, near, set(settled))
     _backward(results, near, set(settled) | filled)
+    _bridge(results)
     _check_order(results, before, settled)
     for prev, r in zip(results, results[1:]):
         if r.letter_seed is not None and prev.layout_seed is not None:
@@ -53,6 +55,15 @@ def link(results, near: int = NEAR) -> None:
                 if x.confidence == "medium":
                     x.confidence = "high"
                     x.note = (x.note + " seed confirmed by its neighbor's").strip()
+    # the same for backbone seeds with entries between them (each within LINK per sublevel)
+    for a, b in zip(settled, settled[1:]):
+        ra, rb = results[a], results[b]
+        if _known(ra) and _known(rb) and ra.layout_seed is not None and \
+                rng.distance(ra.layout_seed, rb.letter_seed, limit=LINK * (b - a)) is not None:
+            for x in (ra, rb):
+                if x.confidence == "medium":
+                    x.confidence = "high"
+                    x.note = (x.note + " seed confirmed by a later or earlier sublevel's").strip()
 
 
 def _apply(r, cands: list[Candidate], how: str, dist: int | None = None) -> bool:
@@ -79,6 +90,15 @@ GOOD_PER_LETTER = 4.0     # chi-square per measured letter for a match to count
 WEAK_LINK = 0.01          # a link this likely to be chance ends a chain
 ACCEPT_HIGH = 1e-4        # chance that a whole chain is coincidence, for high confidence
 ACCEPT_MEDIUM = 1e-3
+# Generating a floor alone takes thousands of RNG calls, so the next entry can't follow within a few
+# hundred steps (the closest real pair seen is ~900, Bulblax Kingdom's quick purple-farm re-entries).
+# A "match" that close is a coincidence that link_chance would wrongly rate as near-certain.
+MIN_LINK = 500
+BRIDGE_GAP = 6            # longest run of unknown entries the bridge follows
+BRIDGE_TOP = 4            # window candidates tried per entry
+BRIDGE_BEAM = 40          # partial paths kept per step
+BRIDGE_AGREE = 100.0      # paths within this factor of the best must agree on a seed to assign it
+BRIDGE_INFORMATIVE = 0.5  # a seed whose own link is likelier than this to be chance is not assigned
 
 
 @dataclass
@@ -113,7 +133,7 @@ def link_chance(c: Candidate, sigma: np.ndarray) -> float:
     m = np.isfinite(c.residuals) & np.isfinite(sigma)
     sig = np.sort(sigma[m])[1:]                  # the bias absorbs the tightest constraint
     k = sig.size
-    if k < 1 or c.distance is None:
+    if k < 1 or c.distance is None or c.distance < MIN_LINK:
         return float("inf")
     x = max(c.score, 0.5 * k)
     unit_ball = np.pi ** (k / 2) / math.gamma(k / 2 + 1)
@@ -196,10 +216,38 @@ def _backbone(results) -> list[int]:
     Two wrong seeds, or a wrong and a right one, agree only by chance (~0.2% per gap)."""
     known = [i for i, r in enumerate(results) if _known(r) and r.layout_seed is not None]
     ok: set[int] = set()
-    for a, b in zip(known, known[1:]):
-        if rng.distance(results[a].layout_seed, results[b].letter_seed, limit=CONFIRM * (b - a)) is not None:
-            ok |= {a, b}
+    # each seed is compared with the next few, not only the next one: a single wrong read in
+    # between (CurtisDN's Subterranean Complex 2, at 360p) must not hide two that agree
+    for n, a in enumerate(known):
+        for m, b in enumerate(known[n + 1: n + 1 + BACKBONE_AHEAD]):
+            per = CONFIRM if m == 0 else LINK      # past a read in between, the tighter window
+            if rng.distance(results[a].layout_seed, results[b].letter_seed, limit=per * (b - a)) is not None:
+                ok |= {a, b}
     return sorted(ok)
+
+
+BACKBONE_AHEAD = 6
+
+
+def _demote_strays(results, settled: list[int]) -> None:
+    """A medium read that is out of RNG order with the backbone seeds on both sides of it is wrong; drop it
+    to low so the window searches from its neighbours can look for the right one."""
+    s = set(settled)
+    for i, r in enumerate(results):
+        if i in s or r.confidence != "medium" or r.letter_seed is None:
+            continue
+        j = max((k for k in settled if k < i), default=None)
+        k = min((k for k in settled if k > i), default=None)
+        if j is None or k is None:
+            continue          # only between two backbone seeds: past the ends, a reset may break the order
+        ok = True
+        if j is not None and results[j].layout_seed is not None:
+            ok = rng.distance(results[j].layout_seed, r.letter_seed, limit=CONFIRM * (i - j)) is not None
+        if ok and k is not None and r.layout_seed is not None:
+            ok = rng.distance(r.layout_seed, results[k].letter_seed, limit=CONFIRM * (k - i)) is not None
+        if not ok:
+            r.confidence = "low"
+            r.note = (r.note + " (its own read was out of RNG order with its neighbours)").strip()
 
 
 def _gap(results, i: int, settled: set[int], step: int) -> int | None:
@@ -307,6 +355,71 @@ def _backward(results, near: int, settled: set[int]) -> None:
             dist = window - cands[0].distance + 1 if cands else None
             if _apply(r, cands, f"just before the next sublevel ({anchor.cave} {anchor.sublevel or '?'})", dist):
                 anchor = r
+
+
+def _bridge(results) -> None:
+    """Follow every short gap of unknown entries between two known seeds as one path.
+
+    Short names (Submerged Castle 水中の城: 4 letters) give each link a chance of a few percent
+    of being coincidence: too weak for `_chains`, which drops any link above WEAK_LINK. Taken
+    together, though, four such links in a row are very unlikely to be chance. This tries the
+    best few window candidates of each entry from every partial path, keeps paths that lead into
+    the known seed after the gap, and scores each by the product of its link chances times the
+    number of paths tried (so trying many paths is paid for). An entry is filled only when every
+    path nearly as good as the best agrees on it and its own link says something (a 3-letter
+    read that fits anywhere is left empty).
+    """
+    i = 1
+    while i < len(results):
+        if _known(results[i]) or not _known(results[i - 1]) or results[i - 1].layout_seed is None:
+            i += 1
+            continue
+        a, b = i - 1, i
+        while b < len(results) and not _known(results[b]):
+            b += 1
+        gap, i = list(range(a + 1, b)), b
+        if b >= len(results) or len(gap) > BRIDGE_GAP or not any(_usable(results[j]) for j in gap):
+            continue
+        end = results[b]
+        # a path: (chance, layout seed it reached, [(entry, candidate, its link chance)])
+        paths = [(1.0, results[a].layout_seed, [])]
+        tried = 1
+        for j in gap:
+            r = results[j]
+            if not _usable(r) or r.fit.rms_px > MAX_FIT_RMS_PX:
+                continue              # searched past from the seed before it
+            n, new, k = _n(r), [], 0
+            for p, seed, steps in paths:
+                for c in search_near(r.fit.v, r.fit.sigma, seed, LINK, top=BRIDGE_TOP):
+                    if not _good(c):
+                        continue
+                    k += 1
+                    q = min(1.0, link_chance(c, r.fit.sigma))
+                    new.append((p * q, letters_model.layout_seed(c.letter_seed, n), steps + [(j, c, q)]))
+            tried *= max(1, k / max(1, len(paths)))
+            new.sort(key=lambda t: t[0])
+            paths = new[:BRIDGE_BEAM]
+            if not paths:
+                break
+        done = [t for t in paths if t[2] and end.letter_seed is not None
+                and rng.distance(t[1], end.letter_seed, limit=LINK) is not None]
+        if not done:
+            continue
+        best = done[0][0] * tried
+        if best > ACCEPT_MEDIUM:
+            continue
+        close = [t for t in done if t[0] <= done[0][0] * BRIDGE_AGREE]
+        conf = "high" if best <= ACCEPT_HIGH else "medium"
+        for j, c, q in done[0][2]:
+            if q > BRIDGE_INFORMATIVE:
+                continue
+            if any(all(s[1].letter_seed != c.letter_seed for s in t[2] if s[0] == j) for t in close):
+                continue
+            r = results[j]
+            r.letter_seed, r.layout_seed = c.letter_seed, letters_model.layout_seed(c.letter_seed, _n(r))
+            r.candidates, r.confidence = [c], conf
+            r.note = (r.note + f" seed found by following the gap from {results[a].cave} "
+                      f"{results[a].sublevel or '?'} to {end.cave} {end.sublevel or '?'}").strip()
 
 
 # --- saving the pre-link state, so chains can be re-tuned without re-reading video ---
