@@ -26,11 +26,25 @@ def counts_str(c):
 
 
 def crosscheck():
-    rows = ["| run | stage | Pikmin | result | margin | rank of truth |", "|---|---|---|---|---|---|"]
+    """Cross-check table. A `<video>_f0.json` (current pipeline: best coarse loss over dive-start
+    offsets, compiled exact loss) supersedes the base file's row for the same visit."""
+    rows = ["| run | stage | Pikmin | result | margin | earlier pipeline |", "|---|---|---|---|---|---|"]
     n_ok = n = hi = hi_ok = 0
+    lo_ok = []
     for p in sorted(glob.glob(os.path.join(D, "crosscheck", "*.json"))):
+        if p.endswith("_f0.json"):
+            continue
         run = os.path.basename(p).split("_")[0] + " " + os.path.basename(p).split("_")[1]
-        for r in json.load(open(p)):
+        newer = {}
+        if os.path.exists(p[:-5] + "_f0.json"):
+            newer = {tuple(r["visit"]): r for r in json.load(open(p[:-5] + "_f0.json"))}
+        for r0 in json.load(open(p)):
+            r = newer.get(tuple(r0["visit"]), r0)
+            was = ""
+            if r is not r0 and r0.get("margin") is not None:
+                was = f"{'correct' if r0['correct'] else 'wrong'}, {r0['margin'] * 100:.1f}%"
+            elif r is r0:
+                was = "(not rerun)"
             m = r.get("margin")
             if m is None:
                 rows.append(f"| {run} | CH{r.get('ch')} | | failed: {r.get('note')} | | |")
@@ -45,8 +59,7 @@ def crosscheck():
                 hi += 1
                 hi_ok += bool(r["correct"])
             rows.append(f"| {run} | CH{r['ch']} | {counts_str(r.get('counts'))} | "
-                        f"{'**correct**' if r['correct'] else 'wrong'} | {m * 100:.1f}% | "
-                        f"{r['truth_rank'] if r['truth_rank'] is not None else 'not in top 200'} |")
+                        f"{'**correct**' if r['correct'] else 'wrong'} | {m * 100:.1f}% | {was} |")
     head = f"{n_ok} of {n} correct; {hi_ok} of {hi} with a margin of 10% or more."
     return head + "\n\n" + "\n".join(rows)
 

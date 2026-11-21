@@ -7,10 +7,12 @@ stage's first floor.**
    floor 1 is that state + 1004 + (menu flashes).
 2. **The Pikmin dive on the stage select** (§7–§8) is 1000 draws made right before floor 1 is
    generated. It reads the seed on its own, even when no roll comes before it: a run's first stage,
-   and single-stage score records. **But it is not reliable yet:** on the reference run it found
-   7 of 13 dives, and its margin does not tell right from wrong. CH29 was wrong by a 12.5% margin
-   and the CH10 record by 23.6%, because pruning can drop the true state before the exact
-   comparison (§8). Only reads confirmed by a results roll are published.
+   and single-stage score records. **But it is not reliable yet.** The first version found 7 of 13
+   dives on the reference run and was wrong at margins up to 23.6% (the CH10 record), because
+   pruning dropped the true state before the exact comparison (§8). The current version keeps
+   each state's best loss over several dive-start offsets and finds 10 of 13; every read with a
+   10% margin or more (6 of 6) is correct, but the sample is small. Only reads confirmed by a
+   results roll are published.
 
 Floors 2+ have no RNG readout in the video. They are bounded to a window of 20k–1M states (§9);
 finding them would need a layout matcher, which isn't built. The Switch release (Pikmin 2 HD) uses
@@ -345,24 +347,26 @@ noted). The pipeline changed during the day; each result is labelled with the ve
 A second CH29 visit is excluded: another menu visit came between it and the preceding roll, so
 "roll end + 5" is not its dive start (`truth_valid` in the data).
 
-- **Final pipeline** (`crosscheck_cmal.py --every 2`, data in `data/challenge/crosscheck/`): 7 of 13 correct; 3 of 4 with a margin of 10% or more.
+- **Current pipeline** (`crosscheck_cmal.py --every 2`, then 10 visits rerun with the current reader, `--tag _f0`; data in `data/challenge/crosscheck/`): 10 of 13 correct; 6 of 6 with a margin of 10% or more.
 
-| run | stage | Pikmin | result | margin | rank of truth |
+| run | stage | Pikmin | result | margin | earlier pipeline |
 |---|---|---|---|---|---|
-| cmal04 tcbtrio | CH11 | red 5, white 5 | **correct** | 59.9% | 2 |
-| cmal04 tcbtrio | CH21 | red 30, blue 30 | wrong | 4.4% | not in top 200 |
-| cmal04 tcbtrio | CH27 | red 50 | **correct** | 41.1% | 0 |
-| cmal04 tcbtrio | CH29 | yellow 30, purple 20 | wrong | 12.5% | not in top 200 |
+| cmal04 tcbtrio | CH11 | red 5, white 5 | **correct** | 59.9% | (not rerun) |
+| cmal04 tcbtrio | CH21 | red 30, blue 30 | **correct** | 18.2% | wrong, 4.4% |
+| cmal04 tcbtrio | CH27 | red 50 | **correct** | 41.1% | (not rerun) |
+| cmal04 tcbtrio | CH29 | yellow 30, purple 20 | **correct** | 11.8% | wrong, 12.5% |
 | cmal04 tcbtrio | CH29 | yellow 30, purple 20 | no truth (another menu visit since the last results screen) | 0.1% | |
-| cmal04 tcbtrio | CH22 | red 20, yellow 20, blue 20 | **correct** | 39.8% | not in top 200 |
-| cmal04 tcbtrio | CH18 | red 25, blue 25 | **correct** | 6.2% | 0 |
-| cmal04 tcbtrio | CH20 | blue 50 | **correct** | 8.8% | 0 |
-| cmal04 tcbtrio | CH14 | red 25, yellow 25, blue 25, white 25 | wrong | 0.3% | 1 |
-| cmal04 tcbtrio | CH8 | red 40 | wrong | 8.8% | not in top 200 |
-| cmal04 tcbtrio | CH10 | yellow 50 | **correct** | 8.4% | not in top 200 |
-| cmal04 tcbtrio | CH4 | blue 50 | wrong | 3.9% | not in top 200 |
-| cmal04 tcbtrio | CH2 | white 30 | **correct** | 9.5% | 188 |
-| cmal04 tcbtrio | CH6 | red 1, yellow 1, blue 1 | wrong | 0.9% | not in top 200 |
+| cmal04 tcbtrio | CH22 | red 20, yellow 20, blue 20 | **correct** | 39.8% | (not rerun) |
+| cmal04 tcbtrio | CH18 | red 25, blue 25 | wrong | 5.9% | correct, 6.2% |
+| cmal04 tcbtrio | CH20 | blue 50 | **correct** | 5.4% | correct, 8.8% |
+| cmal04 tcbtrio | CH14 | red 25, yellow 25, blue 25, white 25 | **correct** | 9.3% | wrong, 0.3% |
+| cmal04 tcbtrio | CH8 | red 40 | **correct** | 48.0% | wrong, 8.8% |
+| cmal04 tcbtrio | CH10 | yellow 50 | **correct** | 7.3% | correct, 8.4% |
+| cmal04 tcbtrio | CH4 | blue 50 | wrong | 1.8% | wrong, 3.9% |
+| cmal04 tcbtrio | CH2 | white 30 | **correct** | 8.7% | correct, 9.5% |
+| cmal04 tcbtrio | CH6 | red 1, yellow 1, blue 1 | wrong | 0.9% | (not rerun) |
+
+The rerun fixed CH21, CH29, CH14 and CH8 and lost CH18 (correct at 6.2% before, wrong at 5.9% now). Both remaining wrong reads with a truth have margins under 6%; correct reads still go as low as 5.4%, so a low margin means "don't know", not "wrong".
 
 - **Earlier versions** (same dives, without the later frame-phase and pruning fixes):
   - CH16 Snack Pit (5 of each colour): found from scratch over all 2³¹ states, 13.6% margin.
@@ -384,8 +388,13 @@ So the site now publishes **only reads confirmed by a preceding results roll** (
 `make_site_seeds.py --allow-unverified` restores the old margin rule (beat every non-shift
 competitor by 10%, beat its own shifts, at least 8 visible Pikmin) for experiments.
 
-Being tested: taking each state's best coarse loss over a few dive-start offsets (`f0_offsets`), since
-the truth only wins after the geometry and start frame are refit.
+**Fix: start-offset pruning.** The truth only wins once the geometry and dive start frame are
+refit, and the start frame from the first estimate is often 1–3 frames off. Pruning now keeps each
+state's best coarse loss over dive-start offsets of −3, −1.5, 0, +1.5 and +3 frames (−1.5..+1.5 after
+the first refit). On CH29 the truth then ranks first at the coarse stage instead of about
+106,000th, and the read is correct. The final ranking and the geometry fits use a compiled exact loss
+(equal to the Python one to 1e-8, about 4× faster per evaluation, fits run in parallel), so the
+extra offsets cost no more time than before: about 10–20 minutes per dive on an idle machine.
 
 Per-stage RNG use is consistent between runners
 (`p2seeds/src/p2seeds/data/challenge_stage_draws.json`: draws per video frame from the floor-1 seed
@@ -447,7 +456,8 @@ Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challeng
 
 
 The first pass published 12 of these from the margin rule; they were withdrawn after the CH10
-seed was found wrong and the CH29 cross-check failed (above). Only CH28, confirmed by the previous
+seed was found wrong and the CH29 cross-check failed (above). The table is from the first
+version of the reader; only CH10 has been rerun with the current one (below). Only CH28, confirmed by the previous
 attempt's roll, is on the pikmin-wrs site (https://jhawk4.github.io/pikmin-wrs/en/seeds.html).
 The other reads:
 - **Withheld** (passed the margin rule only): CH1, 2, 10 (wrong), 13, 14, 15, 16, 17, 20, 29, 30.
@@ -466,6 +476,12 @@ The other reads:
 Check images for each WR (CaveGen3 render of floor 1 next to frames of the video's first floor):
 `docs/challenge_dive/wr_gallery.py`. Comparing by eye at video resolution is not a reliable check:
 I judged CH10 to agree with its video, and it does not.
+
+**CH10 rerun with the current reader** (`WR_DIVES=dives_f0 run_wrs.py 10`, data in
+`data/challenge/wr/dives_f0/`): the best state is now `B0670AA8` (floor-1 seed `48E42063`), which was second in
+the first version. The wrong first-version winner (`1B762954`, seed `25EE5FBF`) is no longer in the
+top 6. But the new margin is only 1.2% (over `C80EBEBC`, seed `302A5EC7`), too small to call, so CH10
+stays uncertain until someone checks `48E42063` against the video.
 
 
 ## 9. Floors after the first (stretch goal): not done, but bounded
