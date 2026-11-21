@@ -11,6 +11,50 @@ fades, looks reachable without a native port or a GPU.
 Measured on this machine, an i7-8565U laptop (4 cores). Other jobs had the CPU at **100% the whole
 time**, so every number here is pessimistic. Expect them to be 2–3x faster on an idle desktop.
 
+## Priorities (from the user)
+
+CaveGen's old real-time setup worked fairly well; its problem was setup pain. In order:
+
+1. **A standalone executable** with minimal dependencies, minimal setup and a solid, intuitive GUI.
+2. **Speed:** layouts on screen sooner.
+3. **Robustness** of the detection.
+
+## Plan
+
+One Rust program: no Python, no Java and no OBS plugin. It contains the ported detector, the
+CaveGen3 crate for layouts, camera input, a GUI (egui, a single binary) and a small web server for an
+OBS Browser Source.
+
+**Setup wizard**, about a minute, with no config file to edit:
+
+1. **Pick the input:** cameras are listed, with "OBS Virtual Camera" preselected. A capture card
+   directly (when OBS isn't using it) and a video file (for testing) are the other choices.
+2. **Crop:** a live frame with the game picture found automatically from motion; drag the handles to
+   adjust.
+3. **Category and region,** with the language detected automatically.
+4. **Live check:** "enter any cave". The wizard shows when it sees the entry screen and the seed it
+   found.
+
+There is no letter calibration: the name's scale and position are fitted on every screen.
+
+**Main window:**
+
+- the current cave and sublevel, its seed and confidence, and the layout, drawn large;
+- this run's sublevels so far;
+- "copy Browser Source URL" and "new run" (which resets the chain);
+- an optional view of the tracked letters, to check what it measured.
+
+**Milestones:**
+
+1. **Detector port.** A Rust library plus a command line over video files. Done when its seeds equal
+   the Python seeds on every run in `data/output` (about 1,500 entries).
+2. **Live loop.** Frame input, a ring buffer and workers, with the section 2 speed-ups. Target: seed
+   ready less than 1.5 s after the letters land. Tested by replaying VODs at real speed with
+   virtual-camera-like pacing (repeats and drops).
+3. **GUI and Browser Source,** settings saved next to the exe.
+4. **Packaging.** A Windows exe first, then macOS. One test with real OBS and its virtual camera
+   (needs OBS installed on the dev machine).
+
 ## 0. Prior art: CaveGen's real-time setup
 
 CaveGen already has a live setup (readme "REAL TIME SEED DETECTION", `continuous.py`, `Manip.java`,
