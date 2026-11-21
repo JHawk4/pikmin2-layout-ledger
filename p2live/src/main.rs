@@ -105,7 +105,7 @@ fn entries(args: &[String]) {
                     "confidence": r.confidence, "expected_confidence": e["confidence"],
                     "note": r.note, "expected_note": e["note"], "rescued": rescued,
                     "letters": r.fit.as_ref().map(|f| f.n_measured()), "rms_px": r.fit.as_ref().map(|f| f.rms_px),
-                    "cave_score": r.cave_score, "t_decode": t_decode, "t_analyze": t_analyze,
+                    "cave_score": r.cave_score, "settled": r.settled_frame, "digit_votes": r.digit_votes, "t_decode": t_decode, "t_analyze": t_analyze,
                     "extra_decodes": *w.extra_decodes.lock().unwrap(),
                 });
                 let mut o = out.lock().unwrap();

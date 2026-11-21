@@ -58,13 +58,15 @@ pub fn probe(path: &str) -> std::io::Result<Info> {
 }
 
 /// `n` frames starting at frame `start`, BGR -> gray (cv2 fixed point), cropped to `feed`.
+/// YUV -> BGR uses the BT.601 matrix whatever the stream is tagged, as OpenCV's reader does
+/// (ffmpeg would honor a bt709 tag, and saturated colors would then differ by up to ~30 levels).
 pub fn decode(path: &str, info: &Info, fps: f64, feed: Feed, start: usize, n: usize) -> std::io::Result<Vec<Gray>> {
     if n == 0 {
         return Ok(Vec::new());
     }
     let t = if start == 0 { 0.0 } else { (start as f64 - 0.5) / fps };
     let mut child = Command::new(ffmpeg())
-        .args(["-v", "error", "-nostdin", "-ss", &format!("{t:.6}"), "-i", path, "-frames:v", &n.to_string(), "-an", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"])
+        .args(["-v", "error", "-nostdin", "-ss", &format!("{t:.6}"), "-i", path, "-frames:v", &n.to_string(), "-an", "-vf", "scale=in_color_matrix=bt601", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;
