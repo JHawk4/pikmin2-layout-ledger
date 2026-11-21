@@ -11,6 +11,31 @@ fades, looks reachable without a native port or a GPU.
 Measured on this machine, an i7-8565U laptop (4 cores). Other jobs had the CPU at **100% the whole
 time**, so every number here is pessimistic. Expect them to be 2–3x faster on an idle desktop.
 
+## 0. Prior art: CaveGen's real-time setup
+
+CaveGen already has a live setup (readme "REAL TIME SEED DETECTION", `continuous.py`, `Manip.java`,
+`Letters.java`). It works like this:
+
+- **Input:** the OBS virtual camera.
+- **Detection:** `continuous.py` finds story entry screens by brightness, and records the lowest lit
+  row of each letter's column in the top ~15% of the screen over 48 frames.
+- **Search and display:** Java `Manip`/`Letters` search for the seed (near an anchor or the previous
+  seed) and show the layout in a Java window.
+
+What this project adds on top of it:
+
+| | CaveGen RTA | this detector |
+|---|---|---|
+| cave name | not read: taken from an expected cave order, stepped with `[` `]` and Shift-K | recognized on screen (any order, both languages) |
+| calibration | manual: record a video, save frames, tune crop and `letters_x/yscale/offset` and `x_scrunch_limit` by trial and error | name scale and position fitted on every screen; only the crop is needed |
+| letter measurement | one lit-row edge per frame, top band only | sub-pixel template tracking over the whole fall, fitted with the fall physics (phase, scale, floor) |
+| search | Java, near an anchor or a precomputed table | lattice search from any 3+ letters, no anchor needed; chaining as a fallback |
+| bad captures | none | blended / uneven / doubled frames handled |
+| install | git, Python + numpy + cv2, Java, OBS virtual-cam plugin, config editing | the goal: one program, or one OBS plugin |
+
+So the architecture recommended below is the same one, rebuilt on a detector that needs no manual
+calibration or expected cave order.
+
 ## 1. Where the time goes
 
 ### Per entry screen, clean captures
