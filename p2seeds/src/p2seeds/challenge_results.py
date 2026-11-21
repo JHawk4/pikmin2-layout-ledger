@@ -322,6 +322,147 @@ def read_frame(canon: np.ndarray, lay: Layout) -> dict:
     return out
 
 
+# --------------------------------------------------------------------------- blended captures
+#
+# Some Wii (New Play Control!) captures blend the two fields of an interlaced signal, and the
+# game's 30 Hz frames straddle field pairs, so every video frame is a 50/50 overlay of game
+# frames g and g+1 (the next video frame shows g+1 and g+2). Whether a results screen is blended
+# depends on the field phase, which changes between screens in the same video. A 60 fps upload
+# of such a capture shows each blended picture twice; it does not undo the blend.
+
+BLEND_GAIN = 0.04            # pair templates must beat single digits by this much (mean NCC)
+
+
+@lru_cache(maxsize=1)
+def _pair_matrix():
+    by_shape: dict = {}
+    for d, t in digit_templates():
+        by_shape.setdefault(t.shape, {}).setdefault(d, []).append(t)
+    vecs, labels = [], []
+    for group in by_shape.values():
+        for a in range(10):
+            for b in range(a, 10):
+                for ta in group.get(a, []):
+                    for tb in group.get(b, []):
+                        vecs.append(_unit((0.5 * ta + 0.5 * tb).ravel()))
+                        labels.append((a, b))
+    return np.stack(vecs, axis=1), labels
+
+
+def read_pairs(canon: np.ndarray, lay: Layout) -> dict:
+    """Per counter, [((lo, hi), score)] from the ones digit up: each slot as a 50/50 blend."""
+    mat, labels = _pair_matrix()
+    slots = [(c, i, lay.squeeze[c]) for c in COUNTERS for i in range(lay.n[c])]
+    crops = [slot_crop(canon, c, i, sq) for c, i, sq in slots]
+    wins = np.stack([np.lib.stride_tricks.sliding_window_view(c, (TH, TW)).reshape(-1, TH * TW) for c in crops])
+    wins = wins - wins.mean(axis=2, keepdims=True)
+    wins /= np.maximum(np.linalg.norm(wins, axis=2, keepdims=True), 1e-6)
+    sc = (wins @ mat).max(axis=1)
+    best = sc.argmax(axis=1)
+    out = {c: [] for c in COUNTERS}
+    for (c, _, _), b, row in zip(slots, best, sc):
+        out[c].append((labels[int(b)], float(row[b])))
+    return out
+
+
+def blend_gain(frames: list[Frame], canons: list[np.ndarray], lay: Layout, n: int = 8) -> float:
+    """How much better pair templates fit than single digits over the first rolling frames
+    (near 0 for a clean capture, about 0.08 for a blended one)."""
+    idx = [i for i, f in enumerate(frames) if not f.dup][:n]
+    gains = []
+    for i in idx:
+        single = [v for c in COUNTERS for _, v, _ in frames[i].reading[c]]
+        pair = [v for c in COUNTERS for _, v in read_pairs(canons[i], lay)[c]]
+        gains.append(np.mean(pair) - np.mean(single))
+    return float(np.median(gains)) if gains else 0.0
+
+
+_blend_kernel = None
+
+
+def _get_blend_kernel():
+    global _blend_kernel
+    if _blend_kernel is not None:
+        return _blend_kernel
+    import numba as nb
+
+    @nb.njit(parallel=True, cache=True)
+    def kernel(lo_, hi_, aN, cN, maxbad):
+        # lo_, hi_: (frames, N) digit pairs; video frame m shows draws [mN, mN+N) and the next N
+        nf, Nn = lo_.shape
+        out = np.zeros(64, np.int64)
+        cnt = np.zeros(1, np.int64)
+        a1 = np.uint64(0x41C64E6D)
+        c1 = np.uint64(0x3039)
+        msk = np.uint64(0xFFFFFFFF)
+        for top in nb.prange(1 << 15):
+            d0 = top * 9 // 32768 + 1
+            if d0 != lo_[0, 0] and d0 != hi_[0, 0]:
+                continue
+            for low in range(1 << 16):
+                s0 = np.uint64((top << 16) | low)
+                bad = 0
+                s = s0
+                ok = True
+                for m in range(nf):
+                    for q in range(Nn):
+                        sn = (aN * s + cN) & msk
+                        d1 = ((s >> np.uint64(16)) & np.uint64(0x7FFF)) * np.uint64(9) // np.uint64(32768) + np.uint64(1)
+                        d2 = ((sn >> np.uint64(16)) & np.uint64(0x7FFF)) * np.uint64(9) // np.uint64(32768) + np.uint64(1)
+                        if min(d1, d2) != lo_[m, q] or max(d1, d2) != hi_[m, q]:
+                            bad += 1
+                            if bad > maxbad:
+                                ok = False
+                                break
+                        s = (a1 * s + c1) & msk
+                    if not ok:
+                        break
+                if ok:
+                    k = cnt[0]
+                    cnt[0] += 1
+                    if k < 64:
+                        out[k] = s0
+        return out[:min(cnt[0], 64)]
+
+    _blend_kernel = kernel
+    return kernel
+
+
+def solve_blended(pairs_frames: list[dict], lay: Layout, maxbad: int = 4) -> list[int]:
+    """All states s0 (mod 2^31) for which consecutive blended frames (every digit rolling, the
+    first frame's game frame g drawing from s0) show these digit pairs, up to maxbad misreads.
+    Brute force over 2^31 states (numba), pruned by the first slot: about 20 s on 8 cores."""
+    N = lay.total_digits
+    lo = np.array([[p[0][0] for c in COUNTERS for p in pf[c]] for pf in pairs_frames], np.uint64)
+    hi = np.array([[p[0][1] for c in COUNTERS for p in pf[c]] for pf in pairs_frames], np.uint64)
+    aN, cN = rng.jump(N)
+    sols = _get_blend_kernel()(lo, hi, np.uint64(aN), np.uint64(cN), maxbad)
+    return sorted({int(s) & (M - 1) for s in sols})
+
+
+def _pair_hits(pf: dict, stream: np.ndarray, p: int, N: int) -> int:
+    flat = [x for c in COUNTERS for x in pf[c]]
+    return sum((min(stream[p + q], stream[p + N + q]), max(stream[p + q], stream[p + N + q])) == ab
+               for q, (ab, _) in enumerate(flat))
+
+
+def find_anchor_blend(frames: list[Frame], lay: Layout, max_tries: int = 3):
+    """Anchor for a blended screen: two consecutive frames early in the roll, every digit
+    rolling, solved by brute force and confirmed by the next frames' pairs."""
+    N = lay.total_digits
+    nondup = [i for i, f in enumerate(frames) if not f.dup]
+    for pos in range(min(max_tries, max(0, len(nondup) - 6))):
+        fi, fj = nondup[pos], nondup[pos + 1]
+        if fj != fi + 1:
+            continue
+        for s0 in solve_blended([frames[fi].pairs, frames[fj].pairs], lay):
+            stream = digit_stream(s0, N * 8)
+            hits = [_pair_hits(frames[nondup[pos + m]].pairs, stream, m * N, N) for m in range(2, 6)]
+            if min(hits) >= 0.6 * N:
+                return fi, s0, tuple(0 for _ in COUNTERS)
+    return None
+
+
 def draw_order(reading: dict) -> list[tuple[int, float, float]]:
     return [x for c in COUNTERS for x in reading[c]]
 
@@ -351,6 +492,37 @@ class Frame:
     index: int
     reading: dict
     dup: bool = False          # same picture as the previous video frame
+    pairs: dict | None = None  # blended capture: counter -> [((lo, hi) digit pair, score)]
+
+
+def _blend_emission(fr: Frame, k: tuple, k2: tuple, p: int, stream: np.ndarray, lay: Layout,
+                    finals: dict) -> tuple[float, int, int]:
+    """Score of a blended video frame: game frame g (first draw at p, locks k) overlaid 50/50
+    with game frame g+1 (first draw right after g's draws, locks k2). Each slot is read as an
+    unordered digit pair. The lock frame's display quirk is ignored."""
+    score, good, bad = 0.0, 0, 0
+    p2 = p + _draws(k, lay)
+    off1, off2 = p, p2
+    for ci, c in enumerate(COUNTERS):
+        n = lay.n[c]
+        fin = finals.get(c) or [None] * n
+        for j in range(n):
+            (lo, hi), v = fr.pairs[c][j]
+            d1 = fin[j] if j < k[ci] else stream[off1 + j - k[ci]] if off1 + j - k[ci] < len(stream) else None
+            d2 = fin[j] if j < k2[ci] else stream[off2 + j - k2[ci]] if off2 + j - k2[ci] < len(stream) else None
+            if v < MIN_DIGIT_SCORE or d1 is None or d2 is None:
+                continue
+            ok = (min(d1, d2), max(d1, d2)) == (lo, hi)
+            rolled = j >= k[ci] or j >= k2[ci]
+            if ok:
+                score += MATCH if rolled else LOCK_OK
+                good += rolled
+            else:
+                score += MISMATCH
+                bad += 1
+        off1 += max(0, n - k[ci])
+        off2 += max(0, n - k2[ci])
+    return score, good, bad
 
 
 def _emission(fr: Frame, k: tuple, finishing: tuple, p: int, stream: np.ndarray, lay: Layout, finals: dict) -> tuple[float, int, int]:
@@ -458,10 +630,12 @@ def track(frames: list[Frame], start: int, s0: int, lay: Layout, finals: dict, k
     entries = [(0.0, (0, k_init, t_init, none, 0), None, None)]
     emis_cache: dict = {}
 
-    def emis(fi, pp, kk, fin):
-        ek = (fi, pp, kk, fin)
+    def emis(fi, pp, kk, fin, k2):
+        blended = frames[fi].pairs is not None
+        ek = (fi, pp, kk, k2 if blended else fin)
         if ek not in emis_cache:
-            emis_cache[ek] = _emission(frames[fi], kk, fin, pp, stream, lay, finals)
+            emis_cache[ek] = (_blend_emission(frames[fi], kk, k2, pp, stream, lay, finals) if blended
+                              else _emission(frames[fi], kk, fin, pp, stream, lay, finals))
         return emis_cache[ek]
 
     for fi in range(start, len(frames)):
@@ -480,7 +654,7 @@ def track(frames: list[Frame], start: int, s0: int, lay: Layout, finals: dict, k
             if last is not None:
                 # same game frame shown again (repeat that is not pixel-identical)
                 e, g, b = emis(fi, *last)
-                put(score + REPEAT + MISMATCH * b, (p, k, t, L, min(rep + 1, 2)), (path, (fi,) + last + (0, b)), last)
+                put(score + REPEAT + MISMATCH * b, (p, k, t, L, min(rep + 1, 2)), (path, (fi,) + last[:3] + (0, b)), last)
             nd0 = _ndraws(k, ncs)
             starts = [(p, k, t, L, score, rep)]
             if nd0:
@@ -505,8 +679,8 @@ def track(frames: list[Frame], start: int, s0: int, lay: Layout, finals: dict, k
             for pp, kk, tk, Lk, base, r in starts:
                 nd = _ndraws(kk, ncs)
                 for k2, tt, ll, pen, fin in _transitions(kk, tk, Lk, ncs):
-                    e, g, b = emis(fi, pp, kk, fin)
-                    put(base + e + pen, (pp + nd, k2, tt, ll, r), (path, (fi, pp, kk, fin, g, b)), (pp, kk, fin))
+                    e, g, b = emis(fi, pp, kk, fin, k2)
+                    put(base + e + pen, (pp + nd, k2, tt, ll, r), (path, (fi, pp, kk, fin, g, b)), (pp, kk, fin, k2))
         entries = sorted(new.values(), key=lambda x: -x[0])[:beam]
     return entries
 
@@ -663,7 +837,21 @@ def decode_screen(sc: Screen) -> dict:
                               sy=round(sc.placement.sy, 4), x=round(sc.placement.x, 1), y=round(sc.placement.y, 1)),
                layout=dict(n=lay.n, squeeze=lay.squeeze),
                final_display=" ".join("".join("?" if d is None else str(d) for d in reversed(finals[c])) for c in COUNTERS))
-    anc = find_anchor(frames, lay)
+    gain = blend_gain(frames, sc.canons, lay)
+    blended = gain > BLEND_GAIN
+    res["blend_gain"] = round(gain, 3)
+    res["blended"] = blended
+    anc = None
+    if blended:
+        for fr, cv in zip(frames, sc.canons):
+            fr.pairs = read_pairs(cv, lay)
+        anc = find_anchor_blend(frames, lay)
+        if anc is None:           # misjudged: try as a clean capture
+            for fr in frames:
+                fr.pairs = None
+            res["blended"] = blended = False
+    if anc is None:
+        anc = find_anchor(frames, lay)
     if anc is None:
         res.update(decoded=False, note="no frame solved to a state confirmed by the next frames")
         return res
@@ -699,6 +887,13 @@ def decode_screen(sc: Screen) -> dict:
         j -= 1
         if fr.dup:
             continue
+        if fr.pairs is not None:
+            st = digit_stream(rng.next_seed(s0, (pos - N) % M), 2 * N)
+            if _pair_hits(fr.pairs, st, 0, N) >= 0.6 * N:
+                pos -= N
+                first_idx = j + 1
+                continue
+            break
         obs = _rolling_obs(fr, k0, lay)
         st = digit_stream(rng.next_seed(s0, (pos - N) % M), N)
         bad = sum(1 for i, d in obs if st[i] != d)
@@ -779,22 +974,27 @@ def blue_fraction(bgr_small: np.ndarray) -> float:
 
 
 def iter_screens(video_path: str, blue_min: float = 0.25, idle_step: int = 3, gap: int = 20,
-                 max_len: int = 900, progress=None):
+                 max_len: int = 900, progress=None, start: int = 0, end: int | None = None):
     """Yield (first_frame, gray_frames list[(index, gray)]) for each blue run."""
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
         raise OSError(f"cannot open {video_path}")
     n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     i = 0
+    if start:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start)
+        i = start
     buf: list = []
     trailing = 0
-    while True:
+    while end is None or i < end:
         if not cap.grab():
             break
         active = bool(buf)
         if active or i % idle_step == 0:
             ok, f = cap.retrieve()
             if ok:
+                if f.shape[0] > 540:      # 720p+: the reader works at <= 480p scale
+                    f = cv2.resize(f, (640, 360), interpolation=cv2.INTER_AREA)
                 small = cv2.resize(f, (160, 90), interpolation=cv2.INTER_AREA)
                 if blue_fraction(small) >= blue_min:
                     trailing = 0
@@ -844,11 +1044,13 @@ def process_run(buf, cache: dict) -> Screen | None:
     return sc
 
 
-def read_results(video_path: str, progress=None, keep_frames: bool = True) -> list[dict]:
-    """Every results screen in the video, with the RNG states read from its score roll."""
+def read_results(video_path: str, progress=None, keep_frames: bool = True, start: int = 0,
+                 end: int | None = None) -> list[dict]:
+    """Every results screen in the video (or in frames [start, end)), with the RNG states read
+    from its score roll."""
     out = []
     cache: dict = {}
-    for buf in iter_screens(video_path, progress=progress):
+    for buf in iter_screens(video_path, progress=progress, start=start, end=end):
         sc = process_run(buf, cache)
         if sc is None:
             continue
