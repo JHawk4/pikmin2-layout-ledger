@@ -21,9 +21,9 @@ from . import dive_rgb as dr
 from . import rng
 
 
-def template(sp: dict, colour: str, sx: float, sy: float, blur: float = 0.6):
+def template(sp: dict, colour: str, sx: float, sy: float, blur: float = 0.6, parts=("body", "flower")):
     """(BGR image 0..255, alpha mask, ox, oy): the sprite and its top-left offset from the anchor."""
-    p, ox, oy = dr.colour_patch(sp, colour, sx, sy, blur)
+    p, ox, oy = dr.colour_patch(sp, colour, sx, sy, blur, parts=parts)
     a = p[..., 3]
     rgb = np.where(a[..., None] > 1e-3, p[..., :3] / np.maximum(a[..., None], 1e-3), 0)
     return rgb.astype(np.float32), a.astype(np.float32), ox, oy
@@ -31,12 +31,12 @@ def template(sp: dict, colour: str, sx: float, sy: float, blur: float = 0.6):
 
 class Detector:
     def __init__(self, sp: dict, colours, sx: float, sy: float, scales=(0.92, 1.0, 1.08), blur: float = 0.6,
-                 mask_thr: float = 0.5):
+                 mask_thr: float = 0.5, parts=("body", "flower")):
         self.t = {}
         for c in colours:
             self.t[c] = []
             for k in scales:
-                rgb, a, ox, oy = template(sp, c, sx * k, sy * k, blur)
+                rgb, a, ox, oy = template(sp, c, sx * k, sy * k, blur, parts)
                 m = (a > mask_thr).astype(np.float32)
                 self.t[c].append((rgb, m, ox, oy, k))
 
@@ -162,10 +162,10 @@ _DET = None
 class DetScorer:
     """Detection maps of one dive and a compiled scorer of states against them."""
 
-    def __init__(self, rd, counts, sp: dict, sx: float, sy: float, blur: float = 1.2):
+    def __init__(self, rd, counts, sp: dict, sx: float, sy: float, blur: float = 1.2, parts=("body", "flower")):
         self.rd, self.counts = rd, counts
         self.colours = [c for k, c in enumerate(cd.COLOURS) if counts[k]]
-        self.det = Detector(sp, self.colours, sx, sy)
+        self.det = Detector(sp, self.colours, sx, sy, parts=parts)
         self.frames = list(rd.frames)
         maps = [self.det.maps(rd.raw[f], rd.bg) for f in self.frames]
         self.O = np.stack([np.stack([cv2.GaussianBlur(np.maximum(m[c], 0), (0, 0), blur) for m in maps])

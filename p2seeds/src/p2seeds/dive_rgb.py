@@ -30,11 +30,12 @@ def load_sprites(path: str = SPRITES) -> dict:
     return {k: z[k] for k in z.files}
 
 
-def colour_patch(sp: dict, colour: str, sx: float, sy: float, blur: float = 0.0, sub: tuple = (0.0, 0.0)):
+def colour_patch(sp: dict, colour: str, sx: float, sy: float, blur: float = 0.0, sub: tuple = (0.0, 0.0),
+                 parts=("body", "flower")):
     """Premultiplied RGBA patch (float32, RGB in 0..255 BGR order) of one Pikmin of `colour` drawn at
     video scale (sx, sy) with its anchor at sub-pixel offset `sub`. Returns (patch, ox, oy): the patch's
     top-left pixel relative to the anchor's integer pixel."""
-    parts = [(sp[f"{colour}_body"], sp[f"{colour}_body_rect"]), (sp[f"{colour}_flower"], sp[f"{colour}_flower_rect"])]
+    parts = [(sp[f"{colour}_{k}"], sp[f"{colour}_{k}_rect"]) for k in parts]
     x0 = min(r[0] for _, r in parts) * sx + sub[0]
     y0 = min(r[1] for _, r in parts) * sy + sub[1]
     x1 = max(r[2] for _, r in parts) * sx + sub[0]

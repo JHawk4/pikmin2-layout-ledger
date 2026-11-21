@@ -31,6 +31,7 @@ def main():
     ap.add_argument("--top", type=int, default=150)
     ap.add_argument("--scan", nargs=3)
     ap.add_argument("--out")
+    ap.add_argument("--parts", default="flower", help="sprite parts to detect: body,flower | body | flower")
     a = ap.parse_args()
     t0 = time.time()
     r = json.load(open(a.result))
@@ -39,7 +40,7 @@ def main():
     g = dr.shifted_geometry(cd.geometry_from_vector(r["candidates"][0]["geometry"]), sp)
     span = int((0.1 * (max(counts) - 1) + 0.5 * 4) / cd.TIMER_SPEED + 45)
     rd = dr.RGBDive(a.video, int(g.f0) - 4, int(g.f0) + span, region, drop=r.get("dropped", []), sp=sp)
-    ds = dd.DetScorer(rd, counts, sp, g.sx, g.sy)
+    ds = dd.DetScorer(rd, counts, sp, g.sx, g.sy, parts=tuple(a.parts.split(",")))
     du, dv = ds.origin_correction(g)
     g = g.copy(origins={c: (u + du, v + dv) for c, (u, v) in g.origins.items()},
                goal=(g.goal[0] + du, g.goal[1] + dv), v100=g.v100 + dv)
