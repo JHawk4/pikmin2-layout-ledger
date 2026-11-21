@@ -582,8 +582,9 @@ def geometry_from_vector(th) -> Geometry:
 
 
 def fit_geometry(dv: DiveVideo, flat, g0: Geometry, frames, free_scale=True, origin_slack=12.0, f0_slack=8.0,
-                 fast: bool = False, anchor: Geometry | None = None):
-    """Fit geometry (and the dive's frame phase) for a known dive (flat params)."""
+                 fast: bool = False, anchor: Geometry | None = None, state: int | None = None, counts=None):
+    """Fit geometry (and the dive's frame phase) for a known dive (flat params). With `state` and
+    `counts` (and all of dv's frames) the objective is the compiled loss, about 4x faster."""
     from scipy.optimize import minimize
     th0 = geometry_vector(g0)
     a = anchor or g0                     # bounds around the registered geometry, so refits can't drift
@@ -599,7 +600,12 @@ def fit_geometry(dv: DiveVideo, flat, g0: Geometry, frames, free_scale=True, ori
     for df0 in starts:
         t = list(th0)
         t[2] = min(max(t[2] + df0, B[2][0]), B[2][1])
-        r = minimize(lambda th: image_loss(dv, flat, geometry_from_vector(th), frames), t, method="Powell",
+        if state is not None and counts is not None and list(frames) == sorted(dv.obs) and not ICON_MODEL:
+            obj = OneStateLoss(dv, counts, state, g0)
+            fun = lambda th: obj(geometry_from_vector(th))  # noqa: E731
+        else:
+            fun = lambda th: image_loss(dv, flat, geometry_from_vector(th), frames)  # noqa: E731
+        r = minimize(fun, t, method="Powell",
                      bounds=B, options=dict(maxiter=1500 if fast else 3000, xtol=0.05 if fast else 0.02,
                                             ftol=1e-5 if fast else 1e-6))
         if best is None or r.fun < best.fun:
@@ -947,7 +953,8 @@ def window_states(end_state: int, span: int, skip: int = 0) -> np.ndarray:
 def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geometry | None = None,
               keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print,
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
-              final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0)):
+              final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0),
+              f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
@@ -1051,13 +1058,13 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     frames = sorted(dv.obs)
     flats = {}
 
-    def prune(geom):
+    def prune(geom, offs):
         sc2 = rescore(dv, counts, geom, st)
         o = np.argsort(-sc2)[:mid]
         st2 = st[o]
         # the dive start (f0) is known to a frame or two; a look-alike at the wrong phase can beat the
         # truth at a fixed f0, so take each state's best over a few start offsets
-        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2) for d in f0_offsets], axis=0)
+        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2) for d in offs], axis=0)
         o2 = np.argsort(bl)
         st3 = st2[o2[:20_000]]
         for x in probe_set:
@@ -1069,42 +1076,58 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         # the coarse loss (half resolution, every other frame) is noisy for dense dives: re-rank its
         # best at full resolution on every frame before the exact loss
         return st3
-        return pool
 
-    def rank(geom, pool):
-        # full-resolution compiled loss on the whole pool, exact loss on its best few hundred
-        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), pool, frame_step=1, ds=1)
-                     for d in f0_offsets], axis=0)
-        best = pool[np.argsort(bl)[:final_exact]]
-        for s in best:
-            if int(s) not in flats:
-                flats[int(s)] = flatten(dive_params(int(s), counts))
-        r = [(image_loss(dv, flats[int(s)], geom, frames), int(s)) for s in best]
-        r.sort()
-        return r
+    def rank(geom, pool, offs):
+        # exact loss (compiled, full resolution, every frame) on the pool's best by coarse loss, each
+        # at its best start offset
+        cand = pool[:rank_pool]
+        bl = fast_loss(dv, counts, geom, cand, f0_offsets=offs)
+        o = np.argsort(bl)[:final_exact]
+        # ordered by the best offset's loss: the refits that follow fit f0, so a state that only lines up
+        # at a shifted start must not be ranked by the unshifted loss
+        for x in cand[o]:
+            if int(x) not in flats:
+                flats[int(x)] = flatten(dive_params(int(x), counts))
+        return [(float(bl[k]), int(cand[k])) for k in o]
+
+    def merge(a, b):
+        # union keeping order (each pool is sorted by coarse loss; the newer one first)
+        both = np.concatenate([b, a])
+        _, first_at = np.unique(both & np.uint64(0x7FFFFFFF), return_index=True)
+        return both[np.sort(first_at)]
+
+    def fit(x, geom, fast):
+        if x not in flats:
+            flats[x] = flatten(dive_params(x, counts))
+        return fit_geometry(dv, flats[x], geom, frames, fast=fast, anchor=g, state=x, counts=counts)
+
+    from concurrent.futures import ThreadPoolExecutor
+    _inputs(dv, 1, 1)                           # build the shared kernel inputs before any threads
+    pool_ex = ThreadPoolExecutor(max_workers=max(1, threads))
 
     probe_set = [int(x) & 0xFFFFFFFF for x in probe]
-    pool = prune(g)
+    pool = prune(g, f0_offsets)
     log(f"  pruned {len(st)} -> {len(pool)} ({time.time() - t0:.0f}s)")
     probe = [int(x) & 0xFFFFFFFF for x in probe]
     probe_stage1 = {x: bool(np.isin(np.array([x, x ^ 0x80000000], st.dtype), st).any()) for x in probe}
     probe_pool = {x: bool(np.isin(np.array([x, x ^ 0x80000000], pool.dtype), pool).any()) for x in probe}
-    res = rank(g, pool)
+    res = rank(g, pool, f0_offsets)
+    log(f"  ranked: leader 0x{res[0][1]:08X} {res[0][0]:.1f}, next {res[1][0]:.1f} ({time.time() - t0:.0f}s)")
     # alternate: refit the geometry on the leader, prune and re-rank with it (a look-alike's geometry is
     # nearly right, so this converges on the true state, which lines up exactly)
     geo = g
     for it in range(iterations):
         lead = res[0][1]
-        geo, _ = fit_geometry(dv, flats[lead], geo, frames, fast=False, anchor=g)
+        geo, _ = fit(lead, geo, False)
         if window is not None:                 # pruning the window again is cheap
-            pool = np.unique(np.concatenate([pool, prune(geo)]))
-        res = rank(geo, pool)
+            pool = merge(pool, prune(geo, f0_offsets_refit))
+        res = rank(geo, pool, f0_offsets_refit)
         log(f"  iteration {it + 1}: leader 0x{res[0][1]:08X} {res[0][0]:.1f}, next {res[1][0]:.1f} ({time.time() - t0:.0f}s)")
         if (res[1][0] - res[0][0]) / res[0][0] > 0.1:
             break                               # a clear leader: the geometry has converged
     refined = []
-    for l, s in res[:refit]:
-        g3, l3 = fit_geometry(dv, flats[s], geo, frames, fast=True, anchor=g)
+    fits = list(pool_ex.map(lambda ls: fit(ls[1], geo, True), res[:refit]))
+    for (l, s), (g3, l3) in zip(res[:refit], fits):
         refined.append((min(l, l3), s, (g3 if l3 < l else geo).f0, l, geometry_vector(g3 if l3 < l else geo)))
     refined.sort()
     # a whole-dive shift by 4 draws hands every Pikmin its neighbour's values: nearly the same
@@ -1113,13 +1136,11 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     best_l = refined[0][0]
     for _ in range(4):                      # walk to the best shift (a shift can fit better)
         shifts = []
-        for k in (-8, -4, 4, 8):
-            s2 = rng.next_seed(best_s, k) & 0xFFFFFFFF
-            if s2 not in flats:
-                flats[s2] = flatten(dive_params(s2, counts))
-            g4, l4 = fit_geometry(dv, flats[s2], geo, frames, fast=True, anchor=g)
-            shifts.append(dict(shift=k, state=s2, loss=min(l4, image_loss(dv, flats[s2], geo, frames)), f0=g4.f0,
-                               geometry=geometry_vector(g4)))
+        ss = [rng.next_seed(best_s, k) & 0xFFFFFFFF for k in (-8, -4, 4, 8)]
+        fx = list(pool_ex.map(lambda x: fit(x, geo, True), ss))
+        plain = fast_loss(dv, counts, geo, ss)
+        for k, s2, (g4, l4), l0 in zip((-8, -4, 4, 8), ss, fx, plain):
+            shifts.append(dict(shift=k, state=s2, loss=min(l4, float(l0)), f0=g4.f0, geometry=geometry_vector(g4)))
         better = min(shifts, key=lambda x: x["loss"])
         if better["loss"] >= best_l:
             break
@@ -1131,14 +1152,14 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     log(f"  shifts: {[(x['shift'], round(x['loss'], 1)) for x in shifts]} (margin {shift_margin:+.3f})")
     probes = []
     for x in probe:
-        fx = flatten(dive_params(x, counts))
-        gx, lx = fit_geometry(dv, fx, geo, frames, fast=True, anchor=g)
-        lx = min(lx, image_loss(dv, fx, geo, frames))
+        gx, lx = fit(x, geo, True)
+        lx = min(lx, float(fast_loss(dv, counts, geo, [x])[0]))
         log(f"  probe 0x{x:08X}: refit f0 {gx.f0:.2f} vs {geo.f0:.2f}, sx {gx.sx:.3f}/{geo.sx:.3f}, sy {gx.sy:.3f}/{geo.sy:.3f}")
         probes.append(dict(state=x, loss=lx, in_stage1=probe_stage1[x], in_pool=probe_pool[x],
                            rel=(lx - refined[0][0]) / refined[0][0]))
         log(f"  probe 0x{x:08X}: loss {lx:.1f} ({probes[-1]['rel']:+.3f} vs best), stage-1 {probe_stage1[x]}, "
             f"pool {probe_pool[x]}")
+    pool_ex.shutdown()
     log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, *_ in refined[:3]]}")
     return dict(ok=True, ch=ch, counts=counts, reg=reg, onset=onset, f0=g.f0, region=region,
                 top=[dict(state=s, loss=l) for l, s in res[:save_top]], dropped=dv.dropped,
@@ -1314,6 +1335,246 @@ def batch_image_loss(dv: DiveVideo, counts, g: Geometry, states, frame_step: int
            np.float32(ds), out, np.array([c for c, i in pk], np.int64),
            np.array([g.origins[c] for c in COLOURS], np.float32), ICON_MODEL)
     return out
+
+
+# ---------------------------------------------------------------- compiled exact loss (sparse, sub-pixel)
+
+def _sparse_kernel():
+    import numba as nb
+
+    @nb.njit(fastmath=True, cache=True, nogil=True)
+    def one(s, A, C, base, idx, u0, v0, sx, sy, v100, gu, gv, f0, frames, O, O2, bank, sub, tcx, tcy,
+            x0, y0, ds, img, touched, U, V):
+        P = A.shape[0]
+        F = frames.shape[0]
+        H, W = O.shape[1], O.shape[2]
+        th, tw = bank.shape[2], bank.shape[3]
+        nmax = int(frames[F - 1] - f0) + 2
+        for q in range(F):
+            for p in range(P):
+                U[q, p] = np.nan
+        for p in range(P):
+            r = np.empty(4, np.float32)
+            for d in range(4):
+                st = (A[p, d] * s + C[p, d]) & np.uint64(0xFFFFFFFF)
+                r[d] = np.float32((st >> np.uint64(16)) & np.uint64(0x7FFF)) / np.float32(32768.0)
+            t = 0.1 * r[0] + base[p]
+            dx = 30.0 * r[1]
+            if r[2] > 0.5:
+                dx = -dx
+            dy = 15.0 + 10.0 * r[3]
+            calc = 0.0
+            if idx[p] % 3 == 0:
+                calc = -8.0 * sx
+            elif idx[p] % 3 == 1:
+                calc = 8.0 * sx
+            state = 0
+            u = u0[p]
+            v = v0[p]
+            ui = 0.0
+            vi = 0.0
+            q = 0
+            while q < F and np.floor(frames[q] - f0) < 1:      # before the first update: at the origin
+                U[q, p] = u0[p]
+                V[q, p] = v0[p]
+                q += 1
+            for n in range(1, nmax + 1):
+                if q >= F:
+                    break
+                t += 0.15
+                st0 = state
+                if st0 == 0:
+                    if t >= 0:
+                        u = u0[p] - sx * dx * np.sin(t)
+                        v = v0[p] - sy * abs(np.sin(2.0 * t) * dy)
+                        if t > 1.5707963267948966:
+                            state = 3
+                elif st0 == 3:
+                    if v > v100:
+                        v -= 12.0 * sy
+                    else:
+                        state = 4
+                        ui = u
+                        vi = v
+                        t = 0.0
+                elif st0 == 4:
+                    if t > 3.141592653589793:
+                        state = 5
+                        t = 3.141592653589793
+                    u = ui + t * (gu - ui + calc) / 3.141592653589793
+                    v = vi - 70.0 * sy * np.sin(t)
+                elif st0 == 5:
+                    if v < gv - 40.0 * sy:
+                        v += 12.0 * sy
+                    else:
+                        state = 6
+                while q < F and int(np.floor(frames[q] - f0)) <= n:
+                    if int(np.floor(frames[q] - f0)) == n and state != 6:
+                        U[q, p] = u
+                        V[q, p] = v
+                    q += 1
+        err = 0.0
+        for q in range(F):
+            m = 0
+            for p in range(P):
+                uu = U[q, p]
+                if uu != uu:
+                    continue
+                x = (uu - x0) / ds - tcx
+                y = (V[q, p] - y0) / ds - tcy
+                ix = int(np.floor(x))
+                iy = int(np.floor(y))
+                a = min(sub - 1, int((x - ix) * sub))
+                b = min(sub - 1, int((y - iy) * sub))
+                for yy in range(th):
+                    yv = iy + yy
+                    if yv < 0 or yv >= H:
+                        continue
+                    for xx in range(tw):
+                        xv = ix + xx
+                        if xv < 0 or xv >= W:
+                            continue
+                        val = bank[a, b, yy, xx]
+                        cur = img[yv, xv]
+                        if val > cur:
+                            if cur == 0.0:
+                                touched[m] = yv * W + xv
+                                m += 1
+                            img[yv, xv] = val
+            # sum over the frame of (img - O)^2 = sum O^2 + sum over drawn pixels of (img^2 - 2 img O)
+            e = O2[q]
+            for k in range(m):
+                yv = touched[k] // W
+                xv = touched[k] % W
+                rv = img[yv, xv]
+                e += rv * rv - 2.0 * rv * O[q, yv, xv]
+                img[yv, xv] = 0.0
+            err += e
+        return err
+
+    @nb.njit(parallel=True, fastmath=True, cache=True)
+    def many(states, A, C, base, idx, u0, v0, sx, sy, v100, gu, gv, f0s, frames, O, O2, bank, sub, tcx, tcy,
+             x0, y0, ds, out):
+        P = A.shape[0]
+        F = frames.shape[0]
+        H, W = O.shape[1], O.shape[2]
+        cap = P * bank.shape[2] * bank.shape[3] + 1
+        for k in nb.prange(states.shape[0]):
+            img = np.zeros((H, W), np.float32)
+            touched = np.empty(cap, np.int64)
+            U = np.empty((F, P), np.float32)
+            V = np.empty((F, P), np.float32)
+            best = np.inf
+            for j in range(f0s.shape[0]):
+                e = one(states[k], A, C, base, idx, u0, v0, sx, sy, v100, gu, gv, f0s[j], frames, O, O2, bank,
+                        sub, tcx, tcy, x0, y0, ds, img, touched, U, V)
+                if e < best:
+                    best = e
+            out[k] = best
+
+    return one, many
+
+
+_SPARSE = None
+
+
+class _ScoreInputs:
+    """Per (dive video, resolution) arrays for the sparse kernel, cached on the DiveVideo."""
+
+    def __init__(self, dv: DiveVideo, frame_step: int, ds: int):
+        rd = dv.renderer
+        self.frames = np.array(sorted(dv.obs)[::frame_step], np.float64)
+
+        def shrink(im):
+            return im if ds == 1 else cv2.resize(im, None, fx=1 / ds, fy=1 / ds, interpolation=cv2.INTER_AREA)
+
+        self.O = np.ascontiguousarray(np.stack([shrink(dv.obs[int(f)]) for f in self.frames]), np.float32)
+        # bank[a, b]: the sprite shifted by (a/sub, b/sub) px, as Renderer.render indexes it
+        self.bank = np.ascontiguousarray(
+            np.stack([np.stack([shrink(rd.bank[a, b]) for b in range(rd.sub)]) for a in range(rd.sub)]), np.float32)
+        self.O2 = (self.O.astype(np.float64) ** 2).sum(axis=(1, 2))
+        self.sub = rd.sub
+        self.tcx, self.tcy = rd.cx / ds, rd.cy / ds
+        self.ds = ds
+        self.x0, self.y0 = dv.region[0], dv.region[1]
+
+
+def _inputs(dv: DiveVideo, frame_step: int, ds: int) -> _ScoreInputs:
+    cache = dv.__dict__.setdefault("_score_inputs", {})
+    if (frame_step, ds) not in cache:
+        cache[frame_step, ds] = _ScoreInputs(dv, frame_step, ds)
+    return cache[frame_step, ds]
+
+
+def _pikmin_arrays(counts, g: Geometry):
+    pk = [(c, i) for c in range(5) for i in range(min(counts[c], 50))]
+    P = len(pk)
+    A = np.zeros((P, 4), np.uint64)
+    C = np.zeros((P, 4), np.uint64)
+    base = np.zeros(P, np.float32)
+    idx = np.zeros(P, np.int64)
+    u0 = np.zeros(P, np.float32)
+    v0 = np.zeros(P, np.float32)
+    for p, (c, i) in enumerate(pk):
+        for d in range(4):
+            a, cc = rng.jump(200 * c + 4 * i + d)
+            A[p, d], C[p, d] = a % (1 << 32), cc % (1 << 32)
+        base[p] = -(0.1 * i + 0.5 * c)
+        idx[p] = i
+        u0[p], v0[p] = g.origins[COLOURS[c]]
+    return A, C, base, idx, u0, v0
+
+
+def fast_loss(dv: DiveVideo, counts, g: Geometry, states, frame_step: int = 1, ds: int = 1, f0_offsets=(0.0,)):
+    """Compiled image loss of many dive first states, each its best over the f0 offsets. At
+    frame_step=1, ds=1 it equals image_loss (sub-pixel sprites, every frame). Only the pixels a sprite
+    covers are visited; the rest of each frame contributes its precomputed sum of O^2."""
+    global _SPARSE
+    if ICON_MODEL:
+        raise NotImplementedError("fast_loss implements the median-background model only")
+    if _SPARSE is None:
+        _SPARSE = _sparse_kernel()
+    si = _inputs(dv, frame_step, ds)
+    A, C, base, idx, u0, v0 = _pikmin_arrays(counts, g)
+    states = np.ascontiguousarray(np.atleast_1d(np.asarray(states, np.uint64)))
+    out = np.empty(len(states), np.float64)
+    f0s = np.array([g.f0 + d for d in f0_offsets], np.float64)
+    _SPARSE[1](states, A, C, base, idx, u0, v0, np.float32(g.sx), np.float32(g.sy), np.float32(g.v100),
+               np.float32(g.goal[0]), np.float32(g.goal[1]), f0s, si.frames, si.O, si.O2, si.bank, si.sub,
+               np.float32(si.tcx), np.float32(si.tcy), np.float32(si.x0), np.float32(si.y0), np.float32(si.ds), out)
+    return out
+
+
+class OneStateLoss:
+    """fast_loss of one state as a function of the geometry, for the optimiser (no thread start-up,
+    scratch buffers reused)."""
+
+    def __init__(self, dv: DiveVideo, counts, state: int, g: Geometry, frame_step: int = 1, ds: int = 1):
+        global _SPARSE
+        if _SPARSE is None:
+            _SPARSE = _sparse_kernel()
+        self.si = si = _inputs(dv, frame_step, ds)
+        self.A, self.C, self.base, self.idx, _, _ = _pikmin_arrays(counts, g)
+        self.pk = [(c, i) for c in range(5) for i in range(min(counts[c], 50))]
+        self.col = np.array([c for c, i in self.pk], np.int64)
+        self.state = np.uint64(int(state) & 0xFFFFFFFF)
+        P = len(self.pk)
+        H, W = si.O.shape[1], si.O.shape[2]
+        self.img = np.zeros((H, W), np.float32)
+        self.touched = np.empty(P * si.bank.shape[2] * si.bank.shape[3] + 1, np.int64)
+        self.U = np.empty((len(si.frames), P), np.float32)
+        self.V = np.empty((len(si.frames), P), np.float32)
+
+    def __call__(self, g: Geometry) -> float:
+        si = self.si
+        org = np.array([g.origins[c] for c in COLOURS], np.float32)
+        u0 = np.ascontiguousarray(org[self.col, 0])
+        v0 = np.ascontiguousarray(org[self.col, 1])
+        return float(_SPARSE[0](self.state, self.A, self.C, self.base, self.idx, u0, v0, np.float32(g.sx),
+                                np.float32(g.sy), np.float32(g.v100), np.float32(g.goal[0]), np.float32(g.goal[1]),
+                                np.float64(g.f0), si.frames, si.O, si.O2, si.bank, si.sub, np.float32(si.tcx),
+                                np.float32(si.tcy), np.float32(si.x0), np.float32(si.y0), np.float32(si.ds),
+                                self.img, self.touched, self.U, self.V))
 
 
 def stage_draw_rates():
