@@ -722,7 +722,7 @@ the surface count toward no sublevel).</p></details>
 
 
 def _missing_note(manifest: Path = Path("data/videos/manifest.json")) -> str:
-    """Runs on the leaderboard whose video could not be downloaded (gaps in the Rank column)."""
+    """Pay Off Debt runs on the leaderboard whose video could not be downloaded (gaps in the Rank column)."""
     try:
         m = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -1022,7 +1022,7 @@ Click a column to sort; open a runner for their layouts.</li>
 <th class="num" data-sort title="Sublevels whose seed was read with confidence">Seeds read</th>
 <th data-sort>Date</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
-{_missing_note()}
+{_missing_note() if category == "pod" else ""}
 {add_run_note(category)}
 <script>
 (() => {{
