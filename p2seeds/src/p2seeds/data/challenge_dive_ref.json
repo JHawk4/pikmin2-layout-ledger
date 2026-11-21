@@ -1,0 +1,47 @@
+{
+ "video": "cmal04_tcbtrio_wiiu_usa (Wii U VC NTSC-U, 640x360)",
+ "frame": 11792,
+ "R0": [
+  20,
+  0,
+  600,
+  300
+ ],
+ "sx": 0.84,
+ "sy": 0.62,
+ "v100": 82.79,
+ "origins": {
+  "red": [
+   340.34,
+   98.52
+  ],
+  "yellow": [
+   457.61,
+   97.36
+  ],
+  "blue": [
+   363.7,
+   119.71
+  ],
+  "white": [
+   472.39,
+   121.4
+  ],
+  "purple": [
+   341.78,
+   139.19
+  ]
+ },
+ "grid": {
+  "x0": 101.3,
+  "dx": 44.9,
+  "y0": 91.5,
+  "dy": 31.3,
+  "cols": 5
+ },
+ "goal_offset": [
+  6.650000000000006,
+  44.22
+ ],
+ "calibrated_on": "CH16 Snack Pit dive, frames 11815-11880, dive first state = 0x67CCFF49 + 834"
+}

@@ -226,13 +226,15 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
     #    shows the game unevenly repeats frames the game ran through; then the video's own
     #    clock is right.
     first_failure = None
-    #  - blended: each frame a 50/50 blend of two game frames, so falling letters show twice
+    #  - blended: each frame a 50/50 blend of two game frames, so falling letters show twice;
+    #    "pair" matches the two copies together, for when they overlap (track_letter_pair)
     #  - first: the letter's fall taken as its first falling stretch instead of the one that drops
     #    furthest (fit.free_fall); each works better on some captures
     for weak, wall_clock, blended, first in (
             (False, False, False, False), (False, False, False, True), (False, True, False, False),
             (False, True, False, True), (True, False, False, False), (True, True, False, False),
-            (True, False, True, False), (True, True, True, False)):
+            (True, False, True, False), (True, True, True, False),
+            (True, False, "pair", False), (True, True, "pair", False)):
         if r.confidence == "high":
             break
         fall, times = game_times(clip, wall=wall_clock)
@@ -252,7 +254,8 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
             continue
         how = ", ".join(x for x in ("weaker letter matches allowed" if weak else "",
                                      "timed by the video clock" if wall_clock else "",
-                                     "blended frames (letters doubled)" if blended else "",
+                                     ("blended frames (overlapping doubled letters)" if blended == "pair"
+                                      else "blended frames (letters doubled)" if blended else ""),
                                      "first falling stretch" if first else "") if x)
         cands, conf = _search(f, search_kw)
         if r.fit is None or _RANK[conf] > _RANK[r.confidence]:

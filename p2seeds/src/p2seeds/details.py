@@ -32,7 +32,8 @@ dominate) after removing a shared speed offset. Lower is better; about 1 per let
 <li><b>Next</b>: the same score for the second-best seed. A big gap between the two means nothing else comes close.</li>
 <li><b>Confidence</b>: <i>high</i> needs 10+ letters, under 4 per letter and a gap of 30+; <i>medium</i> needs 7+,
 under 6 and a gap of 15+. A seed can also be confirmed by its neighbours: consecutive sublevels' seeds sit a few
-hundred thousand steps apart in the generator, which almost never happens by chance.</li>
+hundred thousand steps apart in the generator, which almost never happens by chance. A <i>medium</i> seed that sits
+in order between its high neighbours (within 2 million steps of each) is counted in the totals too.</li>
 </ul>
 <p><b>Letter seed</b> is the random number generator's state when the title's letters start falling; the <b>layout
 seed</b> is its state when the floor was generated, a fixed number of steps earlier, and is what CaveGen needs.</p>
@@ -222,7 +223,13 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
                   if unsure else "") + ".")
     filt = ('<label class="filter"><input type="checkbox" id="only-unsure"> Show only the uncertain sublevels</label>'
             if unsure else "")
-    page = PAGE.format(title=title, summary=e(summary), help=SCORE_HELP, cards=filt + "".join(cards))
+    # every sublevel at a glance, coloured by confidence; each chip jumps to its card
+    chips = "".join(f'<a class="chip {e(r["confidence"])}" href="#{e(r["cave"])}-{r["sublevel"] or 0}" '
+                    f'title="{e(r["confidence"])} confidence">{e(r["cave"])} {r["sublevel"] or "?"}</a>' for r in entries)
+    strip = (f'<nav class="chips" aria-label="Sublevels">{chips}</nav>'
+             '<p class="muted small legend-chips"><span class="chip high">high</span> read with confidence '
+             '<span class="chip medium">medium</span> <span class="chip low">low</span> uncertain: left out of every total (a medium seed in order with its neighbours is counted)</p>')
+    page = PAGE.format(title=title, summary=e(summary), help=SCORE_HELP, cards=strip + filt + "".join(cards))
     from . import theme
     page = theme.apply(page, prefix="../", run=out_dir.name, active="detection")
     path = out_dir / "report.html"
@@ -249,13 +256,19 @@ h1 {{ font-size:22px; margin:0 0 4px; }} .meta {{ color:var(--muted); margin-bot
 .high .conf {{ color:var(--hi); }} .medium .conf {{ color:var(--mid); }} .low .conf, .none .conf {{ color:var(--lo); }}
 dl {{ display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:10px 0; }} dt {{ color:var(--muted); }} dd {{ margin:0; }}
 .imgs {{ display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; }}
-figure {{ margin:0; }} figure img {{ display:block; max-width:100%; height:auto; max-height:320px; border-radius:4px; border:1px solid var(--line); }}
-figure.wide {{ flex-basis:100%; }} figure.wide img {{ max-height:none; width:100%; }}
+figure {{ margin:0; }} figure img {{ display:block; width:auto; max-width:100%; height:auto; max-height:320px; object-fit:contain; border-radius:4px; border:1px solid var(--line); }}
+figure.wide {{ flex-basis:100%; }} figure.wide img {{ max-height:none; width:100%; height:auto; }}
 figcaption {{ color:var(--muted); font-size:12px; margin-top:3px; max-width:480px; }}
 .why {{ margin:6px 0 0; }} .card {{ scroll-margin-top:12px; }}
 .filter {{ display:flex; gap:6px; align-items:center; font-size:14px; margin:0 0 12px; }}
 body.only-unsure .card.high {{ display:none; }}
 code {{ font-size:14px; }} a {{ color:inherit; }}
+.chips {{ display:flex; flex-wrap:wrap; gap:4px; margin:0 0 6px; }}
+.chip {{ font-size:12px; font-weight:600; text-decoration:none; padding:1px 7px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); white-space:nowrap; }}
+.chip.high {{ border-color:var(--hi); color:var(--hi); }} .chip.medium {{ border-color:var(--mid); color:var(--mid); border-style:dashed; }}
+.chip.low, .chip.none {{ border-color:var(--lo); color:var(--lo); border-style:dashed; background:transparent; }}
+.legend-chips {{ font-size:12px; color:var(--muted); margin:0 0 14px; }} .legend-chips .chip {{ margin-left:6px; }}
 </style></head><body><main>
 <h1>{title}</h1>
 <div class="meta">{summary}</div>
