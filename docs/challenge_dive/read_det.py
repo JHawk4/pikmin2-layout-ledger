@@ -56,13 +56,15 @@ def read(video, r, parts=("flower",), top_n=150, truth=None, passes=None, log=pr
         gk, v = ds.fit(g, int(st[k]))
         fits.append((v, int(k), gk))
     fits.sort(key=lambda x: -x[0])
-    # second round: refit the best 10 from the best geometry too, keep the better of the two
+    # second round: refit the best 20 from the best geometry too, keep the better of the two. Only
+    # these are ranked against each other (a second start adds ~5% to a score, so states without it
+    # are not comparable); the rest follow below.
     gb = fits[0][2]
     again = []
-    for v, k, gk in fits[:10]:
+    for v, k, gk in fits[:20]:
         g2, v2 = ds.fit(gb, int(st[k]))
         again.append((v2, k, g2) if v2 > v else (v, k, gk))
-    fits = sorted(again + fits[10:], key=lambda x: -x[0])
+    fits = sorted(again, key=lambda x: -x[0]) + fits[20:]
     rows = []
     for v, k, gk in fits[:15]:
         s = int(st[k])
