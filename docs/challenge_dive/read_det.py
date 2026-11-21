@@ -23,46 +23,32 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "p2seeds"
 from p2seeds import challenge_dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("video")
-    ap.add_argument("result")
-    ap.add_argument("--truth")
-    ap.add_argument("--top", type=int, default=150)
-    ap.add_argument("--scan", nargs=3)
-    ap.add_argument("--out")
-    ap.add_argument("--parts", default="flower", help="sprite parts to detect: body,flower | body | flower")
-    a = ap.parse_args()
+def read(video, r, parts=("flower",), top_n=150, truth=None, passes=None, log=print):
+    """Detection read of one dive. r: a read_dive result (or setup_only result) for the visit."""
     t0 = time.time()
-    r = json.load(open(a.result))
     counts, region = r["counts"], tuple(r["region"])
     sp = dr.load_sprites()
     g = dr.shifted_geometry(cd.geometry_from_vector(r["candidates"][0]["geometry"]), sp)
     span = int((0.1 * (max(counts) - 1) + 0.5 * 4) / cd.TIMER_SPEED + 45)
-    rd = dr.RGBDive(a.video, int(g.f0) - 4, int(g.f0) + span, region, drop=r.get("dropped", []), sp=sp)
-    ds = dd.DetScorer(rd, counts, sp, g.sx, g.sy, parts=tuple(a.parts.split(",")))
+    rd = dr.RGBDive(video, int(g.f0) - 4, int(g.f0) + span, region, drop=r.get("dropped", []), sp=sp)
+    ds = dd.DetScorer(rd, counts, sp, g.sx, g.sy, parts=tuple(parts))
     du, dv = ds.origin_correction(g)
     g = g.copy(origins={c: (u + du, v + dv) for c, (u, v) in g.origins.items()},
                goal=(g.goal[0] + du, g.goal[1] + dv), v100=g.v100 + dv)
-    print(f"maps {time.time() - t0:.0f}s, {len(rd.frames)} frames, origin correction ({du:.1f}, {dv:.1f})", flush=True)
+    log(f"maps {time.time() - t0:.0f}s, {len(rd.frames)} frames, origin correction ({du:.1f}, {dv:.1f})")
     end, n = r["window"]
     st = cd.window_states(end, n)
     sc = ds.score(g, st)
     med = float(np.median(sc))
-    top = np.argsort(-sc)[:a.top]
-    print(f"window {n} scored ({time.time() - t0:.0f}s); best {sc[top[0]]:.1f}, median {med:.1f}", flush=True)
-    passes = None
-    if a.scan:
-        col, dist = int(a.scan[1]), float(a.scan[2])
-        arr = np.fromfile(a.scan[0], np.float32).reshape(-1, 2)[:n, col]
-        passes = np.abs(arr - dist) < 0.5
+    top = np.argsort(-sc)[:top_n]
+    log(f"window {n} scored ({time.time() - t0:.0f}s); best {sc[top[0]]:.1f}, median {med:.1f}")
     truth_k = None
-    if a.truth:
-        tv = int(a.truth, 16) & 0x7FFFFFFF
+    if truth is not None:
+        tv = truth & 0x7FFFFFFF
         hit = np.nonzero((st & np.uint64(0x7FFFFFFF)) == np.uint64(tv))[0]
         truth_k = int(hit[0]) if len(hit) else None
         if truth_k is not None:
-            print(f"truth at window k={truth_k}: first-pass score {sc[truth_k]:.1f}, rank {(sc > sc[truth_k]).sum()}", flush=True)
+            log(f"truth at window k={truth_k}: first-pass score {sc[truth_k]:.1f}, rank {(sc > sc[truth_k]).sum()}")
             if truth_k not in top:
                 top = np.concatenate([top, [truth_k]])
     fits = []
@@ -77,18 +63,41 @@ def main():
         g2, v2 = ds.fit(gb, int(st[k]))
         again.append((v2, k, g2) if v2 > v else (v, k, gk))
     fits = sorted(again + fits[10:], key=lambda x: -x[0])
-    best = fits[0][0]
     rows = []
     for v, k, gk in fits[:15]:
         s = int(st[k])
         tag = (" TRUTH" if k == truth_k else "") + ("" if passes is None else (" coin" if passes[k] else " -"))
-        rows.append(dict(state=s, layout=cd.layout_seed(s) & 0x7FFFFFFF, k=k, score=v, coin=None if passes is None else bool(passes[k])))
-        print(f"  {s:08X} layout {cd.layout_seed(s) & 0x7FFFFFFF:08X} k {k} score {v:.1f}{tag}", flush=True)
+        rows.append(dict(state=s, layout=cd.layout_seed(s) & 0x7FFFFFFF, k=k, score=v,
+                         coin=None if passes is None else bool(passes[k])))
+        log(f"  {s:08X} layout {cd.layout_seed(s) & 0x7FFFFFFF:08X} k {k} score {v:.1f}{tag}")
     margin = (fits[0][0] - fits[1][0]) / max(1e-6, fits[0][0] - med)
-    print(f"margin {margin:.3f}  ({time.time() - t0:.0f}s)", flush=True)
+    truth_rank = next((j for j, f in enumerate(fits) if f[1] == truth_k), None)
+    log(f"margin {margin:.3f}  ({time.time() - t0:.0f}s)")
+    return dict(rows=rows, margin=margin, median=med, geometry=cd.geometry_vector(fits[0][2]),
+                truth_k=truth_k, truth_rank=truth_rank, first_pass_rank=None if truth_k is None else int((sc > sc[truth_k]).sum()),
+                seconds=time.time() - t0)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("video")
+    ap.add_argument("result")
+    ap.add_argument("--truth")
+    ap.add_argument("--top", type=int, default=150)
+    ap.add_argument("--scan", nargs=3)
+    ap.add_argument("--out")
+    ap.add_argument("--parts", default="flower", help="sprite parts to detect: body,flower | body | flower")
+    a = ap.parse_args()
+    r = json.load(open(a.result))
+    passes = None
+    if a.scan:
+        col, dist = int(a.scan[1]), float(a.scan[2])
+        arr = np.fromfile(a.scan[0], np.float32).reshape(-1, 2)[:r["window"][1], col]
+        passes = np.abs(arr - dist) < 0.5
+    out = read(a.video, r, a.parts.split(","), a.top, int(a.truth, 16) if a.truth else None, passes,
+               log=lambda s: print(s, flush=True))
     if a.out:
-        json.dump(dict(rows=rows, margin=margin, median=med, geometry=cd.geometry_vector(fits[0][2])),
-                  open(a.out, "w"), indent=1, default=float)
+        json.dump(out, open(a.out, "w"), indent=1, default=float)
 
 
 if __name__ == "__main__":

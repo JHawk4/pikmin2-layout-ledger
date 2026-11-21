@@ -80,10 +80,10 @@ def peaks(resp: np.ndarray, thr: float = 0.35, radius: int = 4, max_n: int = 60)
 
 # ---------------------------------------------------------------- scoring states against detections
 
-def _det_kernel():
+def _det_kernel(parallel: bool = True):
     import numba as nb
 
-    @nb.njit(parallel=True, fastmath=True, cache=True)
+    @nb.njit(parallel=parallel, fastmath=True, cache=True)
     def score(states, A, C, base, csl, idx3, u0, v0, sx, sy, v100, gu, gv, nslot, O, out):
         # A, C: (P, 4) jumps to each Pikmin's 4 draws; base: -(0.1 i + 0.5 c); csl: colour slot in O;
         # idx3: i % 3; u0, v0: anchor start in map px; nslot[n]: frame slot after n updates (-1 none),
@@ -156,7 +156,7 @@ def _det_kernel():
     return score
 
 
-_DET = None
+_DET = {}
 
 
 class DetScorer:
@@ -176,22 +176,25 @@ class DetScorer:
         order = [(c, i) for c in range(5) for i in range(min(self.counts[c], 50))]
         pk = order if pikmin is None else pikmin
         P = len(pk)
-        A = np.zeros((P, 4), np.uint64)
-        C = np.zeros((P, 4), np.uint64)
-        base = np.zeros(P, np.float32)
-        csl = np.zeros(P, np.int64)
-        idx3 = np.zeros(P, np.int64)
-        u0 = np.zeros(P, np.float32)
-        v0 = np.zeros(P, np.float32)
+        key = tuple(pk)
+        if getattr(self, "_fixed_key", None) != key:    # RNG jumps etc. do not depend on the geometry
+            A = np.zeros((P, 4), np.uint64)
+            C = np.zeros((P, 4), np.uint64)
+            base = np.zeros(P, np.float32)
+            csl = np.zeros(P, np.int64)
+            idx3 = np.zeros(P, np.int64)
+            for p, (c, i) in enumerate(pk):
+                for d in range(4):
+                    a, cc = rng.jump(200 * c + 4 * i + d)
+                    A[p, d], C[p, d] = a % (1 << 32), cc % (1 << 32)
+                base[p] = -(0.1 * i + 0.5 * c)
+                csl[p] = self.colours.index(cd.COLOURS[c])
+                idx3[p] = i % 3
+            self._fixed_key, self._fixed = key, (A, C, base, csl, idx3)
+        A, C, base, csl, idx3 = self._fixed
         x0, y0 = self.rd.region[:2]
-        for p, (c, i) in enumerate(pk):
-            for d in range(4):
-                a, cc = rng.jump(200 * c + 4 * i + d)
-                A[p, d], C[p, d] = a % (1 << 32), cc % (1 << 32)
-            base[p] = -(0.1 * i + 0.5 * c)
-            csl[p] = self.colours.index(cd.COLOURS[c])
-            idx3[p] = i % 3
-            u0[p], v0[p] = g.origins[cd.COLOURS[c]][0] - x0, g.origins[cd.COLOURS[c]][1] - y0
+        u0 = np.array([g.origins[cd.COLOURS[c]][0] - x0 for c, i in pk], np.float32)
+        v0 = np.array([g.origins[cd.COLOURS[c]][1] - y0 for c, i in pk], np.float32)
         # frame shown after n updates: floor(fr - f0) = n
         N = int(max(self.frames) - g.f0) + 2
         nslot = -np.ones(max(N, 1), np.int64)
@@ -203,12 +206,12 @@ class DetScorer:
                 np.float32(g.goal[0] - x0), np.float32(g.goal[1] - y0), nslot)
 
     def score(self, g, states, pikmin=None) -> np.ndarray:
-        global _DET
-        if _DET is None:
-            _DET = _det_kernel()
         states = np.ascontiguousarray(np.asarray(states, np.uint64))
+        par = len(states) > 64              # one state (geometry fits): no thread start-up
+        if par not in _DET:
+            _DET[par] = _det_kernel(par)
         out = np.empty(len(states), np.float32)
-        _DET(states, *self.inputs(g, pikmin), self.O, out)
+        _DET[par](states, *self.inputs(g, pikmin), self.O, out)
         return out
 
     def origin_correction(self, g, n_frames: int = 6):

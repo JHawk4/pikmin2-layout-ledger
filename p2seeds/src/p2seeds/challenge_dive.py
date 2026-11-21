@@ -954,7 +954,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
               keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print,
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
               final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0),
-              f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6):
+              f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6,
+              setup_only: bool = False):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
@@ -1046,6 +1047,9 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         g = g.copy(f0=trials[0][1])
         dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), bg, region, scale=scale)
         log(f"  f0 search: best {trials[0][1]:.1f} (guess {f0_guess:.1f}); top {[(round(f, 1), round(v, 2)) for v, f, _ in trials[:4]]}")
+        if setup_only:      # stage, region, start frame and reference geometry only (for other scorers)
+            return dict(ok=True, ch=ch, counts=counts, reg=reg, f0=g.f0, region=list(region), window=list(window),
+                        dropped=dv.dropped, candidates=[dict(geometry=geometry_vector(g))])
     else:
         loc = burst_locality(path, closes, g, lead, lead_delay) if closes else {}
         if loc:
