@@ -21,7 +21,7 @@ import numpy as np
 
 from . import analyze, letters_model
 from .calibrate import calibrate
-from .events import Event
+from .events import Event, is_wide
 from .feed import Feed, find_feed
 from .fit import fit
 from .track import track_all
@@ -46,13 +46,13 @@ def render(video_path: str, frame: int, feed: Feed | None = None, out: str | Pat
     ev = Event(frame, frame, 1)
     start = max(0, frame - 150 - analyze.FALL_LEAD)
     frames = [feed.crop(g) for g in video.frames(start, min(video.frame_count, frame + 60))]
-    runs = analyze.entry_runs(frames)
+    runs = analyze.entry_runs_for(frames, feed)
     near = [r for r in runs if r[0] - 5 <= frame - start <= r[1] + 5] or runs
     if not near:
         raise ValueError("no settled entry screen near that frame")
     a, b = near[0]
     k = max(a, b - 3)
-    cal = calibrate(frames[k])
+    cal = analyze.calibrate_fading(frames, a, b)[0] if is_wide(feed) else calibrate(frames[k])
     if cal is None:
         raise ValueError("cave name not recognized")
     n = cal.cave.num_chars

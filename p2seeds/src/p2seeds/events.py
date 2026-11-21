@@ -30,11 +30,31 @@ class Event:
     hits: int
 
 
-def is_entry_screen(feed_gray: np.ndarray, dark_max: float = 60.0) -> bool:
+WIDE_ASPECT = 1.55    # a game feed wider than this is a 16:9 (Wii / Wii U VC) picture
+FADE_MIN_BRIGHT = 70.0
+
+
+def is_wide(feed: Feed) -> bool:
+    """Wii (New Play Control!) and Wii U VC captures: the 4:3 picture stretched to 16:9. Their entry
+    screen fades out about 10 frames after the last letter lands (loading is quick), so the name is
+    read on fading frames (`fade`)."""
+    return feed.width / max(1, feed.height) > WIDE_ASPECT
+
+
+def normalize(feed_gray: np.ndarray) -> np.ndarray:
+    """Scale a fading frame so its brightest outlines are at full entry-screen brightness."""
+    ref = templates.bright_level(feed_gray)
+    if ref < FADE_MIN_BRIGHT or ref >= templates.FULL_BRIGHT:
+        return feed_gray
+    return np.clip(feed_gray.astype(np.float32) * (templates.FULL_BRIGHT / ref), 0, 255).astype(np.uint8)
+
+
+def is_entry_screen(feed_gray: np.ndarray, dark_max: float = 60.0, fade: bool = False) -> bool:
+    """`fade`: also accept a fading screen (its outlines scaled to full brightness first)."""
     if feed_gray.mean() > dark_max:
         return False
     H = feed_gray.shape[0]
-    p = templates.prep(feed_gray) > 0.5
+    p = templates.prep(normalize(feed_gray) if fade else feed_gray) > 0.5
     rows = p.mean(axis=1)
     n0, n1 = int(NAME_BAND[0] * H), int(NAME_BAND[1] * H)
     s0, s1 = int(SUB_BAND[0] * H), int(SUB_BAND[1] * H)
@@ -51,11 +71,14 @@ def is_entry_screen(feed_gray: np.ndarray, dark_max: float = 60.0) -> bool:
 
 def detect(video: Video, feed: Feed, step: int = 10, start: int = 0, stop: int | None = None, merge_gap: int = 300,
            progress=None) -> list[Event]:
+    fade = is_wide(feed)
+    if fade:
+        step = min(step, 4)       # the Wii title is readable for only ~15 frames
     hits = []
     for i, gray in video.sample(step, start, stop):
         if progress and (i - start) % (step * 3000) == 0:
             progress(i, video.frame_count)
-        if is_entry_screen(feed.crop(gray)):
+        if is_entry_screen(feed.crop(gray), fade=fade):
             hits.append(i)
     events: list[Event] = []
     for i in hits:
