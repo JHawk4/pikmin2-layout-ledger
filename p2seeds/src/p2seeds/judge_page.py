@@ -119,8 +119,8 @@ run: it only sees the layout, so it can say how kind the layout was, apart from 
 <li><b>Estimate</b>: the time to walk the route, plus the time Pikmin spend carrying each treasure back to the ship,
 plus extra time for enemies near a carry path and for gates in the way, plus a fixed cost per treasure.</li>
 <li><b>Missing treasures and purple flowers</b>: a quirk of the spawning sometimes leaves a treasure out of the layout,
-or fewer purple flowers than usual where runners pick purples. Both cost the runner a lot of time; the judge adds
-300 s when a treasure is missing and 60 s per missing purple flower, as CaveGen's All Treasures judge does.</li>
+or fewer purple flowers than usual where runners pick purples. The judge adds 300 s when a treasure is missing (as
+CaveGen's All Treasures judge does) and 10 s per missing purple flower (CaveGen: 60 s; see below).</li>
 <li><b>Layout luck</b>: the same estimate for 1000 random layouts of the sublevel. This layout against the median one
 is its luck (negative = faster), and the share of random layouts it beats is its percentile.</li>
 <li><b>Runner</b>: the real time from the video minus what the judge says the layout was worth. What is left is the
@@ -135,9 +135,10 @@ runs. Its parts are weighted as the Pay Off Debt judge's, which were fitted on t
 predicted second is worth about one real second), while CaveGen's own weights overstate layout differences by about a
 fifth. A fit on these runs alone could not do better: with a handful of runs, every reasonable set of weights
 explains about as much.</p>
-<p>The missing-treasure and missing-purple costs could not be checked yet: none of these runs met a missing treasure,
-and only two met missing purple flowers, both on the same sublevel. Missing purple flowers are common on a few
-sublevels (about a third of random BK 4 and FC 4 layouts, two thirds of SR 5), so more runs will tell.</p>
+<p>The missing-treasure cost could not be checked yet: none of these runs met a missing treasure. Missing purple
+flowers are common on a few sublevels (about a third of random BK 4 and FC 4 layouts, two thirds of SR 5), but the only
+two plays here that met them, both on SR 5, lost about 5 s (± 10 s), not a minute; with 60 s the judge overstated
+layout differences by 43%. So a missing purple counts 10 s until more runs show where purples matter more.</p>
 <p>The comparison works within each sublevel and each runner, so it asks only: when the same runner meets a
 different layout of the same sublevel, does the time move as the judge says?</p>
 </details>

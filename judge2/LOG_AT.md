@@ -31,7 +31,8 @@ are within sublevel and runner.
 | **at2 = pod2's weights** (walk 1.22, carry 0.78, hazard 0.60, gate 0.58) | **60.1** | **0.288** | **0.96** | 0.54 |
 | free fit, no shrinkage | | 0.295 | 1.00 | |
 
-(* before the purple-farm fix; the other rows are after it.)
+(* before the purple-farm fix; the other rows are after it. All rows leave out the missing-purple
+term; its cost is below.)
 
 The free fit (walking 1.84, carry 0.41, hazard 0.55, gate 0.48) leans the same way as pod2:
 walking counts more, and carrying, enemies and gates count less. But leaving one run out, it predicts
@@ -58,11 +59,15 @@ How often random layouts (400 seeds per sublevel, Japanese weights) miss somethi
 (CaveGen counts missing purples only where runners pick them: every sublevel with purple
 candypops except the "purple20" ones, EC 2, FC 1, HoB 2, CoS 2, GK 2 and SR 2.)
 
-In the runs: no play had a missing treasure. Two had a missing purple, both on SR 5 (kobachi
-156 s and CurtisDN_ 160 s, against JackDraz and keisen with 148 s each). That is +10 s, not CaveGen's
-60 s, but on 2 against 2 plays from different runners it shows almost nothing. Both
-penalties keep CaveGen's values (300 s for any missing treasure, 60 s per missing purple)
-until more runs meet them. Odd: BK 4 and FC 4 miss purples about 30% of the time, but none of
+In the runs: no play had a missing treasure, so that penalty keeps CaveGen's 300 s. Two plays had a
+missing purple, both on SR 5 (kobachi 156 s and CurtisDN_ 160 s, against JackDraz and keisen with 148 s each).
+With the other weights fixed, the fitted cost is **5.5 ± 9.8 s per missing purple**. CaveGen's 60 s is
+5 SE off, and it wrecks the calibration: over the site's 173 plays the slope drops from 0.92 to 0.57
+(R² 0.28 to 0.09), all from those two SR 5 plays. The slope by penalty, on the 170 snapshot plays:
+0 s 0.96, 10 s 0.94, 20 s 0.89, 30 s 0.81, 60 s 0.57. **at2 uses 10 s.** Runners may rely on the
+purples more on some sublevels (BK 4, FC 4?) than on SR 5. A per-sublevel penalty needs plays there.
+
+Odd: BK 4 and FC 4 miss purples about 30% of the time, but none of
 the 6 plays here did. That may be chance (P ≈ 0.12), or runners reset such layouts.
 
 ## How to run

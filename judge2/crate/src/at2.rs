@@ -26,8 +26,10 @@ pub struct Model {
 /// Walking, carrying, enemies and gates take Pay Off Debt judge2's weights (pod2::MODEL, fitted on
 /// 25 runs): on 189 All Treasures plays they come out calibrated (slope 0.95, CaveGen's own 0.77),
 /// and 5 runs cannot tell finer weights apart (judge2/LOG_AT.md). Walking to purple candypops is
-/// walking. The treasure count and the two penalties keep CaveGen's values: no play so far had a
-/// missing treasure, and the two with a missing purple are the same sublevel.
+/// walking. The treasure count and the missing-treasure penalty keep CaveGen's values (no play so far
+/// had a missing treasure). A missing purple candypop costs 10 s, not CaveGen's 60: the only two plays
+/// with one (SR 5) put it at 5.5 ± 9.8 s, and 60 s would make the judge overstate layout differences
+/// by 43% (LOG_AT.md). Sublevels where runners rely on the purples may cost more.
 pub const MODEL: Model = Model {
     walking: 1.22,
     purple_walk: 1.22,
@@ -36,7 +38,7 @@ pub const MODEL: Model = Model {
     gate: 0.58,
     per_treasure: 10.0,
     missing_treasure: 300.0,
-    missing_purple: 60.0,
+    missing_purple: 10.0,
 };
 
 impl Model {

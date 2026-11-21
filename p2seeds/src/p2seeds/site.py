@@ -141,8 +141,8 @@ def actuals(runs: list[dict], slope: float = 1.0) -> list[dict]:
         tre = treasures.load(r["dir"])
         e = r["entries"]
         for a, end in timed(e, tre):
-            if r["kind"] == "pod" and not judge_report.trusted(a):
-                continue      # pokos are read against the seed's treasures: no trusted seed, no net time
+            if not judge_report.trusted(a):
+                continue      # no trusted seed: no layout to allow for (and Pay Off Debt pokos are read against it)
             t = tre.get(str(a["frame"]))
             d = luck.delta(a) if luck.judged(a) and judge_report.trusted(a) else None
             plays.setdefault(f'{a["cave"]} {a["sublevel"]}', []).append(
@@ -563,11 +563,11 @@ and sublevels with fewer than 3 confidently read layouts are left out.</p>
 
 
 def timesave_page(runs: list[dict], acts: list[dict], category: str = "pod") -> str:
-    """Every Pay Off Debt run against the median run, per sublevel: raw, or beyond what the layout gave."""
+    """Every run of the category against the median run, per sublevel: raw, or beyond what the layout gave."""
     order = {c: k for k, c in enumerate(STORY_ORDER)}
     per_run = {}
     for i, r in enumerate(runs):
-        if r["kind"] != "pod" or not acts[i]:
+        if r["kind"] not in ("pod", "at") or not acts[i]:
             continue
         entries = {str(e["frame"]): e for e in r["entries"]}
         vals = {}
@@ -588,7 +588,7 @@ def timesave_page(runs: list[dict], acts: list[dict], category: str = "pod") -> 
         tip = (f"{sub} · {runner} · {e.get('time', '')}\n"
                f"took {a['took']:.1f} s (median run {a['median_took']:.1f} s)"
                + (f"\n{a['pokos']} pokos (median run {a['median_pokos']:g})" if a.get("pokos") is not None and a.get("median_pokos") is not None else "")
-               + f"\nvs the median run: {a['raw']:+.1f} s, pokos counted"
+               + f"\nvs the median run: {a['raw']:+.1f} s" + (", pokos counted" if category == "pod" else "")
                + (f"\nlayout vs the median run's: {a['expected']:+.1f} s by the judge" if a.get("expected") else "")
                + f"\nbeyond the layout: {a['net']:+.1f} s"
                + f"\nvs par (median runner, median layout): {a['par']:+.1f} s")
@@ -616,8 +616,7 @@ def timesave_page(runs: list[dict], acts: list[dict], category: str = "pod") -> 
                       f"<tbody>{''.join(trs)}</tbody></table></div>")
     return f'''
 <h1>Time saved by sublevel</h1>
-<p>Seconds each run gained or lost on each sublevel, with pokos counted (2 pokos = 1 second, so a sublevel
-done 10 s slower for 20 more pokos is even). Negative (green) is faster. Hover a cell for the details; click it to open the video there.</p>
+<p>Seconds each run gained or lost on each sublevel{POKOS_NOTE if category == "pod" else ""}. Negative (green) is faster. Hover a cell for the details; click it to open the video there.</p>
 <fieldset class="ts-pick"><legend class="muted">Show</legend>
 <label><input type="radio" name="ts" value="net" checked> <b>The runner beyond the layout</b>: the judge's difference between
 this layout and the median run's is taken out, so it shows execution, not luck</label>
@@ -632,6 +631,9 @@ timed (an uncertain seed, or the last sublevel's results screen was not found).<
 {add_run_note(category)}
 '''
 
+
+POKOS_NOTE = (", with pokos counted (2 pokos = 1 second, so a sublevel\n"
+              "done 10 s slower for 20 more pokos is even)")
 
 TIMESAVE_JS = """
 document.querySelectorAll('input[name=ts]').forEach(i => i.addEventListener('change', () => {
@@ -763,6 +765,18 @@ CATEGORY_TEXT = {
 }
 
 
+JUDGE_NOTE = {
+    "pod": ("The judge is CaveGen's Pay Off Debt judge refit on these runs: no credit for pokos from enemies or for "
+            "treasures runners don't collect, a choice of which treasures to skip, and re-weighted walking, carrying, enemy "
+            "and gate times. CaveGen's original judge had slope 0.79 here (it overstated layout differences by about a fifth) "
+            "and R² 0.37."),
+    "at": ("The judge is CaveGen's All Treasures judge (with the Japanese treasure weights for Japanese runs), its walking, "
+           "carrying, enemy and gate times weighted as the Pay Off Debt judge's, which were fitted on that category's runs and "
+           "never on these. CaveGen's own weights had slope 0.78 here (they overstated layout differences by about a fifth) and "
+           "R² 0.26."),
+}
+
+
 def build(root: str | Path = "data/output") -> Path:
     """Write one category's section of the site into `root` (where its runs are). Pay Off Debt
     is the site root; All Treasures is exported under at/ (see export)."""
@@ -860,10 +874,7 @@ def build(root: str | Path = "data/output") -> Path:
                     f"<details><summary>The numbers</summary>"
                     f"<p class='muted small'>The slope is what a predicted second is actually worth (1 = calibrated, below 1 = the "
                     f"judge overstates differences between layouts); R² is the share of the runs' differences the judge explains "
-                    f"taking its seconds at face value. The judge is CaveGen's Pay Off Debt judge refit on these runs: no credit for "
-                    f"pokos from enemies or for treasures runners don't collect, a choice of which treasures to skip, and re-weighted "
-                    f"walking, carrying, enemy and gate times. CaveGen's original judge had slope 0.79 here (it overstated layout "
-                    f"differences by about a fifth) and R² 0.37.</p>"
+                    f"taking its seconds at face value. {JUDGE_NOTE[category]}</p>"
                     f"<div class='tablewrap'><table><thead><tr><th>Judge</th><th class='num'>Plays</th><th class='num'>Slope (95%)</th>"
                     f"<th class='num'>Correlation</th><th class='num'>R² (slope 1)</th></tr></thead><tbody>{cmp_rows}</tbody></table></div>"
                     + (f"<p class='muted small'>The outcome is time with pokos counted: seconds minus pokos ÷ 2. On plain time the judge would "
