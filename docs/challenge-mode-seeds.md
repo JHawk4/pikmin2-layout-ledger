@@ -7,9 +7,10 @@ stage's first floor.**
    floor 1 is that state + 1004 + (menu flashes).
 2. **The Pikmin dive on the stage select** (§7–§8) is 1000 draws made right before floor 1 is
    generated. It reads the seed on its own, even when no roll comes before it: a run's first stage,
-   and single-stage score records. It is reliable when the dive has enough Pikmin spread across
-   enough colours. Lean dives (2–5 Pikmin) and single dense colours are only sometimes decidable,
-   and the reader says so through its margin.
+   and single-stage score records. **But it is not reliable yet:** on the reference run it found
+   7 of 13 dives, and its margin does not tell right from wrong. CH29 was wrong by a 12.5% margin
+   and the CH10 record by 23.6%, because pruning can drop the true state before the exact
+   comparison (§8). Only reads confirmed by a results roll are published.
 
 Floors 2+ have no RNG readout in the video. They are bounded to a window of 20k–1M states (§9);
 finding them would need a layout matcher, which isn't built. The Switch release (Pikmin 2 HD) uses
@@ -325,6 +326,14 @@ Built by a helper agent and checked against the hand-read values in §3–§4. O
 or digit mapping**: its digits read cleanly, but no GC/Wii RNG state explains them under any of the
 48 orderings tried. Switch runs are out of scope.
 
+Online search (Nov 2026) found no public reverse engineering of the Switch port's RNG. Switchbrew
+lists Pikmin 1+2 under Nintendo's GC/Wii emulator "hagi", and Pikmin Wiki says the port is built from
+the North American New Play Control! (Wii) release. If the CPU code is that Wii build translated
+ahead of time (as for Super Mario Sunshine), `rand()` is probably the same LCG, and the mismatch would
+come from the Wii build's results-screen code or extra draws. That is a guess. Checking it would mean
+disassembling the NPC `main.dol` (not decompiled publicly) and reading its `rand`/`randInt` and the
+results counter, or testing the NPC Wii runs here: cmal09 (spark573, Wii JPN) decodes with the GC model.
+
 ### Cross-check against the rolls (`docs/challenge_dive/crosscheck_cmal.py`)
 
 For each stage between two decoded rolls, the dive is searched using only the **following** roll
@@ -332,15 +341,28 @@ For each stage between two decoded rolls, the dive is searched using only the **
 (its end + 5). The two sources are independent.
 
 Checked against a truth from a decoded results roll (all on the solo Wii U run cmal04 unless
-noted; the cross-check was still running when this was written). The pipeline changed during the day; each result is labelled with the version it ran on.
+noted). The pipeline changed during the day; each result is labelled with the version it ran on.
+A second CH29 visit is excluded: another menu visit came between it and the preceding roll, so
+"roll end + 5" is not its dive start (`truth_valid` in the data).
 
-- **Final pipeline** (`crosscheck_cmal.py`, data in `data/challenge/crosscheck/`):
+- **Final pipeline** (`crosscheck_cmal.py --every 2`, data in `data/challenge/crosscheck/`): 7 of 13 correct; 3 of 4 with a margin of 10% or more.
 
 | run | stage | Pikmin | result | margin | rank of truth |
 |---|---|---|---|---|---|
 | cmal04 tcbtrio | CH11 | red 5, white 5 | **correct** | 59.9% | 2 |
 | cmal04 tcbtrio | CH21 | red 30, blue 30 | wrong | 4.4% | not in top 200 |
 | cmal04 tcbtrio | CH27 | red 50 | **correct** | 41.1% | 0 |
+| cmal04 tcbtrio | CH29 | yellow 30, purple 20 | wrong | 12.5% | not in top 200 |
+| cmal04 tcbtrio | CH29 | yellow 30, purple 20 | no truth (another menu visit since the last results screen) | 0.1% | |
+| cmal04 tcbtrio | CH22 | red 20, yellow 20, blue 20 | **correct** | 39.8% | not in top 200 |
+| cmal04 tcbtrio | CH18 | red 25, blue 25 | **correct** | 6.2% | 0 |
+| cmal04 tcbtrio | CH20 | blue 50 | **correct** | 8.8% | 0 |
+| cmal04 tcbtrio | CH14 | red 25, yellow 25, blue 25, white 25 | wrong | 0.3% | 1 |
+| cmal04 tcbtrio | CH8 | red 40 | wrong | 8.8% | not in top 200 |
+| cmal04 tcbtrio | CH10 | yellow 50 | **correct** | 8.4% | not in top 200 |
+| cmal04 tcbtrio | CH4 | blue 50 | wrong | 3.9% | not in top 200 |
+| cmal04 tcbtrio | CH2 | white 30 | **correct** | 9.5% | 188 |
+| cmal04 tcbtrio | CH6 | red 1, yellow 1, blue 1 | wrong | 0.9% | not in top 200 |
 
 - **Earlier versions** (same dives, without the later frame-phase and pruning fixes):
   - CH16 Snack Pit (5 of each colour): found from scratch over all 2³¹ states, 13.6% margin.
@@ -350,15 +372,20 @@ noted; the cross-check was still running when this was written). The pipeline ch
   reader's best state is exactly that truth (`4AA0C7DC`, layout `29549C67`), but with only a 1.3%
   margin, so on its own it would not have been published.
 
-Pattern: when the right answer wins, it wins by 13–60%; wrong answers come in under about 5%.
-CH27 (50 red, a single dense colour) was recovered with a 41% margin on the reference run, so dense
-dives can work on a clean capture. The
-site therefore publishes a seed only when:
-- it beats every candidate that is not a 4-draw shift of it by at least 10%;
-- it beats its own shifts;
-- at least 8 Pikmin are visible; or
-- a preceding roll confirms it.
+**The margin is not a confidence measure.** Correct reads range from 6% to 60%; wrong ones from
+0.1% to 12.5% (CH29). Running CH29 again with the true state scored alongside (`read_dive(...,
+probe=[truth])`): the truth fits **19% better** than the reported winner, but it ranked about
+106,000th on the coarse half-resolution loss and was cut before the exact comparison (only the
+best 20,000 go on). The winner then "wins" against other wrong states. On the score records, the
+CH10 read (23.6% margin) gives a layout that does not match the video, and none of the next 3
+seeds after it do either, so the dive state itself is wrong there.
 
+So the site now publishes **only reads confirmed by a preceding results roll** (CH28).
+`make_site_seeds.py --allow-unverified` restores the old margin rule (beat every non-shift
+competitor by 10%, beat its own shifts, at least 8 visible Pikmin) for experiments.
+
+Being tested: taking each state's best coarse loss over a few dive-start offsets (`f0_offsets`), since
+the truth only wins after the geometry and start frame are refit.
 
 Per-stage RNG use is consistent between runners
 (`p2seeds/src/p2seeds/data/challenge_stage_draws.json`: draws per video frame from the floor-1 seed
@@ -385,10 +412,10 @@ Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challeng
 
 ### Score WRs (pik5.net, current Pikmin 2 #1s)
 
-| stage | record | Pikmin | floor-1 seed | margin | shift margin | status |
+| stage | record| Pikmin | floor-1 seed | margin | shift margin | status |
 |---|---|---|---|---|---|---|
-| CH1 | 35,353 Gorei_50 | red 50 | `2C1ABE60` | 15.1% | +5.7% | published |
-| CH2 | 38,039 Gorei_50 | white 30 | `29334AE5` | 38.3% | +2.3% | published |
+| CH1 | 35,353 Gorei_50 | red 50 | `2C1ABE60` | 15.1% | +5.7% | withheld (margin rule only) |
+| CH2 | 38,039 Gorei_50 | white 30 | `29334AE5` | 38.3% | +2.3% | withheld (margin rule only) |
 | CH3 | 48,317 Gorei_50 | yellow 100 | `3CBFEB45` | 6.9% | +3.8% | uncertain |
 | CH4 | 13,982 Gorei_50 | blue 50 | `1F8A1928` | 0.7% | +0.7% | uncertain |
 | CH5 | 11,754 Gorei_50 | red 10, yellow 10, blue 10 | `7E0998D1` | 7.3% | +6.0% | uncertain |
@@ -396,17 +423,17 @@ Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challeng
 | CH7 | 15,044 Gorei_50 | blue 50 | `65465192` | 0.1% | +0.8% | uncertain |
 | CH8 | 18,883 Gorei_50 | red 40 | `24208D0E` | 1.2% | +6.3% | uncertain |
 | CH9 | 50,902 Gorei_50 | red 40, white 20, purple 20 | `1A92224A` | 0.8% | +0.7% | uncertain |
-| CH10 | 26,773 Gorei_50 | yellow 50 | `25EE5FBF` | 23.6% | +11.2% | published |
+| CH10 | 26,773 Gorei_50 | yellow 50 | `25EE5FBF` | 23.6% | +11.2% | withheld (margin rule only) |
 | CH11 | 8,552 Gorei_50 | red 5, white 5 | `743EA7AC` | 1.0% | +0.8% | uncertain |
 | CH12 | 4,994 Gorei_50 | white 2 | `2CB5DC24` | 0.0% | +18.5% | uncertain |
-| CH13 | 48,415 Gorei_50 | white 50 | `79DEE351` | 72.9% | +23.2% | published |
-| CH14 | 18,355 albut3 | red 25, yellow 25, blue 25, white 25 | `1E828824` | 16.8% | +4.3% | published |
-| CH15 | 6,264 Gorei_50 | red 25, white 25 | `78F3DE3E` | 19.7% | +7.7% | published |
-| CH16 | 6,003 Gorei_50 | red 5, yellow 5, blue 5, white 5, purple 5 | `0615E706` | 54.3% | +65.9% | published |
-| CH17 | 16,700 Gorei_50 | yellow 30, white 15, purple 15 | `7F1CE063` | 29.5% | +17.0% | published |
-| CH18 | 54,082 Gorei_50 | red 25, blue 25 | `254CB07C` | 0.7% | +2.2% | uncertain (menu registered poorly; rerun with the stage given) |
+| CH13 | 48,415 Gorei_50 | white 50 | `79DEE351` | 72.9% | +23.2% | withheld (margin rule only) |
+| CH14 | 18,355 albut3 | red 25, yellow 25, blue 25, white 25 | `1E828824` | 16.8% | +4.3% | withheld (margin rule only) |
+| CH15 | 6,264 Gorei_50 | red 25, white 25 | `78F3DE3E` | 19.7% | +7.7% | withheld (margin rule only) |
+| CH16 | 6,003 Gorei_50 | red 5, yellow 5, blue 5, white 5, purple 5 | `0615E706` | 54.3% | +65.9% | withheld (margin rule only) |
+| CH17 | 16,700 Gorei_50 | yellow 30, white 15, purple 15 | `7F1CE063` | 29.5% | +17.0% | withheld (margin rule only) |
+| CH18 | 54,082 Gorei_50 | red 25, blue 25 | `254CB07C` | 0.7% | +2.2% | uncertain |
 | CH19 | 11,720 Gorei_50 | red 20, blue 25, purple 5 | `6913B1F6` | 2.5% | +1.2% | uncertain |
-| CH20 | 15,599 Gorei_50 | blue 50 | `5D221DD2` | 21.3% | +4.5% | published |
+| CH20 | 15,599 Gorei_50 | blue 50 | `5D221DD2` | 21.3% | +4.5% | withheld (margin rule only) |
 | CH21 | 35,441 albut3 | | | | | no stage-select dive in the video |
 | CH22 | 14,437 albut3 | red 20, yellow 20, blue 20 | `3B82BBBD` | 1.4% | +0.2% | uncertain |
 | CH23 | 10,044 kobachi_no_udon | | | | | not run |
@@ -415,13 +442,15 @@ Needs numba (`pip install numba`, installed in `.venv`) and CaveGen3's `challeng
 | CH26 | 32,803 Gorei_50 | red 4 | `3FE0B9E8` | 0.2% | +1.3% | uncertain |
 | CH27 | 10,400 Bl6AltMzq5Jx4aM | red 50 | `5F14F7DF` | 2.1% | +0.2% | uncertain |
 | CH28 | 32,742 spark573 | purple 25 | `29549C67` | 1.3% | +2.8% | published (confirmed by the previous roll) |
-| CH29 | 33,362 Gorei_50 | yellow 30, purple 20 | `4A0376CD` | 18.6% | +18.2% | published |
-| CH30 | 32,248 Gorei_50 | red 20, blue 20, purple 10 | `29055A01` | 11.4% | +5.5% | published |
+| CH29 | 33,362 Gorei_50 | yellow 30, purple 20 | `4A0376CD` | 18.6% | +18.2% | withheld (margin rule only) |
+| CH30 | 32,248 Gorei_50 | red 20, blue 20, purple 10 | `29055A01` | 11.4% | +5.5% | withheld (margin rule only) |
 
 
-12 of the 28 records with a dive were published to the pikmin-wrs site
-(https://jhawk4.github.io/pikmin-wrs/en/seeds.html), one of them (CH28) confirmed by a preceding roll.
-The rest:
+The first pass published 12 of these from the margin rule; they were withdrawn after the CH10
+seed was found wrong and the CH29 cross-check failed (above). Only CH28, confirmed by the previous
+attempt's roll, is on the pikmin-wrs site (https://jhawk4.github.io/pikmin-wrs/en/seeds.html).
+The other reads:
+- **Withheld** (passed the margin rule only): CH1, 2, 10 (wrong), 13, 14, 15, 16, 17, 20, 29, 30.
 - **Uncertain:**
   - Dense single-colour dives: CH3 (50 yellow), CH4 and CH7 (50 blue), CH8 (40 red), CH27 (50 red).
   - Mixed dives with small margins: CH5, CH9, CH11, CH18, CH19, CH22, CH24, CH25.
@@ -435,9 +464,8 @@ The rest:
 - **No video:** CH23 (it also has no dive Pikmin).
 
 Check images for each WR (CaveGen3 render of floor 1 next to frames of the video's first floor):
-`docs/challenge_dive/wr_gallery.py`. For the published stages, the layouts I looked at (CH1, CH2,
-CH10, CH13, CH14) agree with the video where it is legible, such as the key and the hole in CH1 and
-the strawberry in CH2. That is a check, not a proof.
+`docs/challenge_dive/wr_gallery.py`. Comparing by eye at video resolution is not a reliable check:
+I judged CH10 to agree with its video, and it does not.
 
 
 ## 9. Floors after the first (stretch goal): not done, but bounded

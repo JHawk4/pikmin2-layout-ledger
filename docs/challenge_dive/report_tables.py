@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
 from p2seeds import rng  # noqa: E402
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from make_site_seeds import assess  # noqa: E402
+from make_site_seeds import assess, preceding_roll_check  # noqa: E402
 
 D = os.path.join(ROOT, "data", "challenge")
 COL = ("red", "yellow", "blue", "white", "purple")
@@ -27,18 +27,28 @@ def counts_str(c):
 
 def crosscheck():
     rows = ["| run | stage | Pikmin | result | margin | rank of truth |", "|---|---|---|---|---|---|"]
-    n_ok = n = 0
+    n_ok = n = hi = hi_ok = 0
     for p in sorted(glob.glob(os.path.join(D, "crosscheck", "*.json"))):
         run = os.path.basename(p).split("_")[0] + " " + os.path.basename(p).split("_")[1]
         for r in json.load(open(p)):
+            m = r.get("margin")
+            if m is None:
+                rows.append(f"| {run} | CH{r.get('ch')} | | failed: {r.get('note')} | | |")
+                continue
+            if r.get("truth_valid") is False:
+                rows.append(f"| {run} | CH{r['ch']} | {counts_str(r.get('counts'))} | no truth (another menu visit "
+                            f"since the last results screen) | {m * 100:.1f}% | |")
+                continue
             n += 1
             n_ok += bool(r["correct"])
-            m = r.get("margin")
+            if m >= 0.10:
+                hi += 1
+                hi_ok += bool(r["correct"])
             rows.append(f"| {run} | CH{r['ch']} | {counts_str(r.get('counts'))} | "
                         f"{'**correct**' if r['correct'] else 'wrong'} | {m * 100:.1f}% | "
-                        f"{r['truth_rank'] if r['truth_rank'] is not None else 'not in top 200'} |"
-                        if m is not None else f"| {run} | CH{r.get('ch')} | | failed: {r.get('note')} | | |")
-    return f"{n_ok} of {n} correct.\n\n" + "\n".join(rows)
+                        f"{r['truth_rank'] if r['truth_rank'] is not None else 'not in top 200'} |")
+    head = f"{n_ok} of {n} correct; {hi_ok} of {hi} with a margin of 10% or more."
+    return head + "\n\n" + "\n".join(rows)
 
 
 def wrs():
@@ -57,12 +67,13 @@ def wrs():
             rows.append(f"| CH{ch} | {w['score']:,} {w['user']} | | | | | {r.get('note')} |")
             continue
         c = r["candidates"][0]
-        _, _, m, sm = assess(r)
+        s, _, m, sm = assess(r)
         m, sm = m or 0, sm or 0
         ok = m >= 0.10 and sm >= 0.005 and sum(min(k, 50) for k in r.get("counts", [])) >= 8
+        ver = preceding_roll_check(r, s)
         rows.append(f"| CH{ch} | {w['score']:,} {w['user']} | {counts_str(r.get('counts'))} | "
                     f"`{c['layout_seed'] & 0x7FFFFFFF:08X}` | {m * 100:.1f}% | {sm * 100:+.1f}% | "
-                    f"{'published' if ok else 'uncertain'} |")
+                    f"{'published (confirmed by the previous roll)' if ver else 'withheld (margin rule only)' if ok else 'uncertain'} |")
     return "\n".join(rows)
 
 

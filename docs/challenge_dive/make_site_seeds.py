@@ -64,6 +64,10 @@ def main():
     ap.add_argument("--min-shift", type=float, default=0.005)
     ap.add_argument("--min-pikmin", type=int, default=8,
                     help="fewer visible Pikmin leave many look-alike states in the window")
+    ap.add_argument("--allow-unverified", action="store_true",
+                    help="also publish reads that only pass the margin rule. Off by default: the CH29 cross-check "
+                         "(tcbtrio) and the CH10 record were wrong with margins of 12.5%% and 23.6%%, because "
+                         "pruning can drop the true state before the exact comparison")
     a = ap.parse_args()
     wrs = {w["ch"]: w for w in json.load(open(os.path.join(WR, "wr_list.json"), encoding="utf8"))}
     entries, unread, report = [], {}, []
@@ -99,6 +103,11 @@ def main():
               and visible >= a.min_pikmin) or verified is True
         if verified is False:
             ok = False
+        if ok and verified is not True and not a.allow_unverified:
+            report.append((ch, f"{lay:08X}", "passes the margin rule but is not confirmed: withheld"))
+            unread[str(200 + ch)] = {"en": "read, but not confirmed by a results screen (withheld)",
+                                     "ja": "読み取りましたが結果画面で確認できないため非公開"}
+            continue
         report.append((ch, f"{lay:08X}", f"other {m_other} shift {m_shift} verified {verified}", ok))
         if not ok:
             unread[str(200 + ch)] = ({"en": "too few Pikmin jump in to pin it down", "ja": "飛び込むピクミンが少なく絞り込めません"}

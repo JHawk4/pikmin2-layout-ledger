@@ -947,9 +947,11 @@ def window_states(end_state: int, span: int, skip: int = 0) -> np.ndarray:
 def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geometry | None = None,
               keep: int = 4_000_000, mid: int = 400_000, final: int = 2000, first_pikmin: int = 6, log=print,
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
-              final_exact: int = 300):
+              final_exact: int = 300, probe=(), f0_offsets=(0.0,)):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
-    best candidates (state, image loss), the stage, the geometry used and timings."""
+    best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
+    (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
+    with where they stood in each pruning stage."""
     import time
     t0 = time.time()
     first, last = visit
@@ -1053,8 +1055,17 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         sc2 = rescore(dv, counts, geom, st)
         o = np.argsort(-sc2)[:mid]
         st2 = st[o]
-        bl = batch_image_loss(dv, counts, geom, st2)
-        st3 = st2[np.argsort(bl)[:20_000]]
+        # the dive start (f0) is known to a frame or two; a look-alike at the wrong phase can beat the
+        # truth at a fixed f0, so take each state's best over a few start offsets
+        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2) for d in f0_offsets], axis=0)
+        o2 = np.argsort(bl)
+        st3 = st2[o2[:20_000]]
+        for x in probe_set:
+            k1 = np.nonzero((st & 0x7FFFFFFF) == (x & 0x7FFFFFFF))[0]
+            k2 = np.nonzero((st2[o2] & 0x7FFFFFFF) == (x & 0x7FFFFFFF))[0]
+            r1 = int(np.nonzero(o == k1[0])[0][0]) if len(k1) and (o == k1[0]).any() else None
+            log(f"  probe 0x{x:08X}: score rank {r1 if r1 is not None else '>' + str(mid)}"
+                f"{'' if len(k1) else ' (not in stage 1)'}, coarse-loss rank {int(k2[0]) if len(k2) else None}")
         # the coarse loss (half resolution, every other frame) is noisy for dense dives: re-rank its
         # best at full resolution on every frame before the exact loss
         return st3
@@ -1062,7 +1073,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
 
     def rank(geom, pool):
         # full-resolution compiled loss on the whole pool, exact loss on its best few hundred
-        bl = batch_image_loss(dv, counts, geom, pool, frame_step=1, ds=1)
+        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), pool, frame_step=1, ds=1)
+                     for d in f0_offsets], axis=0)
         best = pool[np.argsort(bl)[:final_exact]]
         for s in best:
             if int(s) not in flats:
@@ -1071,8 +1083,12 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         r.sort()
         return r
 
+    probe_set = [int(x) & 0xFFFFFFFF for x in probe]
     pool = prune(g)
     log(f"  pruned {len(st)} -> {len(pool)} ({time.time() - t0:.0f}s)")
+    probe = [int(x) & 0xFFFFFFFF for x in probe]
+    probe_stage1 = {x: bool(np.isin(np.array([x, x ^ 0x80000000], st.dtype), st).any()) for x in probe}
+    probe_pool = {x: bool(np.isin(np.array([x, x ^ 0x80000000], pool.dtype), pool).any()) for x in probe}
     res = rank(g, pool)
     # alternate: refit the geometry on the leader, prune and re-rank with it (a look-alike's geometry is
     # nearly right, so this converges on the true state, which lines up exactly)
@@ -1113,13 +1129,23 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     refined.sort()
     shift_margin = (min(x["loss"] for x in shifts) - refined[0][0]) / refined[0][0]
     log(f"  shifts: {[(x['shift'], round(x['loss'], 1)) for x in shifts]} (margin {shift_margin:+.3f})")
+    probes = []
+    for x in probe:
+        fx = flatten(dive_params(x, counts))
+        gx, lx = fit_geometry(dv, fx, geo, frames, fast=True, anchor=g)
+        lx = min(lx, image_loss(dv, fx, geo, frames))
+        log(f"  probe 0x{x:08X}: refit f0 {gx.f0:.2f} vs {geo.f0:.2f}, sx {gx.sx:.3f}/{geo.sx:.3f}, sy {gx.sy:.3f}/{geo.sy:.3f}")
+        probes.append(dict(state=x, loss=lx, in_stage1=probe_stage1[x], in_pool=probe_pool[x],
+                           rel=(lx - refined[0][0]) / refined[0][0]))
+        log(f"  probe 0x{x:08X}: loss {lx:.1f} ({probes[-1]['rel']:+.3f} vs best), stage-1 {probe_stage1[x]}, "
+            f"pool {probe_pool[x]}")
     log(f"  done {time.time() - t0:.0f}s best {[(hex(s), round(l, 1)) for l, s, *_ in refined[:3]]}")
     return dict(ok=True, ch=ch, counts=counts, reg=reg, onset=onset, f0=g.f0, region=region,
                 top=[dict(state=s, loss=l) for l, s in res[:save_top]], dropped=dv.dropped,
                 candidates=[dict(state=s, loss=l, f0=f, loss_fixed=lf, geometry=gv, layout_seed=layout_seed(s))
                             for l, s, f, lf, gv in refined],
                 margin=(refined[1][0] - refined[0][0]) / refined[0][0] if len(refined) > 1 else None,
-                shifts=shifts, shift_margin=shift_margin,
+                shifts=shifts, shift_margin=shift_margin, probes=probes,
                 seconds=time.time() - t0)
 
 

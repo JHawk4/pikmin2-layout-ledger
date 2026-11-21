@@ -52,17 +52,17 @@ def main():
     for prev, nxt in zip(rolls, rolls[1:]):
         vs = [v for v in visits if prev["last_frame"] < v[0] < nxt["first_frame"]]
         if vs:
-            pairs.append((prev, nxt, vs[-1]))       # the last visit before the next stage's results
+            pairs.append((prev, nxt, vs[-1], len(vs)))  # the last visit before the next stage's results
     pairs = pairs[::a.every][:a.max]
     print(f"{name}: {len(pairs)} stages to check", flush=True)
-    for prev, nxt, v in pairs:
+    for prev, nxt, v, n_vis in pairs:
         if tuple(v) in done:
             continue
         truth = rng.next_seed(st(prev["state_after_last_draw"]), 5) & 0xFFFFFFFF
         end = st(nxt.get("first_roll_state") or nxt["anchor_state"])
         t = time.time()
         try:
-            r = cd.read_dive(a.video, v, window=(end, a.span), log=lambda s: print(s, flush=True))
+            r = cd.read_dive(a.video, v, window=(end, a.span), probe=[truth], log=lambda s: print(s, flush=True))
         except Exception as e:
             r = dict(ok=False, note=repr(e))
         best = r["candidates"][0]["state"] if r.get("ok") and r.get("candidates") else None
@@ -76,7 +76,8 @@ def main():
                    correct=best is not None and (best & 0x7FFFFFFF) == (truth & 0x7FFFFFFF), truth_rank=rank,
                    margin=r.get("margin"), losses=[c["loss"] for c in r.get("candidates", [])[:3]],
                    in_window=rng.distance(rng.next_seed(truth, 999), end, limit=a.span) is not None,
-                   seconds=time.time() - t, note=r.get("note"))
+                   seconds=time.time() - t, note=r.get("note"), probes=r.get("probes"),
+                   truth_valid=n_vis == 1)   # another visit in between may have dived too
         print(json.dumps(rec), flush=True)
         out.append(rec)
         json.dump(out, open(out_path, "w"), indent=1)
