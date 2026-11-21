@@ -108,16 +108,16 @@ def calibrate(
     # background swirls can inflate, so it is searched widely. A coarse pass ranks
     # every cave; only the two best get the fine grid.
     sy0 = 0.99 * H / 480.0
-    # A 16:9 picture (Wii) spreads the characters by 4/3 but draws each glyph unstretched.
+    # A 16:9 picture (Wii) is the 4:3 picture stretched by 4/3, glyphs included.
     wide = (W / H) / (4 / 3) if W / H > 1.55 else 1.0
 
     def best_fit(cave: Cave, sys, sx_factors, extra_ratios) -> tuple | None:
         best = None
         if cave.lang == "ja":
-            # glyphs at their natural size, character pitch free
+            # glyphs at their natural size (stretched with the picture on 16:9), character pitch free
             for sy in sys:
                 for pitch in wide * np.linspace(0.95, 1.3, 2 * len(sx_factors) - 1):
-                    img, _ = compose(cave.name, sy * pitch, sy, gsx=sy)
+                    img, _ = compose(cave.name, sy * pitch, sy, gsx=sy * wide)
                     if img.shape[0] >= region.shape[0] or img.shape[1] >= region.shape[1]:
                         continue
                     _, score, _, loc = cv2.minMaxLoc(templates.match(region, img))
@@ -153,7 +153,7 @@ def calibrate(
         return None
     results.sort(key=lambda r: -r[0][0])
     (score, sx, sy, (lx, ly)), cave = results[0]
-    gsx = sy if cave.lang == "ja" else None
+    gsx = sy * wide if cave.lang == "ja" else None
     _, pieces = compose(cave.name, sx, sy, gsx=gsx)
     cal = Calibration(cave, float(score), float(sx), float(sy), lx, y0 + ly, gsx=gsx)
     cal.letters = [LetterBox(i, ch, lx + px, y0 + ly, g) for i, ch, px, g in pieces]
