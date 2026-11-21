@@ -87,9 +87,48 @@ them repeated) before the reader's anchor at 8632, `227D0FE6`.
 
 ## 4. Cross-check
 
-CROSSCHECK
+The roll end is what matters (the next stage's floor-1 seed is `state_after_last_draw` + 5 + 1000
+dive draws), and on blended screens the lock phase is the noisiest part. So it was checked with the
+Challenge Mode report's independent method (`docs/challenge_dive/crosscheck_cmal.py`, §8 there). The
+dive reader searches the next stage's stage-select dive using only the **following** roll (a
+window of 3M states before it), and its answer is compared with the blended roll's end + 5.
 
-## 5. Story mode (note only)
+| spark573 visit | stage (dive Pikmin) | preceding roll | dive reader | margin | verdict |
+|---|---|---|---|---|---|
+| 7626–7674 | CH26 (4 red) | 7335, clean | wrong | 1.8% | inconclusive (too few Pikmin, as on the reference run) |
+| **14760–14838** | **CH27 (50 red)** | **14487, blended** | **`8A5E004B` = roll end + 5** | **37.0%**, beats its ±4/±8 shifts | **confirmed** |
+| 17220–17304 | CH28 (25 purple) | 16953, blended | wrong | 0.3% | inconclusive (the dive reader's margin is that low on this stage in the WR video too) |
+
+The CH27 match is exact: the dive, read from the video with no knowledge of the blended roll,
+lands on the state 5 draws after the blended roll's last draw. That is the same check that the
+report treats as conclusive on the Wii U reference run (CH11, CH27). The floor-1 layout seed for
+that stage is `1609B212` (CH27-1). For CH28 a CaveGen3 render of the predicted seed (`7A46B0E3`) and
+its neighbours was made, but the landing view (dark, oblique camera) doesn't tell them apart at
+360p, so it stays inconclusive.
+
+Evidence on the clean screens is the same as on GC and Wii U: steps of exactly 14 draws between
+video frames, 2–3% mismatches, all 30 PAL screens decoded.
+
+## 5. What's left
+
+- **Re-run the pipeline on the Wii runs.** `run_wrs.py` and the CMAL tooling read rolls through
+  `read_results`, so they pick up blend support as is. The stored rolls for cmal09 in the Challenge
+  Mode branch's `data/challenge/results_rolls.json` predate it. The rerun output here is
+  `data/wii/rolls/spark573_blend.json`.
+- **Blended dives.** If a capture blends the results screen, it blends the stage-select dive too
+  (each Pikmin drawn twice, one game frame apart). The CH27 dive above was read fine, but the dive
+  renderer doesn't model the blend. Rendering each predicted frame as the mean of two game frames
+  would be the matching change in `challenge_dive.py`; untested.
+- **Speed.** A blended screen takes about 1 minute (pair reads, a 5 s brute-force anchor, then the
+  Viterbi search in Python); a clean one about 10 s.
+- **50 Hz PAL.** Untested (no video found); expected to work as regular repeated frames.
+- **Score-WR videos** (pik5.net, listed as "Wii" without saying Wii or Wii U): of the stored
+  rolls in `data/challenge/wr/rolls/`, the Gorei_50 ones track cleanly (≤ 13% mismatches). wr_24
+  (albut3, CH24) is a lost track (1019 mismatches against 459 matches). albut3's CMAT run above is
+  a blended capture, so this roll is probably blended too and should be re-read with the new reader.
+  Its video wasn't kept, so that wasn't done here.
+
+## 6. Story mode (note only)
 
 The story-mode entry screen on Wii is the Wii U VC one, which `EVALUATION_AT.md` already looked at:
 the name is stretched by 16:9, the screen fades out before the letters land, and a swirl effect
