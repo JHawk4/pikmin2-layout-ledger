@@ -331,6 +331,7 @@ def read_frame(canon: np.ndarray, lay: Layout) -> dict:
 # of such a capture shows each blended picture twice; it does not undo the blend.
 
 BLEND_GAIN = 0.04            # pair templates must beat single digits by this much (mean NCC)
+BLEND_MAX_MISMATCH = 0.30    # blended tracks run at 16-25% mismatched digits; far above is a lost track
 
 
 @lru_cache(maxsize=1)
@@ -973,6 +974,10 @@ def decode_screen(sc: Screen) -> dict:
     else:
         res["roll_complete"] = True
     res["note"] = _consistency_note(res, hist, lay)
+    rate = tot_bad / max(1, tot_good + tot_bad)
+    if blended and rate > BLEND_MAX_MISMATCH:
+        res["decoded"] = False
+        res["note"] = f"blended track lost ({rate:.0%} of digits mismatched); " + res["note"]
     res["_debug"] = dict(hist=hist, layout=lay, s0=s0, finals=finals)
     return res
 
