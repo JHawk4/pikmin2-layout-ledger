@@ -402,6 +402,58 @@ to the next roll, 6 CMAL runs). For example, CH6 uses 5.4–7.0, CH11 3.3–4.2 
 dives with few Pikmin, the window is narrowed to (frames from the dive to the results) × the stage's
 rate, ±35%.
 
+### Detection reader with the game's own sprites (`dive_detect`, `docs/challenge_dive/read_det.py`)
+
+An alternative scorer that detects Pikmin in the video instead of comparing a grey rendering.
+
+**Sprites.** The sprites are taken from the disc (`docs/challenge_dive/extract_sprites.py`:
+`new_screen/eng/res_challengeSelect.szs`, `challengemodo_select.blo`). Each dive Pikmin is three
+panes, following `TChallengePiki::draw` in the decomp:
+- an invisible pane;
+- the mirrored body `new_X_pikmin.bti`;
+- `flower_icon.bti`, tinted magenta→white for white and purple Pikmin.
+
+**Detection.** For each colour and frame, masked normalised cross-correlation at three scales,
+times the fraction of the sprite area that differs from the background. A compiled kernel then
+follows each state's trajectory and sums the response maps at the predicted anchors. The geometry
+starts from the grey reader's fit, is corrected by where the waiting stacks are detected, and is
+then refit per state.
+
+**Which part to detect** (CH28 WR, truth known). Truth lead over the best other fitted state, in
+SDs of random states:
+
+| Detected part | Truth lead (SDs) |
+|---|---|
+| body + flower | 1.7 |
+| body | 3.7 |
+| flower | 6.4 |
+
+The flower is small, is drawn over its own body, and stands out against the menu. Red, yellow and
+blue share the same flower, though.
+
+**Results.**
+- **CH28 WR, blind:** the flower reader ranks the truth `CAA0C7DC` first in its 6M window, with a
+  38% margin (grey reader: 1.3%).
+- **CH10 WR:** no clear read. The whole window gives a 2.7% margin. Restricted to the 7.5% of
+  states with the gold medal at the spawn point nearest the pod (`itemscan`), the margin is 1.3%.
+- **cmal04, 13 dives with a results-screen truth** (`crosscheck_det.py`). Each starts from the
+  grey reader's geometry.
+
+| Detection run | Flower correct | Grey correct | Notes |
+|---|---|---|---|
+| Truth added to the refit set | 6 | 9 | Flower's margin is calibrated: every margin ≥ 9% correct, every wrong one < 3.5%. Fixes CH18. |
+| Blind: flower re-ranks the grey shortlist (`--grey-shortlist 60 --blind`) | 5 | 9 | Margin no longer calibrated: CH20 wrong at 11%, and CH11, CH4 and CH6, whose truths are not in the shortlist, show 10–36%. |
+
+  Flower's own first pass (window scoring at the unrefined geometry) ranked the truth among its
+  first 60 in only 4 of 13 dives. Wrong flower reads are mostly stages with two or more of red,
+  yellow and blue (CH21, CH14), plus CH29 and CH10.
+
+**Verdict.** Detection is not yet better than the grey reader overall. It is stronger on some
+dives (CH28 WR, cmal04 CH18). Next steps that would help:
+- body detection to tell red, yellow and blue apart;
+- a geometry fit that doesn't need a candidate state (from the detections alone);
+- re-ranking only where the grey margin is low.
+
 ### Running it
 
 ```bash
