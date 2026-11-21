@@ -175,15 +175,8 @@ Things the PoC does not do yet:
 - Japanese runs (`--caves pod-ja` exists but is untested live);
 - handling a reset or death that breaks the chain.
 
-## 5. Open question for the user: speedrun.com rules
+## 5. speedrun.com rules
 
-Showing the exact layout a few seconds into each sublevel is information a human cannot get from
-the screen. That could count as an **external aid** under the Pikmin 2 rules.
-
-The routes are the same either way, but knowing where treasures, the hole or geyser, and hazards are
-before seeing them could change decisions. The tool reads only the broadcast picture: no memory
-reading, no game modification. Moderators may still treat live layout knowledge like a
-practice-only tool.
-
-Options range from offering it only for practice and race commentary (a viewer-side overlay that
-the runner doesn't see) to asking the moderators first. **Not decided here.**
+Settled: runs that use a live layout tool like this have their own category, so the runner may see
+the layout. Optionally hiding it from the stream (a projector window only the runner sees) is a
+display choice, not a rules requirement.
