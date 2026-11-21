@@ -20,10 +20,16 @@ from p2seeds.challenge_results import read_results  # noqa: E402
 def main() -> None:
     video, old_path, new_path = sys.argv[1:4]
     old = json.load(open(old_path))
+    done = {}
+    if Path(new_path).exists():           # resume: keep screens already re-read
+        done = {r["first_frame"]: r for r in json.load(open(new_path))["results"] if r.get("reread")}
     out = []
     for r in old["results"]:
         if r.get("decoded"):
             out.append(r)
+            continue
+        if r["first_frame"] in done:
+            out.append(done[r["first_frame"]])
             continue
         t = time.time()
         res = read_results(video, start=max(0, r["first_frame"] - 30), end=r["last_frame"] + 30)

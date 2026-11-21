@@ -335,29 +335,37 @@ BLEND_GAIN = 0.04            # pair templates must beat single digits by this mu
 
 @lru_cache(maxsize=1)
 def _pair_matrix():
+    """Centred single templates, and for every blend of two of them (same template set) the
+    indices and the norm of the sum: NCC(w, ta + tb) = (w.ta + w.tb) / |ta + tb| for a
+    normalised window w, so blends are scored from the single-template dot products."""
+    tpls = digit_templates()
+    cent = [t.ravel().astype(np.float32) - t.mean() for _, t in tpls]
     by_shape: dict = {}
-    for d, t in digit_templates():
-        by_shape.setdefault(t.shape, {}).setdefault(d, []).append(t)
-    vecs, labels = [], []
+    for j, (d, t) in enumerate(tpls):
+        by_shape.setdefault(t.shape, {}).setdefault(d, []).append(j)
+    ia, ib, norms, labels = [], [], [], []
     for group in by_shape.values():
         for a in range(10):
             for b in range(a, 10):
-                for ta in group.get(a, []):
-                    for tb in group.get(b, []):
-                        vecs.append(_unit((0.5 * ta + 0.5 * tb).ravel()))
+                for ja in group.get(a, []):
+                    for jb in group.get(b, []):
+                        ia.append(ja)
+                        ib.append(jb)
+                        norms.append(max(float(np.linalg.norm(cent[ja] + cent[jb])), 1e-6))
                         labels.append((a, b))
-    return np.stack(vecs, axis=1), labels
+    return (np.stack(cent, axis=1), np.array(ia), np.array(ib), np.array(norms, np.float32), labels)
 
 
 def read_pairs(canon: np.ndarray, lay: Layout) -> dict:
     """Per counter, [((lo, hi), score)] from the ones digit up: each slot as a 50/50 blend."""
-    mat, labels = _pair_matrix()
+    cent, ia, ib, norms, labels = _pair_matrix()
     slots = [(c, i, lay.squeeze[c]) for c in COUNTERS for i in range(lay.n[c])]
     crops = [slot_crop(canon, c, i, sq) for c, i, sq in slots]
     wins = np.stack([np.lib.stride_tricks.sliding_window_view(c, (TH, TW)).reshape(-1, TH * TW) for c in crops])
     wins = wins - wins.mean(axis=2, keepdims=True)
     wins /= np.maximum(np.linalg.norm(wins, axis=2, keepdims=True), 1e-6)
-    sc = (wins @ mat).max(axis=1)
+    dots = wins @ cent                                              # (slots, windows, templates)
+    sc = ((dots[:, :, ia] + dots[:, :, ib]) / norms).max(axis=1)    # (slots, pairs)
     best = sc.argmax(axis=1)
     out = {c: [] for c in COUNTERS}
     for (c, _, _), b, row in zip(slots, best, sc):
@@ -411,7 +419,7 @@ def _get_blend_kernel():
                         d2 = ((sn >> np.uint64(16)) & np.uint64(0x7FFF)) * np.uint64(9) // np.uint64(32768) + np.uint64(1)
                         if min(d1, d2) != lo_[m, q] or max(d1, d2) != hi_[m, q]:
                             bad += 1
-                            if bad > maxbad:
+                            if bad > maxbad or (m == 0 and q < 3):   # first 3 slots: exact (speed)
                                 ok = False
                                 break
                         s = (a1 * s + c1) & msk
@@ -428,10 +436,11 @@ def _get_blend_kernel():
     return kernel
 
 
-def solve_blended(pairs_frames: list[dict], lay: Layout, maxbad: int = 4) -> list[int]:
+def solve_blended(pairs_frames: list[dict], lay: Layout, maxbad: int = 6) -> list[int]:
     """All states s0 (mod 2^31) for which consecutive blended frames (every digit rolling, the
-    first frame's game frame g drawing from s0) show these digit pairs, up to maxbad misreads.
-    Brute force over 2^31 states (numba), pruned by the first slot: about 20 s on 8 cores."""
+    first frame's game frame g drawing from s0) show these digit pairs, up to maxbad misreads
+    (the first frame's first 3 slots must be read right). Brute force over 2^31 states (numba),
+    pruned by the first slot."""
     N = lay.total_digits
     lo = np.array([[p[0][0] for c in COUNTERS for p in pf[c]] for pf in pairs_frames], np.uint64)
     hi = np.array([[p[0][1] for c in COUNTERS for p in pf[c]] for pf in pairs_frames], np.uint64)
@@ -446,19 +455,36 @@ def _pair_hits(pf: dict, stream: np.ndarray, p: int, N: int) -> int:
                for q, (ab, _) in enumerate(flat))
 
 
-def find_anchor_blend(frames: list[Frame], lay: Layout, max_tries: int = 3):
-    """Anchor for a blended screen: two consecutive frames early in the roll, every digit
-    rolling, solved by brute force and confirmed by the next frames' pairs."""
+def find_anchor_blend(frames: list[Frame], lay: Layout, max_tries: int = 6, maxbad: int = 6):
+    """Anchor for a blended screen: two successive non-repeated frames early in the roll, every
+    digit rolling, solved by brute force and confirmed by the next frames' pairs (allowing the
+    capture's repeated and dropped frames)."""
     N = lay.total_digits
     nondup = [i for i, f in enumerate(frames) if not f.dup]
-    for pos in range(min(max_tries, max(0, len(nondup) - 6))):
+    tried = 0
+    for pos in range(max(0, len(nondup) - 8)):
+        if tried >= max_tries:
+            break
         fi, fj = nondup[pos], nondup[pos + 1]
-        if fj != fi + 1:
+        # a repeat that is not pixel-identical: the same pairs again, no new game frame
+        same = sum(a == b for c in COUNTERS for (a, _), (b, _) in zip(frames[fi].pairs[c], frames[fj].pairs[c]))
+        if same >= 0.7 * N:
             continue
-        for s0 in solve_blended([frames[fi].pairs, frames[fj].pairs], lay):
-            stream = digit_stream(s0, N * 8)
-            hits = [_pair_hits(frames[nondup[pos + m]].pairs, stream, m * N, N) for m in range(2, 6)]
-            if min(hits) >= 0.6 * N:
+        tried += 1
+        for s0 in solve_blended([frames[fi].pairs, frames[fj].pairs], lay, maxbad):
+            stream = digit_stream(s0, N * 20)
+            p, ok = N, 0
+            for m in range(2, 8):
+                hit = None
+                for q in (p + N, p + 2 * N, p):
+                    if _pair_hits(frames[nondup[pos + m]].pairs, stream, q, N) >= 0.6 * N:
+                        hit = q
+                        break
+                if hit is None:
+                    break
+                ok += hit != p
+                p = hit
+            if ok >= 3:
                 return fi, s0, tuple(0 for _ in COUNTERS)
     return None
 
