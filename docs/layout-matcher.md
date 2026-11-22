@@ -335,7 +335,8 @@ New tooling:
 | stage | result | confidence |
 |---|---|---|
 | CH10 Twilight Garden | `0E95D78F` | confirmed (§5) |
-| CH20 Giant's Bath (2 floors, Wii) | `5D221DD2`, k = 191,595 | strong: the only fit in k 0–1.2M, checked on gameplay |
+| CH20 Giant's Bath (2 floors, Wii) | `5D221DD2`, k = 191,595 | confirmed by the user; the only fit in k 0–1.2M |
+| CH14 Dweevil Nest (1 floor, Wii) | `246C1C78`, k = 136,736 (42.5 draws/frame, CMAL 39.5–63.3) | strong: the only seed fitting all 9 readings in k 0–600k |
 | CH17 Three Color Training | family `25835E4D` / `1C8189E4` (identical layouts), k = 119,870 | weak: suggestive only |
 | CH4 Creator's Garden | none | calibration failed |
 | CH22 Subterranean Lair | none | too few readable features |
@@ -362,6 +363,24 @@ New tooling:
   - Not checked: the hole (predicted in the pipe end behind the pod, (−813, 0)) and floor 2.
   - Images: `data/lm/ch20_review/` (`check_5D221DD2.jpg`, `gp/`), not committed.
   - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH20-1&seed=5D221DD2
+- **Method for single-room stages** (CH14): the pod's room is fixed, so each treasure can only be
+  at a few spots in the pod's frame.
+  - `spots.py` lists the spots from 1,000 sampled seeds.
+  - `fit_spots.py` fits the comedown camera (zoom, turn, shift) by snapping the treasures marked
+    on the frame to spots.
+  - `spot_overlay.py` numbers the spots on the frame; crops of each spot over several frames,
+    next to CaveGen3's icons, give the identities.
+  - `compare.py` puts the frame next to CaveGen3's comedown render of a candidate.
+- **CH14** (`obs/ch14_hard.json`; comedown frame 334, camera zoom 1.35, turn −2, shift 100,0):
+  - 12 spots: 9 at the arm mouths on a ring 680 from the pod, 3 inner.
+  - Hard readings: Key at spot 1, Combustion Berry at inner spot 9, feather (bird_hane) at inner
+    spot 10 leave 798 of 600k. Spot 3 empty and the Colossal Fossil (skull) at spot 7 leave 13.
+  - Soft readings: cat figure at spot 2, chocolate cup at spot 6, small yellow bobber at spot 4,
+    and a shuttlecock (round spiky ring from above) at spot 8. Only `246C1C78` fits all four,
+    and its comedown render matches the frame object for object.
+  - Not checked in gameplay beyond the comedown; spots 0 and 5 (behind the title, off screen)
+    are predicted to hold the blue toy ring and the Paradoxical Enigma.
+  - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH14-1&seed=246C1C78
 - **CH17** (fork; fly-over calibrated on cmal04 `3CB60D07` from 3 objects; the record registered
   by hand on 6 fence and block points; `obs/ch17_*`):
   - Four observations leave 14 seeds in k 0–400k (about 9 families). Only one family falls in the
