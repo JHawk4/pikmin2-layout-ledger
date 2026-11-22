@@ -282,3 +282,24 @@ def test_redo_refreshes_the_saved_read_so_linking_keeps_the_seed_that_links():
     row = dict(stale)
     assert not redo.refresh(row, read(truth, "low", [1, 4], 3))
     assert row["letter_seed"] == wrong
+
+
+def test_a_seed_confirmed_by_a_chain_anchors_the_window_search():
+    """03_JackDraz's Japanese run: no read is settled by its letters alone, so there is no
+    backbone. A chain of short names confirms floors 2-4, and floor 1 (too few letters for a link
+    of its own to count in a chain) must still be found just before floor 2, instead of the
+    chained seeds being treated as lone reads that anchor nothing."""
+    n = 5
+    s = [0x046E2BD4]
+    for d in (64_436, 40_000, 55_000):
+        s.append(rng.next_seed(letters_model.layout_seed(s[-1], n), d))
+    first = _Entry(s[0], n, keep=[0, 1, 2, 3, 4], s=1)
+    first.candidates = []                       # its global search found nothing useful
+    rest = [_Entry(x, n, keep=[0, 1, 2, 3, 4], s=i + 2) for i, x in enumerate(s[1:])]
+    for r, x in zip(rest, s[1:]):               # the right seed among their global candidates
+        r.candidates = [search.Candidate(x & rng.MASK31, 0.5, 0.0, np.zeros(n))]
+    results = [first] + rest
+    chain.link(results)
+    assert all("confirmed by a chain" in r.note for r in rest)
+    assert first.letter_seed == s[0] & rng.MASK31
+    assert "just before the next sublevel" in first.note

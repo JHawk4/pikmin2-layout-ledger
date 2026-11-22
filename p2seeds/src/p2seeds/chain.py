@@ -40,8 +40,13 @@ def link(results, near: int = NEAR) -> None:
     _demote_strays(results, settled)
     before = [(r.letter_seed, r.layout_seed, r.confidence, r.note, r.candidates) for r in results]
     _chains(results)
-    filled = _forward(results, near, set(settled))
-    _backward(results, near, set(settled) | filled)
+    # a seed a whole chain confirmed is no lone read: it anchors the window searches too (Japanese
+    # runs have few reads the letters settle alone, so few backbone seeds; 03_JackDraz's Cave of
+    # Spiders 1 and Glutton's Kitchen 6 are found only from chained neighbours)
+    chained = {i for i, r in enumerate(results) if r.confidence == "high" and before[i][2] not in ("high", "medium")
+               and "confirmed by a chain" in r.note}
+    filled = _forward(results, near, set(settled) | chained)
+    _backward(results, near, set(settled) | chained | filled)
     _bridge(results)
     _check_order(results, before, settled)
     for prev, r in zip(results, results[1:]):

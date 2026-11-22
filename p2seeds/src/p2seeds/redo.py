@@ -63,7 +63,9 @@ def _analyze(video, feed, e):
     return next((x for x in rs if x.cave_id == e["cave"]), rs[0])
 
 
-def redo(out_dir: str | Path, progress=None) -> list[int]:
+def redo(out_dir: str | Path, progress=None, frames: set[int] | None = None) -> list[int]:
+    """Re-read entries (all that _todo picks, or only `frames`) and link again; returns the frames
+    whose seed changed. A full pass reads each picked entry again, minutes apiece in Python."""
     out = Path(out_dir)
     path, fpath = out / "seeds.json", out / "fits.json"
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -75,7 +77,9 @@ def redo(out_dir: str | Path, progress=None) -> list[int]:
         rows = json.loads(fpath.read_text(encoding="utf-8"))
         by_frame = {r["frame"]: r for r in rows}
         refreshed = []
-        for i in _todo(es, by_frame):
+        todo = _todo(es, by_frame) if frames is None else \
+            [i for i, e in enumerate(es) if e["frame"] in frames and e["frame"] in by_frame]
+        for i in todo:
             e = es[i]
             row = by_frame[e["frame"]]
             r = _analyze(video, feed, e)
