@@ -335,18 +335,33 @@ New tooling:
 | stage | result | confidence |
 |---|---|---|
 | CH10 Twilight Garden | `0E95D78F` | confirmed (§5) |
-| CH20 Giant's Bath (2 floors) | 5 candidates in the rate window: `634D300A`, `14B208FC`, `2B6B79A9`, `3420C713`, `12725B9B` | narrowed, not solved |
+| CH20 Giant's Bath (2 floors, Wii) | `5D221DD2`, k = 191,595 | strong: the only fit in k 0–1.2M, checked on gameplay |
 | CH17 Three Color Training | family `25835E4D` / `1C8189E4` (identical layouts), k = 119,870 | weak: suggestive only |
 | CH4 Creator's Garden | none | calibration failed |
 | CH22 Subterranean Lair | none | too few readable features |
 
-- **CH20** (comedown floor matcher plus objects, `obs/ch20_comedown.json`):
-  - The floor shape (two lit pool rooms and side caps) leaves 1,885 of 600k seeds.
-  - Four objects then cut it to 10: a treasure in the right cap, one in the lower pool room, one
-    in the top-left cap, and the hole in the bottom-right cap.
-  - Five of those lie in the rate window (k 98k–341k).
-  - They differ only in which treasure sits where. At comedown resolution I can't tell a rubber
-    duck from a bell reliably, and the gameplay camera isn't calibrated.
+- **CH20, first attempt** (comedown floor matcher plus objects, `obs/ch20_comedown.json`): the
+  floor shape left 1,885 of 600k seeds, four objects read off the comedown left 10, five of them
+  in the rate window. All five were wrong. Two of the readings were misreads: the "hole in the
+  bottom-right cap" was the Sud Generator (soap) in a pipe end, and the "treasure in the top-left
+  cap" was the bare pipe end.
+- **CH20, second attempt** (treasures only, identified in gameplay; `obs/ch20_treasures.json`):
+  - Enemies aren't drawn during the comedown. Each cutscene has draw flags for Pikmin, captains,
+    treasures and enemies (`MoviePlayer::setPauseAndDraw`), and in this video treasures show but
+    enemies don't. So only treasures are used.
+  - Gameplay frames 1750–1930 show three pipe ends around the lower room: the duck on one wall,
+    then round the corner the soap and the bell on the next wall. The comedown places the duck
+    and the soap at pod-frame (ahead −200, side 880) and (−720, 870), with a gold treasure in the
+    lower pool at (−480, 390).
+  - Those four observations leave 86 of 4M seeds (k 0–4M). Within k 0–1.2M only `5D221DD2`
+    (k = 191,595, inside the rate window) also has the exact comedown floor shape. The next exact
+    shape matches are at k ≥ 1,199,536.
+  - Checked on gameplay. Predicted and seen: in the duck room's pool, two treasures and a Hermit
+    Crawmad burrow; a second burrow by the duck's pipe end; an egg in the pipe end next to the pod
+    (frames 920–1000). The other exact-shape seeds have no eggs and one treasure in that pool.
+  - Not checked: the hole (predicted in the pipe end behind the pod, (−813, 0)) and floor 2.
+  - Images: `data/lm/ch20_review/` (`check_5D221DD2.jpg`, `gp/`), not committed.
+  - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH20-1&seed=5D221DD2
 - **CH17** (fork; fly-over calibrated on cmal04 `3CB60D07` from 3 objects; the record registered
   by hand on 6 fence and block points; `obs/ch17_*`):
   - Four observations leave 14 seeds in k 0–400k (about 9 families). Only one family falls in the
