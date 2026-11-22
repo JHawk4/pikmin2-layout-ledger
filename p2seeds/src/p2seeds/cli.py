@@ -167,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
         from . import redo
         changed = redo.redo(args.out_dir, progress=lambda e, r, ok: log(
             f"  {e['cave']} {e['sublevel']}: {e['confidence']} -> {r.confidence}"
-            + (" (kept: confirmed by a neighbour)" if ok else " (not kept)")))
+            + (" (kept)" if ok else " (not kept)")))
         log(f"{len(changed)} sublevel(s) changed; run judge, treasures and details next")
         return 0
 

@@ -424,25 +424,26 @@ def _bridge(results) -> None:
 
 # --- saving the pre-link state, so chains can be re-tuned without re-reading video ---
 
-def dump(results, path) -> None:
-    """Write what linking needs (fits and global candidates, before any linking) as JSON."""
-    import json
-
+def row(r) -> dict:
+    """One result's pre-link state as a fits.json row."""
     def fl(x):
         return [None if not np.isfinite(v) else float(v) for v in x]
 
-    rows = []
-    for r in results:
-        rows.append({
-            "frame": r.settled_frame, "cave": r.cave_id, "sublevel": r.sublevel, "lang": getattr(r, "lang", "en"),
-            "num_chars": _n(r), "confidence": r.confidence, "note": r.note,
-            "letter_seed": r.letter_seed, "layout_seed": r.layout_seed,
-            "fit": None if r.fit is None else {"v": fl(r.fit.v), "sigma": fl(r.fit.sigma), "rms_px": r.fit.rms_px},
-            "candidates": [{"letter_seed": c.letter_seed, "score": c.score, "bias": c.bias,
-                            "residuals": fl(c.residuals)} for c in r.candidates[:8]],
-        })
+    return {
+        "frame": r.settled_frame, "cave": r.cave_id, "sublevel": r.sublevel, "lang": getattr(r, "lang", "en"),
+        "num_chars": _n(r), "confidence": r.confidence, "note": r.note,
+        "letter_seed": r.letter_seed, "layout_seed": r.layout_seed,
+        "fit": None if r.fit is None else {"v": fl(r.fit.v), "sigma": fl(r.fit.sigma), "rms_px": r.fit.rms_px},
+        "candidates": [{"letter_seed": c.letter_seed, "score": c.score, "bias": c.bias,
+                        "residuals": fl(c.residuals)} for c in r.candidates[:8]],
+    }
+
+
+def dump(results, path) -> None:
+    """Write what linking needs (fits and global candidates, before any linking) as JSON."""
+    import json
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(rows, fh)
+        json.dump([row(r) for r in results], fh)
 
 
 class _Fit:
@@ -472,8 +473,9 @@ def load(path) -> list:
         return [Saved(d) for d in json.load(fh)]
 
 
-def relink_dir(out_dir) -> list:
-    """Re-run link() from out_dir/fits.json and update the seed fields of out_dir/seeds.json."""
+def relink_dir(out_dir, data: dict | None = None) -> list:
+    """Re-run link() from out_dir/fits.json and update the seed fields of out_dir/seeds.json
+    (or of `data`, that file's contents already loaded, which is then written there)."""
     import json
     from pathlib import Path
 
@@ -481,7 +483,8 @@ def relink_dir(out_dir) -> list:
     results = load(out_dir / "fits.json")
     link(results)
     by_frame = {r.settled_frame: r for r in results}
-    data = json.loads((out_dir / "seeds.json").read_text(encoding="utf-8"))
+    if data is None:
+        data = json.loads((out_dir / "seeds.json").read_text(encoding="utf-8"))
     for e in data["entries"]:
         r = by_frame.get(e["frame"])
         if r is None:
