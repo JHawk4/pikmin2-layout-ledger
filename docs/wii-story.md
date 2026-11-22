@@ -142,8 +142,12 @@ p2seeds publish --root data/output --at-root data/output_at --wii-root data/outp
 ```
 
 `data/output_wii/section.txt` holds `wii`, which tells the pages which tab
-they belong to. mercysnow's Japanese run is left out until the Japanese fit
-is fixed.
+they belong to.
+
+The tab shows only runs within 10 minutes of the Wii world record (1:38:29):
+Sbudiver, kobachi and JHawk4. CurtisDN_, HeartPiece, s0rcius and kiiltomaeki
+were analysed (numbers above) but are held back in `data/wii_story/held/`.
+mercysnow's Japanese run is left out until the Japanese fit is fixed.
 
 ## Still open
 
