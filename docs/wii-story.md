@@ -149,6 +149,38 @@ Sbudiver, kobachi and JHawk4. CurtisDN_, HeartPiece, s0rcius and kiiltomaeki
 were analysed (numbers above) but are held back in `data/wii_story/held/`.
 mercysnow's Japanese run is left out until the Japanese fit is fixed.
 
+## Layouts checked against the comedown
+
+For every high seed in the three runs on the site, the picture behind the
+title was set beside CaveGen3's comedown render of the predicted layout
+(`cavegen3 <sublevel> <seed> --view comedown --screen 16:9`). The comedown
+is the game's still, nearly top-down shot of the pod's surroundings; its
+framing matches the render, with the pod in the same screen position. Each
+pair was compared for room outlines, corridor directions, holes and objects.
+
+| Run | Entries | Match | Mismatch | Can't tell |
+|---|---|---|---|---|
+| JHawk4 (Wii U VC) | 49 | 23 | 0 | 26 |
+| Sbudiver (Wii U VC) | 39 | 16 | 0 | 23 |
+| kobachi (Wii) | 55 | 7 | 0 | 48 |
+
+No layout disagrees with the video. Examples of matches: FC 3 (maze corridors
+and rectangular holes line up), BK 3 (room arms and three objects at the
+predicted spots), HoB 1 (the loop corridor's dark middle beside the pod).
+
+Most "can't tell" pictures are black or show something else behind the title:
+- On Wii U VC the title often sits over the previous sublevel's last frame
+  (Olimar, flowers) instead of the comedown.
+- On a real Wii the comedown shows 6-28 frames after the letters land and is
+  lit only by the pod's own light (plus a flower-petal overlay), so little of
+  the floor shows.
+- Glutton's Kitchen's floor is lit everywhere, so no outlines stand out.
+
+The chain check covers these entries: every high seed chains to its
+neighbours, which a wrong seed does with a chance of about 1 in 1000.
+
+Tool (not committed): `data/wii_story/comedown_sheets.py RUN_DIR OUT_DIR`.
+
 ## Still open
 
 - Japanese Wii titles: 神 and 所 are not tracked, and only 3 of 5 letters
