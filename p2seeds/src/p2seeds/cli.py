@@ -38,8 +38,14 @@ def use_rng_of(out_dir: Path) -> str:
 
 
 def _no_cavegen() -> int:
-    log("this run uses the Switch generator; CaveGen only knows the GC one, so there are no layouts yet")
+    log("this run uses the Switch generator, which only CaveGen3 has; build its command line "
+        "(data/build/cavegen3/cavegen3.exe) and p2seeds' bridge (p2seeds/cg3) for layouts")
     return 1
+
+
+def _layouts_possible() -> bool:
+    """False for a Switch run without CaveGen3 (Java CaveGen has only the GC generator)."""
+    return rng.active() == "gc" or cavegen.switch_ready()
 
 
 def log(msg: str) -> None:
@@ -54,7 +60,9 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
     rng.use(gen)
     if gen != "gc":
         log(f"generator: {gen}")
-        render = False      # CaveGen only implements the GC generator
+        if not cavegen.switch_ready():
+            log("  no CaveGen3 build, so no layout pictures (Java CaveGen has only the GC generator)")
+            render = False
     video = Video(path)
     feed = feed or find_feed(video)
     log(f"feed: x {feed.x0}-{feed.x1}, y {feed.y0}-{feed.y1} ({feed.width}x{feed.height})")
@@ -96,8 +104,7 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
     out_dir.mkdir(parents=True, exist_ok=True)
     chain.dump(results, out_dir / "fits.json")      # pre-link state, for re-tuning chains offline
     chain.link(results)
-    if gen == "gc":
-        cavegen.set_region_for(results)
+    cavegen.set_region_for(results)
 
     out_dir.mkdir(parents=True, exist_ok=True)
     thumbs, layouts = {}, {}
@@ -196,7 +203,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "details":
         from . import details
         out = Path(args.out_dir)
-        if use_rng_of(out) != "gc":
+        use_rng_of(out)
+        if not _layouts_possible():
             return _no_cavegen()
         cavegen.set_region_for(json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"])
         page = details.write(out, force=args.force,
@@ -222,6 +230,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "treasures":
         from . import treasures
         out = Path(args.out_dir)
+        use_rng_of(out)
+        if not _layouts_possible():
+            return _no_cavegen()
+        cavegen.set_region_for(json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"])
         if args.bugs_only:
             counts = treasures.refresh_bugs(out)
             clipped = sum(v.get("bug_clipped") or 0 for v in counts.values())
@@ -253,7 +265,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "render":
         out = Path(args.out_dir)
-        if use_rng_of(out) != "gc":
+        use_rng_of(out)
+        if not _layouts_possible():
             return _no_cavegen()
         entries = json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"]
         cavegen.set_region_for(entries)
@@ -268,7 +281,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "judge":
         from . import judge_report
         out = Path(args.out_dir)
-        if use_rng_of(out) != "gc":
+        use_rng_of(out)
+        if not _layouts_possible():
             return _no_cavegen()
         cavegen.set_region_for(json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"])
         judge_report.judge_run(out, args.kind, progress=lambda i, n, r: log(
@@ -315,11 +329,12 @@ def _batch(args) -> int:
         if entry.get("status") != "ok":
             continue
         out = Path(args.out) / Path(entry["download"]["path"]).stem
-        gc = rng.for_platform(entry["run"].get("platform")) == "gc"
+        # Switch runs get judged and counted when CaveGen3 can make their layouts
+        gc = rng.for_platform(entry["run"].get("platform")) == "gc" or cavegen.switch_ready()
         if gc and (not (out / "seeds.json").exists() or not (out / "judge.json").exists()
                    or not (out / "treasures.json").exists()):
             todo.append((run_id, out, gc))
-        elif not gc and not (out / "seeds.json").exists():   # Switch: seeds only (no CaveGen judge yet)
+        elif not gc and not (out / "seeds.json").exists():   # Switch without CaveGen3: seeds only
             todo.append((run_id, out, gc))
     log(f"{len(todo)} run(s) to process with {args.jobs} job(s)")
     py = [sys.executable, "-m", "p2seeds"]

@@ -316,13 +316,19 @@ That is consistent with the answer: musl's is mod 2^64, outside this test's rang
    the 64-bit musl LCG (stepping, exact distances, letter speeds), `lattice.search` to a 64-bit
    box (up to 16 letters), and `search_near`, `chain.link` and `layout_seed` follow. Seeds are
    written as 16 hex digits and `seeds.json` records `meta.rng`. `p2seeds analyze --rng switch`
-   selects it; `p2seeds run` picks it from the run's platform. CaveGen steps (render, details,
-   judge, treasures) are skipped for Switch runs. Re-searching tcbtrio's saved fits this way
+   selects it; `p2seeds run` picks it from the run's platform. Re-searching tcbtrio's saved fits this way
    (`research_switch.py`): 36 high-confidence entries from the letters alone, **51 of 55 after
    `chain.link`**, 46 confirmed by the previous sublevel (largest gap 377,123 draws). Left out:
    2 entries with no seed, 1 medium, 1 low. Tests: `p2seeds/tests/test_switch_rng.py`.
-2. **Add the same mode to CaveGen,** then check a Switch layout against a decoded seed. The
-   Challenge Mode floor-1s are the easiest place to start, as on GC.
+2. **Done: the same mode in CaveGen3** (its branch `claude/switch-rng`): `Generator::Switch` in
+   `rng.rs` (`randFloat` = `(f32)rand() / 2^31`, the game's `rand.h` arithmetic with the native
+   `RAND_MAX`), `Layout::generate_with`, `cavegen3 ... --rng switch` for pictures and `judge`, and
+   `"rng": "switch"` in p2seeds' bridge. p2seeds draws, judges and counts treasures for Switch
+   runs when both are built (`cavegen.switch_ready()`); Java CaveGen stays GC only. Every vanilla
+   sublevel generates Switch layouts without error. **Not yet checked against the game:** no
+   Switch layout has been compared with video. The Challenge Mode floor-1s, or a story sublevel
+   with a varied map, are the place to start. One guess to check there: on Switch `(f32)rand()`
+   can round to 2^31, so `randInt(n)` can return n (about 1 call in 2^25); CaveGen3 clamps it.
 3. **Challenge Mode reader:** decode Switch score rolls in `challenge_results` with the musl
    digit formula (`musl_rolls.py` has it), once that branch is merged.
 

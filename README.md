@@ -57,8 +57,9 @@ cargo build --release --manifest-path ../cavegen3/Cargo.toml -p cavegen3-cli   #
 # or one file
 .venv/Scripts/python -m p2seeds analyze data/videos/some_run.mp4 --url https://www.youtube.com/watch?v=...
 
-# Switch (Pikmin 2 HD) runs use a different RNG (musl's 64-bit LCG, docs/switch-rng.md): seeds only,
-# no layouts or judge yet (CaveGen knows only the GC generator). `run` picks it from the platform.
+# Switch (Pikmin 2 HD) runs use a different RNG (musl's 64-bit LCG, docs/switch-rng.md). `run` picks
+# it from the platform. Layouts, judge and treasures need CaveGen3 (cavegen3.exe and p2seeds/cg3)
+# built from a CaveGen3 with `--rng switch`; Java CaveGen has only the GC generator.
 .venv/Scripts/python -m p2seeds analyze data/videos/some_switch_run.mp4 --rng switch
 
 # score each recovered layout with CaveGen's judge -> data/output/<run>/judge.html, judge.json

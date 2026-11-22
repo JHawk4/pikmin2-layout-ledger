@@ -86,3 +86,11 @@ def test_real_switch_entries_give_chaining_seeds():
         seeds.append(c[0].letter_seed)
     assert seeds[0] == rng.next_seed(0x306306F66F0443C4, -1)
     assert rng.distance(seeds[0], seeds[1], limit=1 << 24) == 16_424
+
+
+def test_cavegen3_gets_the_full_seed_and_the_generator():
+    from p2seeds import cavegen
+    assert cavegen._cg3_seed_args(0x306306F66F0443C4) == ["306306F66F0443C4", "--rng", "switch"]
+    assert cavegen._cg3_seed_args(0x1234) == ["0000000000001234", "--rng", "switch"]
+    with rng.using("gc"):
+        assert cavegen._cg3_seed_args(0x1234ABCD) == ["1234ABCD"]

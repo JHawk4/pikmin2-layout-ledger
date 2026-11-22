@@ -21,10 +21,37 @@ def _region_args() -> list[str]:
 
 
 def set_region_for(entries) -> None:
-    """Pick the region from a run's entries (seeds.json rows or results with `lang`)."""
+    """Pick the region from a run's entries (seeds.json rows or results with `lang`). Switch runs
+    use CaveGen3's US caveinfo whatever the language (no Switch caveinfo has been compared)."""
     global REGION
+    from . import rng
+    if rng.active() == "switch":
+        REGION = "us"
+        return
     langs = {(e.get("lang") if isinstance(e, dict) else getattr(e, "lang", None)) or "en" for e in entries}
     REGION = "jpn" if langs == {"ja"} else "us"
+
+
+def switch_ready() -> bool:
+    """Switch layouts need CaveGen3 (Java CaveGen has only the GC generator): its command line
+    for pictures and p2seeds' bridge (cg3.py) for judges and treasures."""
+    from . import cg3
+    from .views import cavegen3_exe
+    return cg3.available() and cavegen3_exe() is not None
+
+
+def _cg3_seed_args(seed: int) -> list[str]:
+    """The seed and generator arguments for CaveGen3's command line."""
+    from . import rng
+    if rng.active() == "switch":
+        return [f"{seed & rng.MASK64:016X}", "--rng", "switch"]
+    return [f"{seed & 0xFFFFFFFF:08X}"]
+
+
+def _need_cavegen3(what: str) -> None:
+    from . import rng
+    if rng.active() != "gc":
+        raise RuntimeError(f"{what} for a Switch layout needs CaveGen3 built with its Switch generator")
 
 
 def ensure_built() -> Path:
@@ -49,13 +76,14 @@ def render(cave_id: str, sublevel: int, seed: int, dest: str | Path, extra_args:
     if exe is not None and REGION == "us" and not extra_args:
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run([str(exe), "generate", f"{cave_id}-{sublevel}", seed_hex, "--scale", "2", "-o", tmp],
+            subprocess.run([str(exe), "generate", f"{cave_id}-{sublevel}", *_cg3_seed_args(seed), "--scale", "2", "-o", tmp],
                            check=True, capture_output=True, timeout=120)
             out = next(Path(tmp).glob("*.png"))
             dest = Path(dest)
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(out, dest)
         return dest
+    _need_cavegen3("drawing")
     build = ensure_built()
     cmd = ["java", "-cp", str(build), "CaveGen", "cave", cave_id, str(sublevel), "-seed", f"0x{seed_hex}",
            "-noprints", "-nostats", *_region_args(), *extra_args]
@@ -95,6 +123,7 @@ def judge(cave_id: str, sublevel: int, seed: int, kind: str = "pod") -> Judgemen
         score = round(cg3.layout(cave_id, sublevel, seed, kind)["score"], 2)   # as Java prints it
         fixed = float(ref.min()) == float(ref.max())
         return Judgement(kind, float(score), cg3.rank(score, ref), float(np.median(ref)), fixed)
+    _need_cavegen3("judging")
     build = ensure_built()
     cmd = ["java", "-cp", str(build), "CaveGen", "cave", cave_id, str(sublevel),
            "-seed", f"0x{seed & 0xFFFFFFFF:08X}", "-noimages", "-judge", kind, *_region_args()]
