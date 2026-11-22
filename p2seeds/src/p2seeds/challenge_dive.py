@@ -955,7 +955,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
               final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0),
               f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6,
-              setup_only: bool = False):
+              setup_only: bool = False, skip_if_clear: bool = False, prune_first: float = 0.0):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
@@ -1068,7 +1068,18 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         st2 = st[o]
         # the dive start (f0) is known to a frame or two; a look-alike at the wrong phase can beat the
         # truth at a fixed f0, so take each state's best over a few start offsets
-        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2) for d in offs], axis=0)
+        if prune_first and len(offs) > 1:
+            # two steps: the middle offset for every state, the other offsets only for its best
+            # `prune_first` fraction (2.5x fewer renders at 0.25; the truth is rarely outside it)
+            mid_d = sorted(offs)[len(offs) // 2]
+            bl = batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + mid_d), st2)
+            keep_n = max(20_000, int(len(st2) * prune_first))
+            part = np.argsort(bl)[:keep_n]
+            rest = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2[part])
+                           for d in offs if d != mid_d], axis=0)
+            bl[part] = np.minimum(bl[part], rest)
+        else:
+            bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2) for d in offs], axis=0)
         o2 = np.argsort(bl)
         st3 = st2[o2[:20_000]]
         for x in probe_set:
@@ -1120,6 +1131,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     # alternate: refit the geometry on the leader, prune and re-rank with it (a look-alike's geometry is
     # nearly right, so this converges on the true state, which lines up exactly)
     geo = g
+    if skip_if_clear and (res[1][0] - res[0][0]) / res[0][0] > 0.1:
+        iterations = 0                          # already a clear leader (small anchored windows)
     for it in range(iterations):
         lead = res[0][1]
         geo, _ = fit(lead, geo, False)
