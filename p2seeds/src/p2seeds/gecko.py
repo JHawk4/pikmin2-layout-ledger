@@ -132,7 +132,15 @@ def body(v: Version) -> list[int]:
         ("", cmpw(12, 9)), ("beq", "hit"),
         ("", addi(11, 11, 8)),
         ("b", "loop"),
-        ("hit:", lwz(12, 4, 11)),
+        ("hit:", lwz(12, 4, 11)),                       # r12 = seed
+        ("", addi(8, 11, 8)),                            # a later visit of the same sublevel?
+        ("scan:", lwz(7, 0, 8)),
+        ("", cmpwi(7, 0)), ("beq", "use"),               # no: keep this entry for re-entries
+        ("", cmpw(7, 9)), ("beq", "spend"),
+        ("", addi(8, 8, 8)),
+        ("b", "scan"),
+        ("spend:", li(7, -1)), ("", stw(7, 0, 11)),      # yes: this visit's entry is used up
+        ("use:", cmpwi(12, -1)), ("beq", "done"),        # a visit without a trusted seed: random
         ("", lis(11, _ha(v.rand_next))), ("", stw(12, _lo(v.rand_next), 11)),   # rand state = seed
         ("done:", ORIGINAL),
     ]
@@ -152,16 +160,30 @@ def key(cave: str, sublevel: int) -> int:
     return (cid & 0xFF00FFFF) | (((sublevel - 1) & 0xFF) << 16)
 
 
-def table(entries) -> list[tuple[int, int]]:
-    """(key, seed) per sublevel of a run that has a trusted seed: the last trusted one when a
-    cave was entered more than once (All Treasures purple farms), which is the descent the site
-    times. `entries` are a judge.json's entries after judge_report.mark_neighbors."""
+RANDOM = 0xFFFFFFFF            # table seed for a visit with no trusted seed: leave the RNG alone
+SPENT = 0xFFFFFFFF             # what the code writes over a used entry's key (never a real key)
+
+
+def visits(entries) -> list[tuple[str, int, int, int]]:
+    """(cave, sublevel, key, seed) for every visit of a sublevel, in the order played, for the
+    sublevels with at least one trusted seed. A sublevel made more than once (All Treasures purple
+    farms: BK 1-3, out, then BK 1-7) has one entry per visit; the code uses them in turn and keeps
+    the last for any later visit. A visit without a trusted seed gets RANDOM, so the next visit
+    still gets its own seed. `entries` are a judge.json's entries after judge_report.mark_neighbors."""
     from .judge_report import trusted
-    seen: dict[int, int] = {}
+    out = []
     for e in entries:
-        if e.get("cave") in CAVE_IDS and e.get("sublevel") and e.get("layout_seed") and trusted(e):
-            seen[key(e["cave"], int(e["sublevel"]))] = int(str(e["layout_seed"]), 16) & 0x7FFFFFFF
-    return list(seen.items())
+        if e.get("cave") in CAVE_IDS and e.get("sublevel"):
+            ok = e.get("layout_seed") and trusted(e)
+            sub = int(e["sublevel"])
+            out.append((e["cave"], sub, key(e["cave"], sub), int(str(e["layout_seed"]), 16) & 0x7FFFFFFF if ok else RANDOM))
+    keep = {k for _, _, k, s in out if s != RANDOM}
+    return [v for v in out if v[2] in keep]
+
+
+def table(entries) -> list[tuple[int, int]]:
+    """The code's table: (key, seed) per visit (see visits)."""
+    return [(k, s) for _, _, k, s in visits(entries)]
 
 
 def words(v: Version, pairs: list[tuple[int, int]]) -> list[int]:

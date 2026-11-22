@@ -18,15 +18,9 @@ def run_data(runs: list[dict], prefix: str) -> list[dict]:
     the runs' section ("" or "at/")."""
     out = []
     for r in runs:
-        pairs = gecko.table(r["entries"])
-        if not pairs:
+        rows = [list(v) for v in gecko.visits(r["entries"])]
+        if not rows:
             continue
-        seeds, rows = dict(pairs), []
-        for e in r["entries"]:      # in the order played, once per sublevel in the table
-            if e.get("cave") in gecko.CAVE_IDS and e.get("sublevel"):
-                k = gecko.key(e["cave"], int(e["sublevel"]))
-                if k in seeds:
-                    rows.append([e["cave"], int(e["sublevel"]), k, seeds.pop(k)])
         run = r.get("run", {})
         out.append({"slug": r["slug"], "label": r["runner"], "href": f"{prefix}{r['slug']}/judge.html",
                     "category": "All Treasures" if r.get("kind") == "at" else "Pay Off Debt",
@@ -43,6 +37,7 @@ JS = r"""
 const V = JSON.parse(document.getElementById('gecko-versions').textContent);
 const R = JSON.parse(document.getElementById('gecko-runs').textContent);
 const $ = id => document.getElementById(id);
+const RANDOM = 0xFFFFFFFF;
 const hex = (x, n) => (x >>> 0).toString(16).toUpperCase().padStart(n, '0');
 // Same as gecko.words: bl over the table, the table (key, seed; 0 ends it), the body, the return slot.
 function words(v, rows) {
@@ -67,7 +62,7 @@ const groups = {};
 for (const [i, r] of R.entries()) {
   const g = groups[r.category] || (groups[r.category] = document.createElement('optgroup'));
   g.label = r.category;
-  g.appendChild(new Option(`${r.label}${r.platform && r.platform !== 'GameCube' ? ' · ' + r.platform : ''} · ${r.rows.length} sublevels`, i));
+  g.appendChild(new Option(`${r.label}${r.platform && r.platform !== 'GameCube' ? ' · ' + r.platform : ''} · ${new Set(r.rows.filter(x => x[3] !== RANDOM).map(x => x[2])).size} sublevels`, i));
 }
 for (const g of Object.values(groups)) $('run').appendChild(g);
 function show() {
@@ -75,11 +70,16 @@ function show() {
   if (!v || !r) return;
   const name = `Layouts of ${r.label} (${r.category}) [Pikmin 2 Layout Ledger]`;
   $('code').value = '$' + name + '\n' + code(v, r.rows);
-  $('summary').innerHTML = `${r.rows.length} sublevels get <a href="${r.href}">this run's layouts</a>; any other sublevel stays random.`
+  $('summary').innerHTML = `${new Set(r.rows.filter(x => x[3] !== RANDOM).map(x => x[2])).size} sublevels get <a href="${r.href}">this run's layouts</a>; any other sublevel stays random.`
     + (v.checked ? '' : ' <b>This version\'s addresses come from the decomp\'s symbol map and have not been tried on a real copy of the game yet.</b>')
     + (r.platform && r.platform !== 'GameCube' ? ` This run was played on ${r.platform}; the GameCube layouts match it only where the cave files are the same.` : '');
-  $('rows').innerHTML = r.rows.map(x => `<tr><td>${x[0]} ${x[1]}</td><td><code>${hex(x[3], 8)}</code></td>`
-    + `<td><a href="https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:${x[0]}-${x[1]}&seed=${hex(x[3], 8)}">CaveGen3</a></td></tr>`).join('');
+  const seen = {};
+  $('rows').innerHTML = r.rows.map(x => {
+    const visit = seen[x[2]] = (seen[x[2]] || 0) + 1, again = visit > 1 ? ` <span class="muted">(visit ${visit})</span>` : '';
+    return x[3] === RANDOM ? `<tr><td>${x[0]} ${x[1]}${again}</td><td colspan="2" class="muted">random (seed not read with confidence)</td></tr>`
+      : `<tr><td>${x[0]} ${x[1]}${again}</td><td><code>${hex(x[3], 8)}</code></td>`
+        + `<td><a href="https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:${x[0]}-${x[1]}&seed=${hex(x[3], 8)}">CaveGen3</a></td></tr>`;
+  }).join('');
   $('gameid').textContent = v.gameId;
 }
 $('version').addEventListener('change', show);
@@ -153,8 +153,10 @@ with $, is its name), save, and tick it. Cheats must be on: Config, General, Ena
 <p><b>Nintendont</b> (Wii or Wii U): download the .gct and copy it to <code>codes/<span id="gameid">GPVE01</span>.gct</code> on
 your SD card or USB drive, then turn on Cheats in Nintendont's settings. Nintendont keeps cheats in a small space, so a
 run with many sublevels can be too long for it.</p>
-<p>The layout is set each time the sublevel is made, so dying, leaving and re-entering, or reloading the cave gives the
-same layout again. Only the layout is fixed: enemies, eggs and anything else random after the sublevel loads behave as
+<p>The layout is set each time the sublevel is made. If the runner went through a sublevel more than once (All
+Treasures runners farm purple Pikmin in Bulblax Kingdom before the real descent), each visit gets its own layout in
+turn, and the last one stays for any visit after that: dying, leaving and re-entering, or reloading. To start a run
+over from the first visit, stop the game and start it again. Only the layout is fixed: enemies, eggs and anything else random after the sublevel loads behave as
 usual.</p>
 
 <h2>Sublevels in this code</h2>

@@ -31,17 +31,25 @@ insert there:
 3. Call `SingleGameSection::getCaveID` and `::getCurrFloor` by address (each is `lwz r3, x(r3); blr`,
    so the field offsets, which differ between builds, don't matter).
 4. Key = cave ID (`'f_03'` etc.) with its second byte replaced by the 0-based floor. Walk the table of
-   (key, seed) words; on a match store the seed into `rand()`'s state (MSL `rand.c` `next`).
+   (key, seed) words to the first entry with that key. If a later entry has the same key, mark this
+   one spent (key := FFFFFFFF), so the next time the sublevel is made the next visit's entry is
+   used; the last entry for a key is never spent. Unless the seed is FFFFFFFF ("no trusted seed for
+   this visit: leave it random"), store it into `rand()`'s state (MSL `rand.c` `next`).
 5. `li r26, 0` (the replaced instruction); the code handler adds the branch back.
 
-Only volatile registers are used (r3, r9–r12, ctr, cr0); the prologue has already saved the link
+Only volatile registers are used (r3, r7–r12, ctr, cr0); the prologue has already saved the link
 register and nothing after the hook reads r4–r12 before setting them. Cave IDs come from the game's
 `user/Abe/stages.txt`: EC `t_01`, SCx `t_02`, FC `t_03`, HoB `f_01`, WFG `f_02`, BK `f_03`, SH `f_04`,
 CoS `y_01`, GK `y_02`, SR `y_03`, SC `y_04`, CoC `l_01`, HoH `l_02`, DD `l_03`.
 
-A run's table holds its trusted seeds (`judge_report.trusted`: high confidence, or medium in order
-with its high neighbours), one per sublevel; when a cave was entered more than once (All Treasures
-purple farms), the last trusted visit wins. 8 bytes per sublevel; the fixed part is 36 instructions plus the `bl`, the end marker and the return slot.
+A run's table has one entry per visit of each sublevel, in the order played, for the sublevels with
+at least one trusted seed (`judge_report.trusted`: high confidence, or medium in order with its high
+neighbours). A visit without a trusted seed keeps its place as FFFFFFFF. All Treasures runs make
+some sublevels more than once (BK purple farms, EC twice), so each visit gets its own layout in turn,
+and the last one stays for any later visit (dying, re-entering, reloading). The spent marks live in
+RAM with the code, so a fresh start of the game (stopping and starting emulation) starts again from
+the first visit; whether Dolphin's Reset reinstalls the codes is untested. 8 bytes per visit; the
+fixed part is 48 instructions plus the `bl`, the end marker and the return slot.
 
 ## Addresses per version
 
@@ -69,7 +77,9 @@ and romhacks. No Korean GameCube release is known to the decomp.
   build 0x8024C118 is a prologue instruction (`stfd f31`), so a set-seed code at that address is for
   the demo build only.
 - Tests: the assembler's encodings against words read from the game; the body disassembled with
-  capstone; table rules; the page's script against the Python reference (node).
+  capstone; table rules; the page's script against the Python reference (node); and the whole code
+  run, for every version, on a small PowerPC model (instructions decoded by capstone, fake game
+  memory): repeat visits in turn, an unread visit left random, other sublevels, non-story sections.
 - PAL, JPN and demo 18 use the same function (same size, 0x14C) and the decomp's addresses, but
   were not checked against a disc.
 - Not yet run in Dolphin or on Nintendont.
