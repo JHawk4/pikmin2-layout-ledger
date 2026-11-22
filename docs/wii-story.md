@@ -7,16 +7,17 @@ GameCube runs?
 ## Verdict: works with changes, and how well depends on the console
 
 - **Real Wii: works.** The letter physics, the RNG and the draws per letter
-  match GameCube exactly. With the changes on this branch, kobachi's real-Wii
-  Pay Off Debt run gave **55 high seeds**, about every sublevel entry in the
-  run. Every one of the 54 consecutive pairs chains forward by a plausible
-  number of RNG draws.
-- **Wii U Virtual Console: partly.** The seeds read are just as good: high
-  confidence and chained. But the Wii U loads sublevels so quickly that on most
-  short loads the title card is cut to black before the letters land, or never
-  shown at all. Those entries simply carry no seed. JHawk4's run gave 43 high
-  seeds and Sbudiver's 33. mercysnow's Japanese run gave almost nothing usable
-  (table below).
+  match GameCube exactly. kobachi's, s0rcius's and kiiltomaeki's real-Wii Pay
+  Off Debt runs gave **55, 55 and 56 high seeds**, about every sublevel entry.
+  Every consecutive pair chains forward by a plausible number of RNG draws.
+- **Wii U Virtual Console: mostly.** The seeds read are just as good: high
+  confidence and chained. But the Wii U loads sublevels so quickly that on
+  short loads the title is shown over a bright picture, cut to black before
+  the letters land, or skipped. Two later fixes recover many of these
+  (see "Second pass" below). JHawk4's run now gives 49 high seeds,
+  CurtisDN_'s 43, HeartPiece's (PAL) 39 and Sbudiver's 37.
+- **Japanese Wii: not yet.** mercysnow's run gives wrong seeds, so it is held
+  back from the site.
 
 Two layouts checked by eye against the video, by rendering the seed with
 CaveGen3:
@@ -27,20 +28,22 @@ CaveGen3:
 
 ## Runs tested
 
-All four are Pay Off Debt runs with Console (PoD) = Wii on speedrun.com. The
-`platform` field tells real Wii from Wii U VC. All were downloaded at
-640x360, 30 fps.
+All are Pay Off Debt runs with Console (PoD) = Wii on speedrun.com: the eight
+with a YouTube video (ranks 1-8; ranks 9 and below have no usable video). The
+`platform` field tells real Wii from Wii U VC. All were downloaded at 360p,
+30 fps. Counts are after the second pass.
 
-| Run | Platform | Entry candidates | Names read | High | Medium | Low | Failed | Consecutive seeds that chain |
-|---|---|---|---|---|---|---|---|---|
-| kobachi (RAUD8byyQyc) | Wii, USA | 114 | 56 | **55** | 0 | 0 | 1 (fit) | 54 / 54 |
-| JHawk4 (cVXsxZHt1G0) | Wii U VC, USA | 110 | 43 | **43** | 0 | 0 | 0 | 42 / 42 |
-| Sbudiver (WNylfiIY_AQ) | Wii U VC, USA | 121 | 41 | **33** | 3 | 0 | 5 (fit) | 34 of 35 high/medium seeds fit one chain (GK 5 medium is wrong) |
-| mercysnow (7NzYrkLascs) | Wii U VC, JPN | 130 | 21 | 0 | 3 | 14 | 4 (fit) | 2 / 16 (only SCx 3 to 6, both medium; the low seeds are wrong) |
+| Run | Platform | High | Medium | Low | Consecutive seeds that chain |
+|---|---|---|---|---|---|
+| kobachi (RAUD8byyQyc) | Wii, USA | **55** | 0 | 0 | 54 / 54 |
+| s0rcius | Wii, EUR | **55** | 0 | 0 | 54 / 54 |
+| kiiltomaeki | Wii, EUR | **56** | 0 | 0 | 54 / 55 (FC 4 entered twice, after a reset; both chain to their neighbours) |
+| JHawk4 (cVXsxZHt1G0) | Wii U VC, USA | **49** (was 43) | 0 | 0 | 48 / 48 |
+| CurtisDN_ | Wii U VC, USA | **43** | 0 | 0 | 42 / 42 |
+| HeartPiece | Wii U VC, EUR (PAL) | **39** | 2 | 0 | all but SH 2 (medium, wrong) |
+| Sbudiver (WNylfiIY_AQ) | Wii U VC, USA | **37** (was 33) | 3 | 0 | all but GK 5 (medium, wrong) |
+| mercysnow (7NzYrkLascs) | Wii U VC, JPN | 0 | 3 | 14 | 2 / 16: wrong, held back from the site |
 
-- **Entry candidates** are the dark screens the detector flags. Most of the ones
-  not read are fades with no title on them: deaths, menus, cutscenes, and Wii U
-  entries whose title never showed.
 - **Chaining**: from each seed to the next, the RNG must step forward by fewer
   than 2^22 draws. Real chains step forward 2.6k–580k draws: about 7 per frame
   in early sublevels and 20–50 per frame later. That is the same pace as
@@ -77,16 +80,17 @@ All four are Pay Off Debt runs with Console (PoD) = Wii on speedrun.com. The
    - Sbudiver's EC 1, entered from the surface, has no title at all.
    - In JHawk4's run, HoB 1 shows the name for about 40 frames and cuts to
      black while the letters are still in the air (frame 38918).
-   - JHawk4's BK 3 and mercysnow's HoB/WFG entries go from black straight into
+   - mercysnow's HoB/WFG entries go from black straight into
      the sublevel.
 
    No reading can recover a seed that isn't on screen. Kobachi's real Wii
-   loads slowly enough that every title lands.
+   loads slowly enough that every title lands. (JHawk4's BK 3, first thought
+   missing, had its title over a bright picture; the second pass reads it.)
 
 ## Main failure causes, in order
 
 1. **(Wii U VC) No title, or the title is cut off before the letters land.**
-   This accounts for nearly all the missing sublevels in the three Wii U runs.
+   This accounts for nearly all the missing sublevels in the Wii U runs.
    A partial fall could still be fitted in principle: the letters are visible
    for about 20–40 frames, and the name could be inferred from the route. But
    the pipeline calibrates on a settled frame, so that is a larger project.
@@ -103,21 +107,50 @@ All four are Pay Off Debt runs with Console (PoD) = Wii on speedrun.com. The
    does not chain (SH 1 chains straight from GK 4). The usual chain-based
    demotion handles them like on GameCube.
 
-## What it would take to add Wii runs to the site
+## Second pass: titles over a bright picture, and titles cut short
 
-- Download Wii PoD runs:
-  `python -m srcom_videos download --game pikmin2 --category "Pay Off Debt" --var "Console (PoD)=Wii" ...`
-  Keep `platform` from the run so real Wii and Wii U VC can be labelled (and
-  their coverage explained).
-- Run `p2seeds analyze` as for GameCube (English runs; hold back Japanese Wii runs until cause 2 is fixed). Wide feeds are detected from the feed
-  shape, so no flag is needed. Japanese runs need region JPN, as on GameCube.
-- Layouts render with the existing CaveGen3 builds; the judge and the layout
-  spread work on the seeds unchanged.
-- Decide how to show Wii U VC runs: whole runs will have gaps, so per-sublevel
-  stats are fine but "whole run" views should say how many entries had no title.
-- Optional, bigger: fit seeds from letters that are still falling when the title
-  cuts out (Wii U VC). This would need calibration from the route plus geometry
-  from another entry in the same video.
+Looking at the Wii U sublevels still missing:
+
+1. **A bright picture behind the title.** On quick loads the Wii U shows the
+   title over the last gameplay frame (Pikmin, a light burst, flowers), not
+   black. The entry-screen test required the top-middle and bottom bands to be
+   almost black (under 0.5% bright pixels), so these were not entry screens at
+   all. On fading frames it now allows 1.5% (`events.FADE_OUTSIDE`): gameplay
+   HUD fills 20-35% of a row there, so this does not let gameplay through.
+2. **The title cut short.** When the last letters have not landed, the cave
+   name scores lower and the margin over the runner-up is small. On wide
+   feeds, a rejected entry is now accepted as the cave just before or after it
+   in the run, at score 0.40 and margin 0.02 (`analyze.rescue_caves`). A wrong
+   guess fails the fit or the chain. JHawk4's HoB 2 and HoB 3 came back this
+   way and chain to HoB 4.
+
+Still missing: titles that are never shown, titles cut off very early, and
+entries from the surface.
+
+## On the site
+
+Wii runs are a separate tab, **Pay Off Debt (Wii)**, under `wii/` (next to
+`at/` for All Treasures), with their own runs, layouts, pokos and detection
+pages. To rebuild:
+
+```
+python -m srcom_videos download --game pikmin2 --category "Pay Off Debt" --var "Console (PoD)=Wii" --top 8 --out data/wii_story/videos --height 480 --fps 30 --manifest ...
+p2seeds batch --manifest ... --out data/output_wii --kind pod
+p2seeds details data/output_wii/<run>        # each run's detection page
+p2seeds site --root data/output_wii
+p2seeds publish --root data/output --at-root data/output_at --wii-root data/output_wii
+```
+
+`data/output_wii/section.txt` holds `wii`, which tells the pages which tab
+they belong to. mercysnow's Japanese run is left out until the Japanese fit
+is fixed.
+
+## Still open
+
+- Japanese Wii titles: 神 and 所 are not tracked, and only 3 of 5 letters
+  fit. This needs a look with letter boxes from `p2seeds debug`.
+- Fitting letters still falling when the title cuts out (Wii U VC). This needs
+  calibration from the route plus geometry from another entry in the same video.
 
 ## Files
 
