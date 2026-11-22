@@ -1,0 +1,12 @@
+[
+ {"label": "big red bush left of pod", "names": ["ooinu_l", "ooinu_s"], "ahead": -25, "side": -250, "tol": 70},
+ {"label": "withered plant right", "names": ["kareooinu_s"], "ahead": -33, "side": 233, "tol": 70},
+ {"label": "shoot behind-left", "names": ["wakame_s"], "ahead": -83, "side": -75, "tol": 70},
+ {"label": "withered plant far left", "names": ["kareooinu_s"], "ahead": 8, "side": -425, "tol": 70},
+ {"label": "yellow puff flower ahead-left", "names": ["tanpopo", "magaret"], "ahead": 200, "side": -283, "tol": 70},
+ {"label": "small yellow flower ahead", "names": ["magaret", "tanpopo"], "ahead": 308, "side": 25, "tol": 70},
+ {"label": "green leafy bush ahead-left", "names": ["ooinu_s", "ooinu_l", "clover"], "ahead": 375, "side": -217, "tol": 70},
+ {"label": "red flowers ahead-left", "names": ["ooinu_s", "ooinu_l"], "ahead": 375, "side": -125, "tol": 70},
+ {"label": "red flowers behind far-left", "names": ["ooinu_s", "ooinu_l"], "ahead": -150, "side": -367, "tol": 80},
+ {"label": "shoot far ahead", "names": ["wakame_s"], "ahead": 600, "side": -117, "tol": 90}
+]

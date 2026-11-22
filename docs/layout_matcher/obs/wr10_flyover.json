@@ -1,0 +1,11 @@
+[
+ {"label": "big red bush right of pod", "names": ["ooinu_l"], "ahead": -17, "side": 250, "tol": 70},
+ {"label": "red plant behind-left", "names": ["ooinu_s", "ooinu_l"], "ahead": -113, "side": -67, "tol": 70},
+ {"label": "red plant ahead", "names": ["ooinu_s", "ooinu_l"], "ahead": 287, "side": 25, "tol": 70},
+ {"label": "gold coin ahead-left", "names": ["gold_medal", "wadou_kaichin"], "ahead": 183, "side": -192, "tol": 70},
+ {"label": "red plant ahead-left", "names": ["ooinu_s", "ooinu_l"], "ahead": 180, "side": -270, "tol": 70},
+ {"label": "red plant far ahead-left", "names": ["ooinu_s", "ooinu_l"], "ahead": 300, "side": -387, "tol": 70},
+ {"label": "withered plant left", "names": ["kareooinu_s"], "ahead": 8, "side": -425, "tol": 70},
+ {"label": "yellow flower left", "names": ["magaret", "tanpopo"], "ahead": -13, "side": -242, "tol": 70},
+ {"label": "withered plant far ahead", "names": ["kareooinu_s"], "ahead": 583, "side": -117, "tol": 90}
+]

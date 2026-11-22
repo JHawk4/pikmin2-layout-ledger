@@ -1,0 +1,260 @@
+# Layout matcher: a stage's seed from the layout seen in the video
+
+**Verdict: practical for single-floor score-attack records, with an agent reading about ten
+objects from one rectified frame.** On Twilight Garden (CH10-1):
+
+- **Blind test** (cmal08, a GameCube run whose seed is known from its results roll): 9 objects read
+  from the "FINAL FLOOR!" fly-over cut 1,000,000 candidate seeds to 10. Inside the draw-rate window
+  (about 50,000 seeds) **the true seed was the only survivor.** One of 10 readings was wrong (a
+  dandelion at the edge of the view read as a shoot).
+- **CH10 world record** (Gorei_50, 26,773): the same method gives **`0E95D78F`** (stage seed 45,229
+  draws before the results roll). An end-of-run frame confirms it: the geyser sits where this
+  layout puts it.
+- **The dive reader's candidates are wrong.** `48E42063` and `302A5EC7` each pass only 2 of the 9
+  observations. At the spots where the video shows a big red figwort and a gold coin, `48E42063` has
+  a shoot and nothing.
+
+The matcher handles the layout side. Two parts are still agent-in-the-loop: reading plant and
+treasure types off the rectified image, and confirming between "families" of near-identical seeds
+a few draws apart.
+
+## 1. The window
+
+The stage's floor-1 seed is k draws before the first state of the results roll that follows it
+(the roll reader gives that state). k = frames from the dive to the roll × draws per frame.
+
+| case | frames, dive → roll | true k | draws/frame | CMAL rate for the stage (6 runs) |
+|---|---|---|---|---|
+| CH28 WR (spark573; truth from the previous attempt's roll) | 7,300 | 91,975 | 12.6 | 11.7–16.9 |
+| cmal04 CH10 (tcbtrio) | 1,569 | 47,932 | 30.5 | 26.4–34.4 |
+| cmal08 CH10 (JackDraz) | 1,716 | 48,993 | 28.6 | 26.4–34.4 |
+| **CH10 WR (Gorei_50)** | 2,679 | **45,229** (this report) | **16.9** | 26.4–34.4 |
+
+- **The real windows are tens of thousands of seeds, not millions.** A single-floor stage with
+  100k draws in total can't hide its seed among 6M. The 6M span in `run_wrs.py` was a safety bound
+  (from an unverified ~230 draws/frame read on CH1).
+- **Record play can draw less RNG per frame than CMAL play.** The CH10 record ran at 16.9
+  draws/frame, below the ±35% band around the CMAL rates (17.2–46.4). That band would have missed it
+  by 800 draws. Use a looser band (×0.5 to ×1.5 of the CMAL range: about 35k–140k seeds for CH10)
+  and scan a wide range anyway (below).
+- **Speed:** CaveGen3 generates and checks about 10,000 CH10-1 layouts per second on this machine
+  (shared with other jobs), so 1M seeds take about 1.5 minutes. Scanning [0, 1M) instead of only
+  the rate window costs almost nothing and shows whether the window was right.
+
+## 2. What the video shows, and which features carry information
+
+**Twilight Garden 1: the pod always lands at the same place.** In every layout of 1M checked, the
+pod is at spawn point 0 of the first unit, `room_5x5a_2_kusachi`. So the stones, logs and island
+around the pod are identical in every layout and in every video. That matters twice:
+
+- they carry no information;
+- they make a fixed reference for calibrating the camera.
+
+What varies near the pod is which **plant** occupies each plant spot, and where the treasures and
+teki go. Information per feature (bits, over 1M seeds, positions rounded to 20 units):
+
+| feature | distinct positions | bits |
+|---|---|---|
+| any one treasure (5 kinds) | 21 spots | 3.6–4.2 each |
+| Beady Long Legs (Damagumo) | 893 | 8.8 |
+| geyser | 10 | 3.2 |
+| nearest dandelion (Tanpopo) | 52 | 4.9 |
+| nearest Margaret | 44 | 3.6 |
+| Damagumo + all 5 treasures (joint) | 578,691 combinations | 18.8 |
+
+The window holds about 15–17 bits. A few plants plus one treasure position are enough, and they are
+on screen right after landing. Damagumo and the sheargrubs are not: Damagumo drops from above when
+approached, and sheargrubs are buried.
+
+**The "FINAL FLOOR!" fly-over.** On a stage's last floor (every single-floor score stage), the
+camera rises behind the pod and looks down on the pod's room for about two seconds (cmal04 frames
+80380–80440; record frames ~520–560). It is the best view of the start: high, nearly top-down, no
+HUD, and the floating title text covers only part of it.
+
+**Plant vocabulary** (learned on the known seed, see §4):
+
+| looks like | CaveGen3 name |
+|---|---|
+| big red-flowered bush | `ooinu_l` (Figwort) |
+| small red-flowered plant | `ooinu_s` |
+| brown withered plant | `kareooinu_s` |
+| yellow puff with long leaves | `tanpopo` |
+| small yellow-orange daisy | `magaret` |
+| two-leaf sprout | `wakame_s` |
+| green three-leaf | `clover` |
+
+My first guess before calibrating ("Margaret" for the red bushes) was wrong. Learning the names
+against a known seed is necessary.
+
+## 3. Pipeline (`docs/layout_matcher/`, `p2seeds/cg3/src/bin/layoutmatch.rs`)
+
+1. **`layoutmatch` (Rust, on CaveGen3):**
+   - `dump SUB SEED` gives every object in the **pod's frame**: `ahead` along the pod's facing,
+     `side` to its right on screen.
+   - `scan SUB END COUNT OBS.json OUT.bin` checks every seed k draws before END against a list of
+     observations ("an object named one of N within T units of (ahead, side)", "none within r",
+     "pod at spawn point i"). It writes one bitmask per seed.
+   - `feat` dumps nearest positions per object, for the bit counts above.
+   - Build: `docs/layout_matcher/build.sh`.
+2. **Calibration, once per sublevel, on a known seed** (`calib.py`): mark 6–9 objects of the known
+   layout in one fly-over frame and fit a homography from pod-frame floor coordinates to pixels.
+   - On cmal04 frame 80388 the 9 residuals are 1–18 px at 1280×720, about 10–20 game units.
+   - `refs.py build` then registers the neighbouring fly-over frames (80380–80440) to it, giving 16
+     calibrated reference frames.
+3. **Registration of a new video** (`register.py`, `refs.py match`): SIFT on the fixed room against
+   the reference frames, best match wins, HUD masked.
+   - Works on the record (61 inliers) and on cmal08 (59).
+   - Fails on cmal02, cmal11 and cmal26 (11–23 inliers). These are lower-resolution or 4:3
+     captures, and their fly-over camera takes a different path, so their frames don't overlap the
+     references well.
+4. **Rectification** (`rectify.py`): warp the registered frame to a top-down pod-frame image with a
+   100-unit grid. The agent reads each object's type and position off the grid (`obs/*.json`,
+   tolerance 70–90 units).
+5. **Filtering** (`match.py`): scan the window and report each observation's pass rate on its own,
+   and the survivors after each step.
+6. **Confirmation:** draw the survivors over rectified frames (`rectify.py ... SEED SUB`) and look
+   for differences the fly-over did not cover (the geyser, here).
+
+![cmal04 calibration: known layout drawn over the rectified fly-over](layout_matcher/img/cmal04_calibration.jpg)
+
+## 4. Known-seed tests
+
+**cmal04, CH10** (`133A7DD6`): used for calibration, so not blind. All 9 marked objects matched
+their CaveGen3 positions within 20 units, which validated both the homography and the plant
+vocabulary.
+
+**cmal08, CH10, blind** (`617945F2`; I read the observations before looking at the seed). Survivors
+over k ∈ [0, 1M):
+
+| observation (pod frame) | passes alone | survivors | truth |
+|---|---|---|---|
+| big red bush left (−25, −250) | 42% | 421,124 | ✓ |
+| withered plant right | 12% | 54,225 | ✓ |
+| shoot behind-left | 18% | 11,310 | ✓ |
+| withered plant far left | 15% | 1,791 | ✓ |
+| yellow puff ahead-left | 27% | 550 | ✓ |
+| small yellow flower ahead | 27% | 143 | ✓ |
+| green leafy plant ahead-left | 19% | 21 | ✓ |
+| red flowers ahead-left | 29% | 11 | ✓ |
+| red flowers far behind-left | 42% | 10 | ✓ |
+| shoot far ahead (misread: it is a dandelion) | 18% | 1 | ✗ |
+
+After the 9 correct readings, 10 seeds of 1M survive. Only one lies in the draw-rate window (k
+29.5k–79.6k), and it is the truth (k = 48,993). Each plant observation keeps 12–42% of seeds, so
+every good reading is worth 1.3–3 bits.
+
+![cmal08 blind: true layout over the rectified fly-over; the "shoot" at the top is a dandelion](layout_matcher/img/cmal08_blind_truth.jpg)
+
+**CH28 WR** (`29549C67`, known): not attempted. Concrete Maze-style dark floor, a different pod
+room, and no calibration for it.
+
+## 5. The CH10 world record
+
+Window: results roll at frame 2943, first state `7AF2AC00`; dive at frames 198–264. Nine
+observations from the registered fly-over (frame 526, `obs/wr10_flyover.json`):
+
+| observation | passes alone | survivors in [0, 1M) | survivors in the rate band 46k–124k |
+|---|---|---|---|
+| big red bush right of pod | 18% | 181,051 | 14,305 |
+| red plant behind-left | 42% | 69,790 | 5,556 |
+| red plant ahead | 42% | 24,109 | 1,884 |
+| gold coin ahead-left (183, −192) | 11% | 2,496 | 179 |
+| red plant ahead-left | 42% | 748 | 48 |
+| red plant far ahead-left | 28% | 223 | 26 |
+| withered plant left | 15% | 35 | 3 |
+| yellow flower left | 27% | 11 | 1 |
+| withered plant far ahead | 12% | **6** | **0** |
+
+The 6 survivors come in "families": seeds a few draws apart share most of the RNG stream, so their
+layouts agree almost everywhere.
+
+| k | seed | draws/frame | geyser (pod frame) | verdict |
+|---|---|---|---|---|
+| 45,224 | `01EE2C08` | 16.9 | (647, −339) | ✗ geyser not where the video shows it |
+| **45,229** | **`0E95D78F`** | 16.9 | (−429, −503) | **✓** |
+| 303,390 | `4614F21E` | 113 | (664, −1330) | ✗ geyser |
+| 804,716 | `375A0DDC` | 300 | (−180, −1432) | ✗ geyser |
+| 981,743 / 981,746 | `1D0228A9` / `1DA265E2` | 366 | (−429, −503) | excluded by rate only (10–30× any measured rate) |
+
+**Geyser check.** At the end of the run (frames 2380–2470), the pod, the big red bush and the geyser
+are on screen together, and the frame registers to the pod room. `0E95D78F`'s geyser lands on the
+crater in the video; `01EE2C08`'s is off-screen. A two-point fit on pod + bush in the TIME-120
+frame (frame 2400) gives the same answer: predicted (54, 124) px against (75, 105) observed for
+`0E95D78F`, and (249, −119) for `01EE2C08`.
+
+![Record fly-over: 0E95D78F (left) matches every plant and the coin; 48E42063 (right) does not](layout_matcher/img/wr10_flyover.jpg)
+
+![End of the record: the geyser where 0E95D78F puts it (left); 01EE2C08's is off the top (right)](layout_matcher/img/wr10_geyser.jpg)
+
+**Dive reader cross-check** (`dive_check.py`, the grey reader's image loss with a geometry fit):
+
+| seed | dive loss |
+|---|---|
+| `48E42063` (dive reader's pick) | 89,501 |
+| `302A5EC7` | 90,786 |
+| `0E95D78F` (this report) | 122,225 |
+| `01EE2C08` | 121,574 |
+
+The dive strongly prefers `48E42063`, whose layout contradicts the video at 7 of 9 points (wrong
+plant kinds at fixed plant spots, and no treasure at the coin). The report already found the dive
+unreliable on Gorei's Wii captures (CH10 wrong at a 23.6% margin before). So this is another dive
+misread, not evidence against the layout.
+
+What's left open: the `1D0228A9` family is excluded only by its draw rate. The gameplay frames
+that show the blue diamond (`0E95D78F` puts it about 710 units ahead-left; `1D0228A9` about 1000
+ahead) did not register reliably: the camera leaves the pod room, and HUD features dominate the
+matches. Checking it by hand would close that gap.
+
+## 6. How reliable was my image reading?
+
+- **Object types:** reliable for big, distinctive plants once the vocabulary was calibrated: 18 of
+  19 readings across cmal08 and the record are consistent with the final layouts. The miss was a
+  plant at the edge of the warped view, where the image is stretched.
+- **Positions read off the rectified grid:** within about 30–60 units, inside the 70-unit tolerance.
+- **What I could not read:** buried or hidden teki, small items under the title text, and
+  anything in the dark, low landing ("READY?") view. The landing camera in Challenge Mode is
+  centred on the captain, not the pod, so `views.py`'s story-mode landing camera does not fit it.
+  Use the fly-over instead.
+- **Reading the raw, unrectified frame by eye is not reliable:** on the landing view I misjudged
+  object depths badly. Rectifying first made it easy.
+- **Cost:** about 10 objects and a few minutes per video, plus one look to confirm the survivors.
+
+## 7. Practical for score-attack WRs?
+
+**Yes, for single-floor stages with a lit, recognisable start.** Per stage:
+
+- **Once per sublevel (agent, about 30 min):** find a run with a known seed (any CMAL run with a
+  results roll before the stage), mark 6–9 objects, build the references, and learn the
+  plant/treasure vocabulary.
+- **Per record (mostly automatic):** window from the roll, registration, rectification, scan. The
+  agent reads about 10 objects off one image, then checks the few surviving families on 1–2 later
+  frames.
+- **Works best where the pod's spawn is fixed by the sublevel** (one room type, as on CH10-1). If
+  the pod can land in different rooms, calibrate each start room and add a "pod at spawn point i"
+  observation (supported in `scan`).
+- **Weak points:**
+  - registration on low-resolution or 4:3 captures, which need references made from a capture of
+    the same kind, or 4 hand-marked landmarks;
+  - dark sublevels (CH28);
+  - stages whose start shows few variable objects.
+- **Families of seeds a few draws apart can't be separated near the pod.** That needs one feature
+  further away (geyser, a treasure), so plan one confirmation frame per record.
+- **Speed is not a constraint:** 1M layouts in about 1.5 minutes, so the window can be 10× generous.
+
+Compared with the dive reader, this is independent of capture quality on the menu and gave the
+right answer where the dive was confidently wrong. Using both remains useful: a dive state that
+also matches the layout is very strong evidence.
+
+## Files
+
+- `p2seeds/cg3/src/bin/layoutmatch.rs`: dump, scan and feat.
+- `docs/layout_matcher/`:
+  - `lm.py`: wrappers;
+  - `calib.py`, `register.py`, `refs.py`, `rectify.py`, `chain.py` (frame-to-frame chaining: drifts
+    under the title text and HUD, not used for results);
+  - `match.py`, `overlay.py`, `dive_check.py`, `build.sh`.
+- `docs/layout_matcher/obs/`:
+  - the CH10-1 fly-over calibration (`H_ch10_finalfloor.json`, reference frame `cmal04_ch10_f80388.jpg`, marked pairs);
+  - the observation files for cmal08 and the record.
+- Data (gitignored, `data/lm/`): references built from cmal04 frames 80380–80440, scan bitmasks,
+  logs.
