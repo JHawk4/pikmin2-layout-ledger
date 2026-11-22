@@ -1,5 +1,9 @@
 # Pikmin 2 on Switch (Pikmin 2 HD): can the letters give seeds, and is the RNG different?
 
+**Update: yes, the RNG is different, and it is now identified: musl libc's 64-bit LCG. With it,
+Switch seeds read from video and chain (section 7).** Sections 1–6 below are the first study,
+which tested only the GameCube generator.
+
 Nov 2026. Scripts in `docs/switch/`. Videos and outputs are under `data/switch/` (not committed).
 
 ## Verdict
@@ -175,13 +179,143 @@ Sources:
 - https://www.pikminwiki.com/Pikmin_2_(Nintendo_Switch)
 - https://switchbrew.org/wiki/Super_Mario_3D_All-Stars (the comparison case)
 
-## Next steps, if Switch seeds are ever wanted
+## 7. The Switch generator, recovered from video
 
-1. Fit more Switch letter speeds and look for structure directly. For example, test whether
-   consecutive speeds are linearly related mod 5, as for any LCG read through its high bits, or try
-   a small-state search over xorshift and Mersenne Twister outputs with tempering.
-2. Get the Switch `rand` from the game's code (a datamine of the recompiled module) instead of from
-   video.
+**Result: Switch `rand()` is musl libc's.**
+
+```
+s = 6364136223846793005 * s + 1   (mod 2^64)
+rand() = s >> 33                  (31 bits; the state is advanced first)
+randFloat() = rand() / RAND_MAX   (the native RAND_MAX = 2^31 - 1)
+```
+
+This is what you get when the game's C source is rebuilt against the Switch SDK's C library: the
+`RAND_MAX` macro in `rand.h` takes the native value. As far as the game's arithmetic goes, only the
+top bits of the 64-bit state matter. A letter speed is `5 * s / 2^64`, and a Challenge Mode digit is
+`floor(9 * (s >> 49) / 32768) + 1`.
+
+It was found by testing candidates against Challenge Mode digits, then confirmed two independent
+ways, each with no realistic chance of happening by accident.
+
+### The data
+
+- **Challenge Mode score rolls** (`dump_digits.py`): every frame's digits for all 30 results screens
+  of the Switch video (cmal01) and of a Wii U control (cmal04, same runner). Each screen has 40–70
+  frames where all 14 digits roll.
+  - **Reading looks clean on both:** digits 1–9 each come up 10.4–11.3% of the time, with 39 of
+    21,815 Switch slots unreadable.
+  - **Every digit is redrawn every frame:** a rolling digit repeats from one frame to the next 12.9%
+    of the time on Switch and 12.4% on Wii U.
+- **Information per draw:** a digit fixes about 3.2 bits of the generator's output fraction, and a
+  letter speed (σ ≈ 0.015 of 5) about 8 bits.
+
+### Test 1: a list of likely generators (`rng_candidates.py`)
+
+Each candidate is solved from a few frames and must then predict the following frames' digits.
+
+- **LCGs:** a lattice search over the whole state, as `challenge_results.py` does for GC. A 64-bit
+  LCG takes 24 digits.
+- **GF(2)-linear generators:** every output bit is an XOR of state bits. Each digit's certain top
+  bits (digits 1–4 mean the top bit is 0, 6–9 that it is 1) give linear equations, and Gaussian
+  elimination solves for the state.
+
+**Self-test:** synthetic rolls from each generator are solved exactly, and a GC roll is rejected by
+all of them. **Control on real footage:** the GC LCG on the Wii U roll predicts 112 of 112 check
+digits.
+
+| family | x = which 15 bits | Switch |
+|---|---|---|
+| **musl `rand` (64-bit LCG, c = 1)** | **bits 49–63, i.e. `(s >> 33) / 2^31`** | **102/102 check digits, one state** |
+| same LCG, other windows (newlib's `rand` returns bits 32–62) | bits 32–46, 33–47, 48–62 | no state fits |
+| Knuth MMIX/PCG (same multiplier, other increment) | bits 32–46 | no state fits |
+| 32-bit LCGs: GC/MSL, MSVC, Borland, Numerical Recipes, Unreal `FRandomStream`, Delphi, Turbo Pascal, cc65 | bits 0–14, 16–30, 17–31 | no state fits one frame's 13–14 digits, in any of 24 windows |
+| VB6 (mod 2^24) | bits 0–14, 8–22, 9–23 | no state fits |
+| xorshift128 (= sead::Random), xorshift32, xorshift64, WELL512a | output >> 17, >> 16, & 0x7FFF | inconsistent in all 24 windows, also with 0–40 extra draws per frame (xorshift) |
+
+Java `Random`, Lehmer/minstd and the remaining Knuth windows were not run to completion once musl
+had matched.
+
+### Test 2: any 32-bit LCG with unknown constants (`stern.py`)
+
+This was done before the match. It is kept because it answers "could it be an LCG with other
+constants?" without guessing the constants, and it shows what letters can do that digits can't.
+
+1. **Differences cancel c.** The state differences y_i = s_{i+1} − s_i satisfy y_{i+1} = a·y_i
+   (mod m), with no c.
+2. **Find relations.** LLL finds short λ with Σ λ_i y_{i+j} ≡ 0 for every window, using only the
+   measured y's (Stern; Frieze–Håstad–Kannan–Lagarias–Shamir).
+3. **Find a.** Each λ is a polynomial with root a, lifted bit by bit and voted on.
+
+**Why letters and not digits.** This needs about 31/k + log2 k known bits per output (about 7 for
+k = 8). Letters give about 8; digits give only about 1.6. Windows from all of a run's entries share
+one lattice, since a is the same everywhere.
+
+| run | model | recovered | entries consistent |
+|---|---|---|---|
+| GC tcbtrio (control) | x = bits 16–30 | **0x41C64E6D**, blind, 4 votes | 8/8 (runner-up 0/8) |
+| GC tcbtrio (control) | x = bits 17–31 (off by one) | 0x41C64E6D, 3 votes | 8/8 |
+| Switch tcbtrio | x = bits 0, 4, 8, 12, 15, 16, 17 up | nothing | 0–1/9 (chance) |
+
+So no LCG mod up to 2^32, with any constants, stride or output window, makes the Switch speeds.
+That is consistent with the answer: musl's is mod 2^64, outside this test's range.
+
+### Confirmation 1: every Challenge Mode roll decodes and chains (`musl_rolls.py`)
+
+- **All 30 rolls decode.** For all 30 results screens, the state is solved from 24 digits of the
+  first frames (one solution each).
+- **Every frame is followed.** 1,548 of 1,554 all-rolling frames match at least 12 of their digits
+  at the next stream position. Steps of 28 draws are dropped capture frames; steps below 14 are
+  frames where digits have started to lock.
+- **Consecutive screens chain:** they are **18,142 – 117,472 draws apart** (median 59,168; 29 of 29
+  pairs). That is one stage of play plus menus. Two unrelated 64-bit states would be about 10^19
+  apart.
+
+### Confirmation 2: story-mode letters give seeds that chain (`musl_letters.py`)
+
+- **Seed search:** a 64-bit lattice over each entry's letter speeds. The per-entry speed offset
+  cancels in differences, as in `lattice.search`. Candidates are ranked by chi-square.
+- **Chaining:** the exact LCG distance (PCG's advance-distance algorithm) between consecutive
+  seeded entries.
+
+| run | clean entries | seeds | consecutive seeded pairs that chain | gaps (draws) |
+|---|---|---|---|---|
+| tcbtrio (Switch USA) | 52 | 40 | **39 / 39** | 3,024 – 942,595 |
+| Jirazee (Switch USA) | 31 | 28 | **19 / 27** (23 entries confirmed by a neighbour) | 2,492 – 1,686,368 |
+
+- **Gaps:** the same scale as GC, where everything is under 422k between sublevels. The 943k gap is
+  GK-5 → SCx-1, with a day in between.
+- **Jirazee's 8 broken links** all involve one of six weak entries, where the best state is barely
+  ahead of the runner-up among 80–1,800 in the box: 11–12 letter BK names, a WFG name read with 13
+  of 17 letters, and a GK fit with chi-square 58,604. Chaining from the good neighbours (as
+  `chain.py` does) would settle them. The 1.7M gap is GK → SCx, across about 20 entries the
+  detector missed in that run.
+- **No ambiguity on tcbtrio:** most seeded entries have a single state in the box. Where there are several, the
+  runner-up's chi-square is 2–10 times worse.
+- **12 tcbtrio entries fail:** "too many states" or "no state" for all 7 SH entries (few letters),
+  3 in WFG, 1 in GK and 1 in FC. They can be filled in from their neighbours by chaining, as
+  `chain.py` does on GC.
+- **Fit quality:** chi-square is about the letter count for short names, but twice that for the
+  17–19 letter names (WFG, SCx). So σ is somewhat underestimated on long names; they chain all the
+  same.
+
+### What this means
+
+- **Seeds can be read on Switch,** from story letters and from Challenge Mode rolls, with the same
+  methods as GC. Only the generator changes.
+- **Layouts:** cave generation calls the same `rand()`. So a Switch layout is the GC algorithm
+  driven by this generator, with randFloat at 31-bit instead of 15-bit resolution. CaveGen supports
+  only the GC generator, so it needs a Switch mode before these seeds give layouts. Not checked
+  here.
+- **Seeding:** with musl, `srand(x)` sets the state to x − 1. If the port still seeds from a 32-bit
+  tick at boot, the start state is below 2^32, and the distance to a run's first seed would be the
+  number of draws since boot. Not tested.
+
+## Next steps, if Switch seeds are wanted
+
+1. **Add a Switch generator mode to the pipeline:** `rng.py`, `lattice.search` (64-bit, as
+   `musl_letters.py`), `chain.py`, and the Challenge Mode reader.
+2. **Add the same mode to CaveGen,** then check a Switch layout against a decoded seed. The
+   Challenge Mode floor-1s are the easiest place to start, as on GC.
 
 ## Reproduce
 
@@ -194,4 +328,13 @@ python docs/switch/summarize.py "GC=data/output/12_tcbtrio_y64e4x0m/fits.json" "
 python docs/switch/variants.py data/output/12_tcbtrio_y64e4x0m/fits.json data/switch/out/04_tcbtrio/fits.json
 python docs/switch/probe.py data/switch/videos/04_tcbtrio_z194e07m.mp4 34,0,606,320 23300 23420 data/switch/probe_fits.json
 python -u docs/switch/brute.py data/switch/probe_fits.json
+# section 7 (dump_digits.py needs p2seeds.challenge_results from claude/challenge-mode-seeds-37abaa)
+python docs/switch/dump_digits.py cmal01_tcbtrio_switch_usa.mp4 data/switch/digits/cmal01_switch.json
+python docs/switch/rng_candidates.py selftest
+python docs/switch/rng_candidates.py data/switch/digits/cmal01_switch.json --screens 0,4,5,6,7,9
+python docs/switch/rng_candidates.py data/switch/digits/cmal01_switch.json --screens 0,4,5 --windows 2 --only xorshift --gaps 0-40
+python docs/switch/musl_rolls.py data/switch/digits/cmal01_switch.json
+python docs/switch/musl_letters.py data/switch/out/04_tcbtrio/fits.json
+python docs/switch/stern.py data/output/12_tcbtrio_y64e4x0m/fits.json        # GC control: finds 0x41C64E6D
+python docs/switch/stern.py data/switch/out/04_tcbtrio/fits.json --lo 16
 ```
