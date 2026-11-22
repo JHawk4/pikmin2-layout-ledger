@@ -47,14 +47,15 @@ def anchored_dives(video, span):
         yield vs[0], truth, end
 
 
-def grey_read(video, v, truth, end, span, log=lambda s: None):
+def grey_read(video, v, truth, end, span, log=lambda s: None, fast=True):
     name = os.path.basename(video)
-    cache = os.path.join(ROOT, "data", "challenge", "crosscheck", "dives", f"{name}_{v[0]}_a{span // 1000}k.json")
+    cache = os.path.join(ROOT, "data", "challenge", "crosscheck", "dives",
+                         f"{name}_{v[0]}_{'f' if fast else 'a'}{span // 1000}k.json")
     if os.path.exists(cache):
         return json.load(open(cache))
     t = time.time()
-    r = cd.read_dive(video, v, window=(end, span), probe=[truth], log=log, skip_if_clear=True, prune_first=0.25)
-    r["prune_first"] = 0.25
+    r = cd.read_dive(video, v, window=(end, span), probe=[truth], log=log, skip_if_clear=True,
+                     **(dict(prune_coarse=(4, 4), rank_mid=500) if fast else {}))
     r["seconds"] = time.time() - t
     r["window"] = [end, span]
     os.makedirs(os.path.dirname(cache), exist_ok=True)

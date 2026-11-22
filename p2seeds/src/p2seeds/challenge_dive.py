@@ -955,7 +955,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
               final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0),
               f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6,
-              setup_only: bool = False, skip_if_clear: bool = False, prune_first: float = 0.0):
+              setup_only: bool = False, skip_if_clear: bool = False, prune_coarse=(2, 2), rank_mid: int = 0, hook=None):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
@@ -1059,6 +1059,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), bg, region, scale=scale)
         st, sc = search_all(dv, counts, g, first_pikmin=first_pikmin, keep=keep)
         log(f"  stage-1 search done {time.time() - t0:.0f}s")
+    if hook is not None:                    # benchmarking: hand over the prepared dive and stop
+        return hook(dv, counts, g, st)
     frames = sorted(dv.obs)
     flats = {}
 
@@ -1068,18 +1070,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         st2 = st[o]
         # the dive start (f0) is known to a frame or two; a look-alike at the wrong phase can beat the
         # truth at a fixed f0, so take each state's best over a few start offsets
-        if prune_first and len(offs) > 1:
-            # two steps: the middle offset for every state, the other offsets only for its best
-            # `prune_first` fraction (2.5x fewer renders at 0.25; the truth is rarely outside it)
-            mid_d = sorted(offs)[len(offs) // 2]
-            bl = batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + mid_d), st2)
-            keep_n = max(20_000, int(len(st2) * prune_first))
-            part = np.argsort(bl)[:keep_n]
-            rest = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2[part])
-                           for d in offs if d != mid_d], axis=0)
-            bl[part] = np.minimum(bl[part], rest)
-        else:
-            bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2) for d in offs], axis=0)
+        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2, *prune_coarse) for d in offs], axis=0)
         o2 = np.argsort(bl)
         st3 = st2[o2[:20_000]]
         for x in probe_set:
@@ -1096,6 +1087,10 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         # exact loss (compiled, full resolution, every frame) on the pool's best by coarse loss, each
         # at its best start offset
         cand = pool[:rank_pool]
+        if rank_mid and len(cand) > rank_mid:
+            # half resolution, every other frame first (7x cheaper), the exact loss on its best only
+            pre = fast_loss(dv, counts, geom, cand, 2, 2, f0_offsets=offs)
+            cand = cand[np.argsort(pre)[:rank_mid]]
         bl = fast_loss(dv, counts, geom, cand, f0_offsets=offs)
         o = np.argsort(bl)[:final_exact]
         # ordered by the best offset's loss: the refits that follow fit f0, so a state that only lines up
