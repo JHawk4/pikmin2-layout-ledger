@@ -68,6 +68,24 @@ class Detector:
         return out
 
 
+def anchor_mean(img: np.ndarray, m: np.ndarray, ox: float, oy: float) -> np.ndarray:
+    """Mean of img under mask m placed at each anchor (same layout as Detector.maps)."""
+    H, W = img.shape
+    th, tw = m.shape
+    ip = np.pad(img.astype(np.float32), ((th, th), (tw, tw)))
+    r = cv2.matchTemplate(ip, m.astype(np.float32), cv2.TM_CCORR) / max(float(m.sum()), 1.0)
+    ys, xs = np.mgrid[0:H, 0:W]
+    ty, tx = (ys + oy + th).astype(int), (xs + ox + tw).astype(int)
+    ok = (ty >= 0) & (tx >= 0) & (ty < r.shape[0]) & (tx < r.shape[1])
+    out = np.zeros((H, W), np.float32)
+    out[ok] = r[ty[ok], tx[ok]]
+    return out
+
+
+# body colours of the sprites (normalised r, g, b), from data/game/dive_sprites.npz medians
+BODY_CHROMA = {"red": (0.646, 0.177, 0.177), "yellow": (0.489, 0.443, 0.068), "blue": (0.112, 0.112, 0.776)}
+
+
 def peaks(resp: np.ndarray, thr: float = 0.35, radius: int = 4, max_n: int = 60):
     """Local maxima above thr: list of (x, y, value), strongest first."""
     k = 2 * radius + 1
@@ -163,7 +181,7 @@ def _det_kernel2(parallel: bool = True):
 
     @nb.njit(parallel=parallel, fastmath=True, cache=True)
     def score(states, A, C, base, csl, idx3, u0, v0, sx, sy, v100, gu, gv, nslot, O,
-              grp, offx, offy, D, nD, back_w, inv2s2, out):
+              grp, offx, offy, D, nD, back_w, inv2s2, late_w, out):
         P = A.shape[0]
         N = nslot.shape[0]
         H, W = O.shape[2], O.shape[3]
@@ -173,6 +191,7 @@ def _det_kernel2(parallel: bool = True):
             tot = 0.0
             pu = np.full((P, F), np.nan, np.float32)
             pv = np.full((P, F), np.nan, np.float32)
+            pw = np.ones((P, F), np.float32)
             for p in range(P):
                 r = np.empty(4, np.float32)
                 for d in range(4):
@@ -229,19 +248,22 @@ def _det_kernel2(parallel: bool = True):
                         continue
                     pu[p, sl] = u + offx[c]
                     pv[p, sl] = v + offy[c]
+                    w = late_w if state >= 4 else 1.0
+                    pw[p, sl] = w
                     xi = int(u + 0.5)
                     yi = int(v + 0.5)
                     if xi >= 0 and yi >= 0 and xi < W and yi < H:
-                        tot += O[c, sl, yi, xi]
+                        tot += w * O[c, sl, yi, xi]
             back = 0.0
             for f in range(F):
                 for j in range(nD[f]):
                     x = D[f, j, 0]
                     y = D[f, j, 1]
-                    g = int(D[f, j, 3])
+                    g = int(D[f, j, 3])                # bitmask of the groups this detection may be
                     best = 1e30
+                    bw = 1.0
                     for p in range(P):
-                        if grp[csl[p]] != g:
+                        if ((g >> grp[csl[p]]) & 1) == 0:
                             continue
                         a = pu[p, f]
                         if a != a:
@@ -249,8 +271,9 @@ def _det_kernel2(parallel: bool = True):
                         dd = (a - x) * (a - x) + (pv[p, f] - y) * (pv[p, f] - y)
                         if dd < best:
                             best = dd
+                            bw = pw[p, f]
                     if best < 1e29:
-                        back += D[f, j, 2] * np.exp(-best * inv2s2)
+                        back += bw * D[f, j, 2] * np.exp(-best * inv2s2)
             out[k] = tot + back_w * back
     return score
 
@@ -262,8 +285,10 @@ class DetScorer:
     """Detection maps of one dive and a compiled scorer of states against them."""
 
     def __init__(self, rd, counts, sp: dict, sx: float, sy: float, blur: float = 1.2, parts=("body", "flower"),
-                 back_w: float = 0.0, sigma: float = 3.0, det_thr: float = 0.3):
+                 back_w: float = 0.0, sigma: float = 3.0, det_thr: float = 0.3, colour_body: bool = False,
+                 colour_floor: float = 0.3, tau: float = 0.15, fade_thr: float = 0.45):
         self.rd, self.counts = rd, counts
+        self._blur = blur
         self.colours = [c for k, c in enumerate(cd.COLOURS) if counts[k]]
         self.det = Detector(sp, self.colours, sx, sy, parts=parts)
         self.frames = list(rd.frames)
@@ -271,9 +296,40 @@ class DetScorer:
         self.O = np.stack([np.stack([cv2.GaussianBlur(np.maximum(m[c], 0), (0, 0), blur) for m in maps])
                            for c in self.colours]).astype(np.float32)
         self.raw_maps = maps
+        # fades (most of the crop changed at once) carry no Pikmin positions, only false detections
+        self.fade = np.array([float((np.abs(rd.raw[f] - rd.bg).sum(2) > 45).mean()) > fade_thr for f in self.frames])
+        self.O[:, self.fade] = 0
         self.parts = tuple(parts)
         self.back_w, self.sigma = back_w, sigma
+        self.B = None
+        ryb = [c for c in self.colours if c in BODY_CHROMA]
+        if colour_body and self.parts == ("flower",) and len(ryb) >= 2:
+            self._body_colour(sp, sx, sy, ryb, blur, colour_floor, tau)
         self.set_detections(det_thr)
+
+    def _body_colour(self, sp, sx, sy, ryb, blur, floor, tau):
+        """Red, yellow and blue share a flower: weight each one's flower map by how well the pixels
+        under its body (at that anchor) match its body colour, counting only pixels that differ from
+        the background. B[colour][frame] in 0..1."""
+        self.B = {c: [] for c in ryb}
+        tm = {}
+        for c in ryb:
+            rgb, a, ox, oy = template(sp, c, sx, sy, 0.6, parts=("body",))
+            tm[c] = ((a > 0.5).astype(np.float32), ox, oy)
+        for f in self.frames:
+            fr = self.rd.raw[f]
+            ch = fr[..., ::-1] / np.maximum(fr.sum(2, keepdims=True), 1.0)      # BGR -> normalised RGB
+            changed = (np.abs(fr - self.rd.bg).sum(2) > 45).astype(np.float32)
+            for c in ryb:
+                sim = np.exp(-((ch - np.array(BODY_CHROMA[c], np.float32)) ** 2).sum(2) / tau ** 2) * changed
+                m, ox, oy = tm[c]
+                self.B[c].append(anchor_mean(sim, m, ox, oy))
+        for k, c in enumerate(self.colours):
+            if c in self.B:
+                w = floor + (1 - floor) * np.clip(np.stack(self.B[c]) * 2.0, 0, 1)
+                raw = np.stack([np.maximum(m[c], 0) for m in self.raw_maps]) * w
+                self.O[k] = np.stack([cv2.GaussianBlur(x, (0, 0), self._blur) for x in raw])
+                self.O[k, self.fade] = 0
 
     def set_detections(self, thr: float = 0.3, groups=None):
         """Detections as (centre x, centre y, value, group) per frame. Centre = the sprite centre at
@@ -291,15 +347,36 @@ class DetScorer:
         for k, c in enumerate(self.colours):
             rgb, m, ox, oy, sc = min(self.det.t[c], key=lambda x: abs(x[4] - 1.0))
             self.offx[k], self.offy[k] = ox + m.shape[1] / 2, oy + m.shape[0] / 2
+        if self.B is not None:               # body colour known: every colour its own group
+            self.grp = np.arange(len(self.colours), dtype=np.int64)
         first = {}
         for k in range(len(self.colours)):
             first.setdefault(int(self.grp[k]), k)
+        ryb_k = [k for k, c in enumerate(self.colours) if self.B is not None and c in self.B]
         dets = []
-        for m in self.raw_maps:
+        for fi, m in enumerate(self.raw_maps):
             fr = []
+            if self.fade[fi]:
+                dets.append(fr)
+                continue
             for g, k in first.items():
-                for x, y, v in peaks(m[self.colours[k]], thr, radius=3, max_n=80):
-                    fr.append((x + self.offx[k], y + self.offy[k], v, g))
+                if ryb_k and k in ryb_k and k != ryb_k[0]:
+                    continue                  # one detection pass for the shared flower
+                for x, y, v in peaks(m[self.colours[k]], thr, radius=3, max_n=120):
+                    cx, cy = x + self.offx[k], y + self.offy[k]
+                    mask = 1 << g
+                    if ryb_k and k in ryb_k:  # which of red/yellow/blue the body under it matches
+                        ev = []
+                        for kk in ryb_k:
+                            ax, ay = int(round(cx - self.offx[kk])), int(round(cy - self.offy[kk]))
+                            b = self.B[self.colours[kk]][fi]
+                            ev.append(b[ay, ax] if 0 <= ay < b.shape[0] and 0 <= ax < b.shape[1] else 0.0)
+                        top = max(ev)
+                        mask = 0
+                        for kk, e in zip(ryb_k, ev):
+                            if top < 0.15 or e >= top - 0.1:
+                                mask |= 1 << int(self.grp[kk])
+                    fr.append((cx, cy, v, mask))
             dets.append(fr)
         K = max(1, max(len(f) for f in dets))
         self.D = np.zeros((len(dets), K, 4), np.float32)
@@ -346,12 +423,13 @@ class DetScorer:
         states = np.ascontiguousarray(np.asarray(states, np.uint64))
         par = len(states) > 64              # one state (geometry fits): no thread start-up
         out = np.empty(len(states), np.float32)
-        if self.back_w > 0:
+        if self.back_w > 0 or getattr(self, "late_w", 1.0) != 1.0:
             key = ("back", par)
             if key not in _DET:
                 _DET[key] = _det_kernel2(par)
             _DET[key](states, *self.inputs(g, pikmin), self.O, self.grp, self.offx, self.offy, self.D, self.nD,
-                      np.float32(self.back_w), np.float32(1.0 / (2 * self.sigma ** 2)), out)
+                      np.float32(self.back_w), np.float32(1.0 / (2 * self.sigma ** 2)),
+                      np.float32(getattr(self, "late_w", 1.0)), out)
             return out
         if par not in _DET:
             _DET[par] = _det_kernel(par)
@@ -371,6 +449,59 @@ class DetScorer:
             yy, xx = np.unravel_index(np.argmax(sub), sub.shape)
             d.append((xa + xx - u, ya + yy - v))
         return tuple(np.median(np.array(d), axis=0))
+
+    def shift_family(self, g, state: int, span: int = 3, step: float = 0.05, half: float = 0.8):
+        """Score state and its shifts (state -+ 4j draws) with the geometry held fixed except f0.
+
+        A shift by 4j draws hands Pikmin i the draws of Pikmin i+j, leaving 0.1j timer units
+        (0.667j frames) earlier; with f0 moved to compensate, most of the dive is identical and the
+        scores differ only by what tells them apart (each colour's first and last Pikmin, the i%3
+        landing offset). Refitting every member separately adds fit noise of the same size, so here
+        only f0 is searched, on a grid around the expected value. Returns [(score, state, f0)] for
+        j = -span..span."""
+        from . import rng as _rng
+        out = []
+        for j in range(-span, span + 1):
+            m = _rng.next_seed(state, 4 * j) if j >= 0 else _rng.prev_seed(state, -4 * j)
+            st = np.array([m], np.uint64)
+            c0 = g.f0 + 0.1 * j / 0.15
+            best = (-1e30, c0)
+            for f0 in np.arange(c0 - half, c0 + half + 1e-9, step):
+                v = float(self.score(g.copy(f0=float(f0)), st)[0])
+                if v > best[0]:
+                    best = (v, float(f0))
+            out.append((best[0], m, best[1]))
+        return out
+
+    def resolve_family(self, g, state: int, span: int = 3, iters: int = 4, log=None):
+        """Pick the best of state -+ 4j draws (j <= span). A geometry fitted to a shifted member is
+        biased towards that member, so: fit the geometry to the current pick, score the whole family
+        under every geometry fitted so far (f0 searched per member), take each member's best, and
+        refit at the new pick until it stops changing. Returns (state, geometry, {state: score})."""
+        from . import rng as _rng
+        members = [_rng.next_seed(state, 4 * j) if j >= 0 else _rng.prev_seed(state, -4 * j)
+                   for j in range(-span, span + 1)]
+        geoms = {}
+        cur = state
+        best = {}
+        for it in range(iters):
+            if cur in geoms:
+                break
+            geoms[cur], _ = self.fit(g if not geoms else geoms[max(geoms, key=lambda s: best.get(s, -1e30))], cur)
+            for m in members:
+                st = np.array([m], np.uint64)
+                k = members.index(m) - members.index(cur)
+                gc = geoms[cur]
+                for f0 in np.arange(gc.f0 + 0.1 * k / 0.15 - 0.8, gc.f0 + 0.1 * k / 0.15 + 0.8 + 1e-9, 0.05):
+                    v = float(self.score(gc.copy(f0=float(f0)), st)[0])
+                    if v > best.get(m, -1e30):
+                        best[m] = v
+            cur = max(members, key=lambda s: best[s])
+            if log:
+                log(f"    family iter {it}: pick {members.index(cur) * 4 - 4 * span:+d} {cur:08X} "
+                    + " ".join(f"{best[s]:.1f}" for s in members))
+        gbest = geoms.get(cur) or self.fit(g, cur)[0]
+        return cur, gbest, best
 
     def resolve_shift(self, g, state: int, span: int = 3, lead: int = 3, log=None):
         """Choose among state and its one-Pikmin shifts (state -+ 4j draws, j <= span).
@@ -402,7 +533,8 @@ class DetScorer:
         from scipy.optimize import minimize
         t0 = np.array(cd.geometry_vector(g), float)
         used = [cd.COLOURS.index(c) for c in self.colours]
-        act = [0, 1, 2, 3, 4, 5] + [6 + 2 * c + k for c in used for k in (0, 1)]
+        act = [i for i in [0, 1, 2, 3, 4, 5] + [6 + 2 * c + k for c in used for k in (0, 1)]
+               if i not in getattr(self, "fixed", ())]     # e.g. (0, 1, 3): scale and v100 known per video
         lo, hi = t0.copy(), t0.copy()
         lo[:2] *= 0.9; hi[:2] *= 1.1
         lo[2] -= f0_slack; hi[2] += f0_slack

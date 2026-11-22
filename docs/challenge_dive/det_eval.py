@@ -45,12 +45,12 @@ def dives(video):
             yield vs[0], rng.next_seed(st(prev["state_after_last_draw"]), 5) & 0xFFFFFFFF, json.load(open(cache))
 
 
-def prepare(video, r, parts, sp):
+def prepare(video, r, parts, sp, colour_body=False):
     counts, region = r["counts"], tuple(r["region"])
     g = dr.shifted_geometry(cd.geometry_from_vector(r["candidates"][0]["geometry"]), sp)
     span = int((0.1 * (max(counts) - 1) + 0.5 * 4) / cd.TIMER_SPEED + 45)
     rd = dr.RGBDive(video, int(g.f0) - 4, int(g.f0) + span, region, drop=r.get("dropped", []), sp=sp)
-    ds = dd.DetScorer(rd, counts, sp, g.sx, g.sy, parts=parts)
+    ds = dd.DetScorer(rd, counts, sp, g.sx, g.sy, parts=parts, colour_body=colour_body)
     du, dv = ds.origin_correction(g)
     g = g.copy(origins={c: (u + du, v + dv) for c, (u, v) in g.origins.items()},
                goal=(g.goal[0] + du, g.goal[1] + dv), v100=g.v100 + dv)
@@ -79,14 +79,20 @@ def main():
     ap.add_argument("--parts", default="flower")
     ap.add_argument("--variants", default="0,3;1,3;2,3")
     ap.add_argument("--out")
+    ap.add_argument("--colour-body", action="store_true", help="body colour evidence for red/yellow/blue")
+    ap.add_argument("--ch", type=int, nargs="*", help="only these stages")
+    ap.add_argument("--late", type=float, default=1.0, help="weight of the landing phase")
     a = ap.parse_args()
     variants = [tuple(float(x) for x in v.split(",")) for v in a.variants.split(";")]
     sp = dr.load_sprites()
     rows = []
     for video in a.videos:
         for v, truth, r in dives(video):
+            if a.ch and r["ch"] not in a.ch:
+                continue
             t0 = time.time()
-            ds, g = prepare(video, r, a.parts.split(","), sp)
+            ds, g = prepare(video, r, a.parts.split(","), sp, a.colour_body)
+            ds.late_w = a.late
             grey = [c["state"] for c in r.get("candidates", [])] + [c["state"] for c in r.get("top", [])[:a.short]]
             inn = any((s & 0x7FFFFFFF) == (truth & 0x7FFFFFFF) for s in grey)
             uniq = {}
