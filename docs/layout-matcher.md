@@ -329,3 +329,41 @@ New tooling:
   frame;
 - `wr_comedown.py`, `run_floor_wrs.py`;
 - `obs/comedown_frames.json` (comedown frames picked for 27 records).
+
+### 8.1 Bright stages, per-stage attempts
+
+| stage | result | confidence |
+|---|---|---|
+| CH10 Twilight Garden | `0E95D78F` | confirmed (§5) |
+| CH20 Giant's Bath (2 floors) | 5 candidates in the rate window: `634D300A`, `14B208FC`, `2B6B79A9`, `3420C713`, `12725B9B` | narrowed, not solved |
+| CH17 Three Color Training | family `25835E4D` / `1C8189E4` (identical layouts), k = 119,870 | weak: suggestive only |
+| CH4 Creator's Garden | none | calibration failed |
+| CH22 Subterranean Lair | none | too few readable features |
+
+- **CH20** (comedown floor matcher plus objects, `obs/ch20_comedown.json`):
+  - The floor shape (two lit pool rooms and side caps) leaves 1,885 of 600k seeds.
+  - Four objects then cut it to 10: a treasure in the right cap, one in the lower pool room, one
+    in the top-left cap, and the hole in the bottom-right cap.
+  - Five of those lie in the rate window (k 98k–341k).
+  - They differ only in which treasure sits where. At comedown resolution I can't tell a rubber
+    duck from a bell reliably, and the gameplay camera isn't calibrated.
+- **CH17** (fork; fly-over calibrated on cmal04 `3CB60D07` from 3 objects; the record registered
+  by hand on 6 fence and block points; `obs/ch17_*`):
+  - Four observations leave 14 seeds in k 0–400k (about 9 families). Only one family falls in the
+    rate band, at 24.0 draws/frame (CMAL 24.8–29.8).
+  - The observations carry about 15 bits against a window of about 17, so landing on one family
+    in the band is suggestive, not proof.
+  - Next check: the egg at (−163, −559) and the Flame Tiller at (−163, 643) in early gameplay.
+- **CH4** (fork): the known seed `29FFCAF0` doesn't fit cmal04's own fly-over. The render puts the
+  pond behind the pod and the geyser ahead-left, but the video shows both up-left. The fly-over
+  camera path also differs in each of the three videos.
+- **CH22:** within 900 units of the pod there are only 3 Bulbears, and they wander before the
+  fly-over. There is too little to read.
+
+**Open data problem.** On cmal04, the known-seed layouts for CH2 and CH4 don't resemble the video,
+while CH8 and CH10 match. These seeds come from the previous results roll, + 1004 draws, assuming
+no menu flash. For CH2 the dive reader confirmed that state, and seeds ±5,000 draws around it don't
+match either. So the cause is more likely a CaveGen3 difference for some challenge sublevels in
+this release, or a different seed-to-floor link on those stages, than a misread. Until this is
+explained, a layout-matched seed on any stage should be checked against one known-seed CMAL run of
+the same stage.

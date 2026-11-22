@@ -1,0 +1,6 @@
+[
+ {"what": "pod", "ahead": 0, "side": 0, "px": 680, "py": 440},
+ {"what": "geyser", "ahead": 440, "side": -520, "px": 335, "py": 65},
+ {"what": "clover", "ahead": 345, "side": -355, "px": 480, "py": 175},
+ {"what": "clover", "ahead": -110, "side": -240, "px": 320, "py": 480}
+]
