@@ -229,3 +229,77 @@ def test_a_wrong_read_between_two_agreeing_seeds_does_not_hide_them():
     chain.link([a, stray, c])
     assert a.confidence == c.confidence == "high"
     assert stray.confidence == "low"
+
+
+def test_redo_refreshes_the_saved_read_so_linking_keeps_the_seed_that_links():
+    """08_CurtisDN's Hole of Beasts 2: the run's saved per-entry read (fits.json, an older
+    detector) was a wrong medium seed that neither neighbour reaches, and linking could not find
+    the right one from those mistracked letters, so the final seed stayed wrong. The current
+    detector reads the right seed with high confidence. `redo.refresh` puts that read into
+    fits.json, and linking the run again keeps it (it sits 32k steps after floor 1 and 24k before
+    floor 3); updating seeds.json alone would be undone by the next relink."""
+    import json
+    from types import SimpleNamespace
+    from p2seeds import redo
+
+    n = 14
+    a = 0x09DAD0DD
+    truth = rng.next_seed(letters_model.layout_seed(a, n), 32_484)
+    c = rng.next_seed(letters_model.layout_seed(truth, n), 24_125)
+    wrong = 0x543C6EFD
+
+    def known(seed, frame):
+        return {"frame": frame, "cave": "HoB", "sublevel": 1, "lang": "en", "num_chars": n,
+                "confidence": "high", "note": "", "letter_seed": seed & rng.MASK31,
+                "layout_seed": letters_model.layout_seed(seed & rng.MASK31, n), "fit": None, "candidates": []}
+
+    def read(seed, conf, keep, s):
+        v, sig = _measured(seed, n, keep, seed=s)
+        fit = SimpleNamespace(v=v, sigma=sig, rms_px=0.1)
+        cand = search.Candidate(seed & rng.MASK31, 3.0, 0.03, np.where(np.isfinite(sig), 0.0, np.nan))
+        return SimpleNamespace(settled_frame=2, cave_id="HoB", sublevel=2, lang="en", num_chars=n, fit=fit,
+                               candidates=[cand], letter_seed=seed & rng.MASK31,
+                               layout_seed=letters_model.layout_seed(seed & rng.MASK31, n),
+                               confidence=conf, note="")
+
+    def final(rows):
+        rs = [chain.Saved(json.loads(json.dumps(r))) for r in rows]
+        chain.link(rs)
+        return rs[1]
+
+    stale = chain.row(read(wrong, "medium", [0, 2, 3, 5, 7, 9, 11, 12, 13], 1))
+    rows = [known(a, 1), stale, known(c, 3)]
+    assert final(rows).letter_seed != truth & rng.MASK31      # the old read is never put right
+
+    rows[1] = dict(stale)
+    assert redo.refresh(rows[1], read(truth, "high", list(range(n)), 2))
+    assert rows[1]["frame"] == 2 and redo.REDONE in rows[1]["note"]
+    got = final(rows)
+    assert got.letter_seed == truth & rng.MASK31 and got.confidence == "high"
+    assert got.chain_dist == 32_484
+
+    # a newer read that is less confident than the saved one does not replace it
+    row = dict(stale)
+    assert not redo.refresh(row, read(truth, "low", [1, 4], 3))
+    assert row["letter_seed"] == wrong
+
+
+def test_a_seed_confirmed_by_a_chain_anchors_the_window_search():
+    """03_JackDraz's Japanese run: no read is settled by its letters alone, so there is no
+    backbone. A chain of short names confirms floors 2-4, and floor 1 (too few letters for a link
+    of its own to count in a chain) must still be found just before floor 2, instead of the
+    chained seeds being treated as lone reads that anchor nothing."""
+    n = 5
+    s = [0x046E2BD4]
+    for d in (64_436, 40_000, 55_000):
+        s.append(rng.next_seed(letters_model.layout_seed(s[-1], n), d))
+    first = _Entry(s[0], n, keep=[0, 1, 2, 3, 4], s=1)
+    first.candidates = []                       # its global search found nothing useful
+    rest = [_Entry(x, n, keep=[0, 1, 2, 3, 4], s=i + 2) for i, x in enumerate(s[1:])]
+    for r, x in zip(rest, s[1:]):               # the right seed among their global candidates
+        r.candidates = [search.Candidate(x & rng.MASK31, 0.5, 0.0, np.zeros(n))]
+    results = [first] + rest
+    chain.link(results)
+    assert all("confirmed by a chain" in r.note for r in rest)
+    assert first.letter_seed == s[0] & rng.MASK31
+    assert "just before the next sublevel" in first.note

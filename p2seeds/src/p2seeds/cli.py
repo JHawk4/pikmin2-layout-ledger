@@ -148,8 +148,9 @@ def main(argv: list[str] | None = None) -> int:
     dt = sub.add_parser("details", help="rebuild a run's detection page with tracking pictures, the comedown and landing views, and the layout with them outlined")
     dt.add_argument("out_dir")
     dt.add_argument("--force", action="store_true", help="redo pictures that already exist")
-    rd = sub.add_parser("redo", help="re-run a finished run's non-high sublevels; keep new high seeds that chain with a neighbour")
+    rd = sub.add_parser("redo", help="re-read a finished run's non-high sublevels with the current detector and link the run again")
     rd.add_argument("out_dir")
+    rd.add_argument("--frames", default=None, help="only these entries (comma-separated seeds.json frames)")
     rd.add_argument("--redraw", action="store_true", help="draw every layout again, not only missing ones")
     pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
     pb.add_argument("--root", default="data/output")
@@ -165,9 +166,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "redo":
         from . import redo
-        changed = redo.redo(args.out_dir, progress=lambda e, r, ok: log(
+        frames = {int(f) for f in args.frames.split(",")} if args.frames else None
+        changed = redo.redo(args.out_dir, frames=frames, progress=lambda e, r, ok: log(
             f"  {e['cave']} {e['sublevel']}: {e['confidence']} -> {r.confidence}"
-            + (" (kept: confirmed by a neighbour)" if ok else " (not kept)")))
+            + (" (kept)" if ok else " (not kept)")))
         log(f"{len(changed)} sublevel(s) changed; run judge, treasures and details next")
         return 0
 
