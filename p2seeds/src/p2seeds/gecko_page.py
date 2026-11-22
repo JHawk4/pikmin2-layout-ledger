@@ -79,7 +79,7 @@ function show() {
     + (v.checked ? '' : ' <b>This version\'s addresses come from the decomp\'s symbol map and have not been tried on a real copy of the game yet.</b>')
     + (r.platform && r.platform !== 'GameCube' ? ` This run was played on ${r.platform}; the GameCube layouts match it only where the cave files are the same.` : '');
   $('rows').innerHTML = r.rows.map(x => `<tr><td>${x[0]} ${x[1]}</td><td><code>${hex(x[3], 8)}</code></td>`
-    + `<td><a href="https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:${x[0]}-${x[1]}&seed=${hex(x[3], 8)}">CaveGen3</a></td></tr>`).join('');
+    + `<td><a href="https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:${x[0]}-${x[1]}&seed=${hex(x[3], 8)}${r.category === 'Pay Off Debt' ? '&judge=judge2' : ''}">CaveGen3</a></td></tr>`).join('');
   $('gameid').textContent = v.gameId;
 }
 $('version').addEventListener('change', show);

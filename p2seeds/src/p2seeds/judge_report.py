@@ -82,7 +82,9 @@ def _num(delta: float | None, unit: str = "s") -> str:
 def cg3_url(r: dict) -> str:
     """This layout on the CaveGen3 web page (zoomable, with treasures, teki and judges)."""
     seed = r["layout_seed"][2:] if r["layout_seed"].lower().startswith("0x") else r["layout_seed"]
-    return f"https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:{r['cave']}-{r['sublevel']}&seed={seed}"
+    # Pay Off Debt layouts open with judge2 selected, the judge the ledger scores them with.
+    judge = "&judge=judge2" if r.get("judge2_score") is not None or r.get("judge_kind") == "pod" else ""
+    return f"https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:{r['cave']}-{r['sublevel']}&seed={seed}{judge}"
 
 
 NEIGHBOR_STEPS = 2_000_000    # a medium seed this few RNG steps from both high neighbours is in order
