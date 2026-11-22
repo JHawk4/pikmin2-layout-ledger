@@ -448,11 +448,39 @@ blue share the same flower, though.
   first 60 in only 4 of 13 dives. Wrong flower reads are mostly stages with two or more of red,
   yellow and blue (CH21, CH14), plus CH29 and CH10.
 
-**Verdict.** Detection is not yet better than the grey reader overall. It is stronger on some
-dives (CH28 WR, cmal04 CH18). Next steps that would help:
-- body detection to tell red, yellow and blue apart;
-- a geometry fit that doesn't need a candidate state (from the detections alone);
-- re-ranking only where the grey margin is low.
+**Improvements tried** (`docs/challenge_dive/det_eval.py`: grey reads are cached, so a variant is
+scored on every truth-known dive in about an hour; `--blind` leaves the truth out of the state set).
+
+| Change | Effect |
+|---|---|
+| **Reverse term** (`back_w`): every flower detection in a frame earns its value × exp(−d²/2σ²), d = distance to the nearest predicted Pikmin that could be that colour. It penalises states whose Pikmin are not where the flowers are, not only rewarding states whose Pikmin land on flowers. | cmal04: 5 → 7 of 13 correct (truth in set); on the 10 dives whose truth is in the grey shortlist, the pick is the truth or one Pikmin away (±4 draws) on all 10. cmal13 blind: 4 → 6 of 14 (7 within 4 draws). Used from here on (`back_w` 2, σ 3 px). |
+| Fade frames (more than 45% of the region changed) dropped | Removed about 80 junk detections per fade frame. |
+| Body colour under each flower (red/yellow/blue share a flower) | The colour maps look right mid-dive; not yet evaluated. |
+| One-Pikmin shift resolution: refit state ± 4j draws and compare | **No gain.** Picks move both ways (CH10 fixed, CH8 and CH14 broken). Scoring only each colour's first 1–3 Pikmin at a fixed geometry picks from −16 to +16. Dropping the landing phase helps only when started at the truth. A shift changes one or two trajectories out of 20–50, which is below the noise. |
+| f0 scanned in 0.1-frame steps instead of Powell (the score is a step function of f0) | Each state fits better, but so do wrong ones: cmal04 blind 7 → 4. Kept as an option (`fit(f0_scan=True)`), off by default. |
+| Neighbours of the leaders (±1–3 draws) refit | cmal04 CH4's grey candidates are the truth +1, −3, +5 draws (a one-draw shift), so expansion adds the truth, but detection ranks it 24th. |
+
+**Two videos, blind, reverse term:**
+
+| Video | Dives (truth in grey shortlist) | Grey correct | Detection correct | Either correct | Grey and detection agree |
+|---|---|---|---|---|---|
+| cmal04 (Wii U) | 13 (10) | 9 | 7 | 11 | 7, of which 6 correct |
+| cmal13 (GC) | 14 (14) | 9 | 6 | 10 | 5, all correct |
+
+On cmal13 the grey reader gets 9 of all 27 dives right; the 14 in the table are those whose truth it
+shortlists. Detection's own margin is only partly calibrated (cmal13: 6 of 9 with margin ≥ 8%
+correct).
+
+**Verdict.** Detection is not better than the grey reader overall, but the two are complementary:
+- When they agree, the read is almost always right (11 of 12).
+- One or the other is right on 21 of 27 dives.
+- Detection's misses are mostly one-Pikmin shifts or dives with few Pikmin (CH6 1/1/1, CH11 5+5).
+  These need a layout check of the candidates on floor 1 rather than better tracking.
+
+Not done:
+- a geometry fit from the detections alone;
+- scale and v100 per video (sy wanders 0.54–0.71 between stages of one video);
+- the body-colour evaluation.
 
 ### Running it
 
