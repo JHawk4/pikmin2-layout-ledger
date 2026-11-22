@@ -22,9 +22,15 @@ pub fn is_entry_screen(g: &Gray) -> bool {
     };
     let name = band_max(NAME_BAND.0, NAME_BAND.1) > 0.015;
     let sub = band_max(SUB_BAND.0, SUB_BAND.1) > 0.015;
+    // Above the name only the middle half of the width counts: runners often put a timer or
+    // splits in a top corner, and gameplay is still ruled out by the HUD along the bottom.
     let top = (0.12 * h as f64) as usize;
     let bot = (0.80 * h as f64) as usize;
-    let outside = rows[..top.min(h)].iter().chain(rows[bot.min(h)..].iter()).cloned().fold(f64::NEG_INFINITY, f64::max);
+    let (x0, x1) = ((0.25 * g.w as f64) as usize, (0.75 * g.w as f64) as usize);
+    let top_rows = (0..top.min(h)).map(|y| {
+        g.row(y)[x0..x1].iter().filter(|&&v| (v as f32 - 90.0) / 120.0 > 0.5).count() as f64 / (x1 - x0).max(1) as f64
+    });
+    let outside = top_rows.chain(rows[bot.min(h)..].iter().cloned()).fold(f64::NEG_INFINITY, f64::max);
     if h == 0 {
         return false;
     }

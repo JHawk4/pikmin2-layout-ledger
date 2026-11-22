@@ -28,6 +28,9 @@ pub const MIN_CAVE_MARGIN: f64 = 0.12;
 pub const RESCUE_SCORE: f64 = 0.33;
 pub const RESCUE_MARGIN: f64 = 0.06;
 pub const MIN_CAVE_SCORE_JA: f64 = 0.48;
+/// Japanese names share endings (百戦錬磨の穴 / けだものの穴 / 夢の穴): a match this strong needs a smaller margin.
+pub const STRONG_CAVE_SCORE_JA: f64 = 0.65;
+pub const STRONG_CAVE_MARGIN_JA: f64 = 0.08;
 pub const FALL_LEAD: usize = 110;
 pub const FALL_TAIL: usize = 40;
 pub const LOW_MATCH: f64 = 0.4;
@@ -284,7 +287,7 @@ pub fn analyze_event(src: &dyn Frames, ev: &Event, opts: &Options, only: Option<
         let margin = cal.as_ref().map(|c| c.score - c.runner_up.as_ref().map(|r| r.1).unwrap_or(0.0)).unwrap_or(0.0);
         let (mut min_score, mut min_margin) = (
             if cal.as_ref().is_some_and(|c| c.cave.lang == "ja") { MIN_CAVE_SCORE_JA } else { MIN_CAVE_SCORE },
-            MIN_CAVE_MARGIN,
+            if cal.as_ref().is_some_and(|c| c.cave.lang == "ja" && c.score >= STRONG_CAVE_SCORE_JA) { STRONG_CAVE_MARGIN_JA } else { MIN_CAVE_MARGIN },
         );
         if let Some(o) = only {
             min_score = RESCUE_SCORE;

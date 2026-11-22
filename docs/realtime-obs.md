@@ -82,6 +82,12 @@ exe) is a good fit: the Browser Source overlay is a web page anyway, so the two 
 
 1. **Detector port.** A Rust library plus a command line over video files. Done when its seeds equal
    the Python seeds on every run in `data/output` (about 1,500 entries).
+   **Done (`p2live/`):**
+   - 1,907 entries in 33 runs, including the Japanese `output_at` runs.
+   - Every seed, confidence and sublevel equals Python's per-entry analysis.
+   - 1,681 entries are also equal to the final `seeds.json`. The other 226 differ only through
+     the cross-entry chain pass and the sublevel-sequence fill-in, which are not ported yet.
+   - Details are in `p2live/README.md`.
 2. **Live loop.** Frame input, a ring buffer and workers, with the section 2 speed-ups. Target: seed
    ready less than 1.5 s after the letters land. Tested by replaying VODs at real speed with
    virtual-camera-like pacing (repeats and drops).

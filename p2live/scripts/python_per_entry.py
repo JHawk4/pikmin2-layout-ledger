@@ -52,6 +52,8 @@ def main():
             continue
         for line in p.read_text().splitlines():
             r = json.loads(line)
+            if r["note"] == "no frames decoded":   # video not on disk
+                continue
             if not r["same"] or r["sublevel"] != r["expected_sublevel"]:
                 tasks.append((main_dir, r["run"], str(seeds_of[r["run"]]), r["frame"], r["expected_cave"]))
     print(f"{len(tasks)} entries", flush=True)
