@@ -414,6 +414,8 @@ New tooling:
     teki), and there are two dark pits where one hole is expected.
   - CH5: Key, two treasures and the hole in 9 arm spots carry ~12 bits against a ~18-bit window.
   - CH16: 12 cookies in one room, but the comedown is too dark to read them.
+  - CH12: the floor-shape matcher over k 0–1M at zoom 1.15–1.6 is flat (best z 2.9, at the grid's
+    zoom edge); the maze's gates and Key could be added as point observations next.
   - The "READY?" landing frame (`landing.py`, CaveGen3's landing camera) doesn't fit as modelled
     in Challenge Mode: the captain doesn't start beside the pod, and neither heading 110° nor 0°
     puts CH9's spots on its floor, even with the view moved so the pod lands on its pixel.
