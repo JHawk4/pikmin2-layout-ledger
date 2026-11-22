@@ -78,7 +78,7 @@ function show() {
     const visit = seen[x[2]] = (seen[x[2]] || 0) + 1, again = visit > 1 ? ` <span class="muted">(visit ${visit})</span>` : '';
     return x[3] === RANDOM ? `<tr><td>${x[0]} ${x[1]}${again}</td><td colspan="2" class="muted">random (seed not read with confidence)</td></tr>`
       : `<tr><td>${x[0]} ${x[1]}${again}</td><td><code>${hex(x[3], 8)}</code></td>`
-        + `<td><a href="https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:${x[0]}-${x[1]}&seed=${hex(x[3], 8)}">CaveGen3</a></td></tr>`;
+        + `<td><a href="https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:${x[0]}-${x[1]}&seed=${hex(x[3], 8)}${r.category === 'Pay Off Debt' ? '&judge=judge2' : ''}">CaveGen3</a></td></tr>`;
   }).join('');
   $('gameid').textContent = v.gameId;
 }
