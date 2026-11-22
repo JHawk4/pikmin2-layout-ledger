@@ -18,15 +18,9 @@ def run_data(runs: list[dict], prefix: str) -> list[dict]:
     the runs' section ("" or "at/")."""
     out = []
     for r in runs:
-        pairs = gecko.table(r["entries"])
-        if not pairs:
+        rows = [list(v) for v in gecko.sublevels(r["entries"])]
+        if not rows:
             continue
-        seeds, rows = dict(pairs), []
-        for e in r["entries"]:      # in the order played, once per sublevel in the table
-            if e.get("cave") in gecko.CAVE_IDS and e.get("sublevel"):
-                k = gecko.key(e["cave"], int(e["sublevel"]))
-                if k in seeds:
-                    rows.append([e["cave"], int(e["sublevel"]), k, seeds.pop(k)])
         run = r.get("run", {})
         out.append({"slug": r["slug"], "label": r["runner"], "href": f"{prefix}{r['slug']}/judge.html",
                     "category": "All Treasures" if r.get("kind") == "at" else "Pay Off Debt",
@@ -77,7 +71,7 @@ function show() {
   $('code').value = '$' + name + '\n' + code(v, r.rows);
   $('summary').innerHTML = `${r.rows.length} sublevels get <a href="${r.href}">this run's layouts</a>; any other sublevel stays random.`
     + (v.checked ? '' : ' <b>This version\'s addresses come from the decomp\'s symbol map and have not been tried on a real copy of the game yet.</b>')
-    + (r.platform && r.platform !== 'GameCube' ? ` This run was played on ${r.platform}; the GameCube layouts match it only where the cave files are the same.` : '');
+    + (/Wii/.test(r.platform) !== v.gameId.startsWith('R92') ? ` This run was played on ${r.platform || 'GameCube'}, so on ${v.gameId.startsWith('R92') ? 'the Wii' : 'GameCube'} its seeds give the run's layouts only where the two versions' cave files are the same.` : '');
   $('rows').innerHTML = r.rows.map(x => `<tr><td>${x[0]} ${x[1]}</td><td><code>${hex(x[3], 8)}</code></td>`
     + `<td><a href="https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:${x[0]}-${x[1]}&seed=${hex(x[3], 8)}${r.category === 'Pay Off Debt' ? '&judge=judge2' : ''}">CaveGen3</a></td></tr>`).join('');
   $('gameid').textContent = v.gameId;
@@ -89,7 +83,7 @@ $('copy').addEventListener('click', async () => {
   catch { $('code').select(); $('copied').textContent = 'Press Ctrl+C to copy.'; }
 });
 $('gct').addEventListener('click', () => {
-  // A .gct file for Nintendont: 00D0C0DE 00D0C0DE, the code, F0000000 00000000.
+  // A .gct file (Nintendont, Wii code loaders): 00D0C0DE 00D0C0DE, the code, F0000000 00000000.
   const v = V.find(x => x.key === $('version').value), r = R[+$('run').value];
   const lines = code(v, r.rows).split('\n').map(l => l.split(' '));
   const w = ['00D0C0DE', '00D0C0DE', ...lines.flat(), 'F0000000', '00000000'];
@@ -144,17 +138,19 @@ battle are left alone.</p>
 <p id="summary"></p>
 <textarea id="code" rows="12" readonly aria-label="Gecko code"></textarea>
 <div class="buttons"><button class="primary" id="copy">Copy code</button>
-<button id="gct">Download .gct (Nintendont)</button><span id="copied" role="status" aria-live="polite"></span></div>
+<button id="gct">Download .gct</button><span id="copied" role="status" aria-live="polite"></span></div>
 </div>
 
 <h2>Using it</h2>
 <p><b>Dolphin</b>: right-click the game, Properties, Gecko Codes, Add New Code; paste the code (the first line, starting
 with $, is its name), save, and tick it. Cheats must be on: Config, General, Enable Cheats. Then start the game.</p>
 <p><b>Nintendont</b> (Wii or Wii U): download the .gct and copy it to <code>codes/<span id="gameid">GPVE01</span>.gct</code> on
-your SD card or USB drive, then turn on Cheats in Nintendont's settings. Nintendont keeps cheats in a small space, so a
+your SD card or USB drive, then turn on Cheats in Nintendont's settings. On a Wii, the Wii version's .gct works with
+a cheat-code loader such as Gecko OS or USB Loader GX. Nintendont keeps cheats in a small space, so a
 run with many sublevels can be too long for it.</p>
 <p>The layout is set each time the sublevel is made, so dying, leaving and re-entering, or reloading the cave gives the
-same layout again. Only the layout is fixed: enemies, eggs and anything else random after the sublevel loads behave as
+same layout again. Where the runner went through a sublevel more than once (All Treasures runners farm purple Pikmin
+in Bulblax Kingdom first), it is the layout of their first visit. Only the layout is fixed: enemies, eggs and anything else random after the sublevel loads behave as
 usual.</p>
 
 <h2>Sublevels in this code</h2>
@@ -163,12 +159,13 @@ usual.</p>
 <h2>Versions</h2>
 <p>The versions marked untested use addresses from the <a href="https://github.com/projectPiki/pikmin2">Pikmin 2
 decompilation</a>'s symbol maps; the USA release and the USA demo 1 build were also checked against real copies of
-the game. If an untested one doesn't work for you, please say so in the suggestion box. Not supported:</p>
+the game. The Wii version (New Play Control!) has no decompilation; its addresses were found in a memory dump of the
+USA game. If an untested one doesn't work for you, please say so in the suggestion box. Not supported:</p>
 <ul>{unsupported}</ul>
 
 <details><summary>How it works</summary>
 <p>Pikmin 2 makes each sublevel from its global random number generator. This code hooks
-<code>MapUnitGenerator::createMapPartsList</code>, just before the game's first draw for the layout (the same place
+<code>MapUnitGenerator::createMapPartsList</code> (on both GameCube and Wii), just before the game's first draw for the layout (the same place
 as Meeo's set-seed code, whose seeds CaveGen uses). There it reads the cave and floor from the story mode section
 and, if the run has a seed for that sublevel, writes it into the generator's state. Seeds are the layout seeds this
 site shows on each run's page; the CaveGen3 links show what each one should look like. Details:

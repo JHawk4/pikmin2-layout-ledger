@@ -10,7 +10,7 @@ setseed code", which hooks the same instruction on the USA demo build).
 There the code reads Game::gameSystem->mSection; if it is the story mode section (its vtable is
 SingleGameSection's), it calls SingleGameSection::getCaveID and ::getCurrFloor and looks up
 (cave, floor) in a table placed inside the code; on a hit it stores the seed into rand()'s state.
-Then it runs the instruction it replaced (li r26, 0) and returns.
+Then it runs the instruction it replaced (li r26, 0; li r27, 0 on the Wii) and returns.
 
 Table entry: key, seed. key = the cave's ID32 (e.g. 'f_03') with its second byte replaced by
 the floor index (0-based), so one word identifies the sublevel. A zero key ends the table.
@@ -27,7 +27,8 @@ CAVE_IDS = {
     "CoS": "y_01", "GK": "y_02", "SR": "y_03", "SC": "y_04",
     "CoC": "l_01", "HoH": "l_02", "DD": "l_03",
 }
-ORIGINAL = 0x3B400000          # li r26, 0 : the instruction at the hook, in every build
+LI_R26_0 = 0x3B400000          # li r26, 0 : the instruction at the hook on every GameCube build
+LI_R27_0 = 0x3B600000          # li r27, 0 : on the Wii build
 
 
 @dataclass(frozen=True)
@@ -42,10 +43,14 @@ class Version:
     get_curr_floor: int        # Game::SingleGameSection::getCurrFloor
     rand_next: int             # rand()'s state (MSL rand.c `next`)
     checked: bool              # addresses and the hooked instruction read from a real copy of the game
+    hook_offset: int = 0x2C    # into createMapPartsList: after the prologue, before the first rand()
+    original: int = LI_R26_0   # the instruction the hook replaces (the code runs it before returning)
+    cave_id_slot: int = 0x78   # vtable slots (documentation; the code calls the getters directly)
+    floor_slot: int = 0x58
 
     @property
     def hook(self) -> int:
-        return self.create_map_parts_list + 0x2C
+        return self.create_map_parts_list + self.hook_offset
 
 
 # Addresses from the projectPiki/pikmin2 decomp's symbol maps (config/<version>/symbols.txt).
@@ -55,11 +60,14 @@ VERSIONS = [
     Version("GPVJ01", "Japan (GPVJ01)", "GPVJ01", 0x8024C770, 0x80517568, 0x804B2DB0, 0x8015310C, 0x80156388, 0x805163A8, False),
     Version("GPVE01_D17", "USA demo 1 (GPVE01, demo build 17)", "GPVE01", 0x8024C0EC, 0x805159A8, 0x804B1290, 0x801530F8, 0x80155F34, 0x805147E0, True),
     Version("GPVE01_D18", "USA demo 2 (GPVE01, demo build 18)", "GPVE01", 0x8024C0EC, 0x805158A8, 0x804B1190, 0x801530F8, 0x80155F34, 0x805146E0, False),
+    # No decomp for the Wii: found in a RAM dump of the USA game (docs/gecko-code.md).
+    Version("R92E01", "Wii New Play Control! USA (R92E01)", "R92E01", 0x802D0ED0, 0x8066C9F0, 0x80590E00, 0x801E63AC, 0x801E92A4, 0x8066AAA0, True,
+            hook_offset=0x30, original=LI_R27_0, cave_id_slot=0x7C, floor_slot=0x5C),
 ]
 BY_KEY = {v.key: v for v in VERSIONS}
 
 UNSUPPORTED = [
-    ("Wii New Play Control! (R92E01, R92P01, R92J01)", "no symbol map yet, so no addresses to hook"),
+    ("Wii New Play Control! Europe and Japan (R92P01, R92J01)", "no copy of the game to find the addresses in yet"),
     ("Any other build or a romhack", "the addresses differ; the code would do nothing or crash"),
 ]
 
@@ -134,7 +142,7 @@ def body(v: Version) -> list[int]:
         ("b", "loop"),
         ("hit:", lwz(12, 4, 11)),
         ("", lis(11, _ha(v.rand_next))), ("", stw(12, _lo(v.rand_next), 11)),   # rand state = seed
-        ("done:", ORIGINAL),
+        ("done:", v.original),
     ]
     labels = {tag[:-1]: 4 * i for i, (tag, _) in enumerate(prog) if tag.endswith(":")}
     out = []
@@ -152,16 +160,24 @@ def key(cave: str, sublevel: int) -> int:
     return (cid & 0xFF00FFFF) | (((sublevel - 1) & 0xFF) << 16)
 
 
-def table(entries) -> list[tuple[int, int]]:
-    """(key, seed) per sublevel of a run that has a trusted seed: the last trusted one when a
-    cave was entered more than once (All Treasures purple farms), which is the descent the site
-    times. `entries` are a judge.json's entries after judge_report.mark_neighbors."""
+def sublevels(entries) -> list[tuple[str, int, int, int]]:
+    """(cave, sublevel, key, seed) for each sublevel of a run with a trusted seed, in the order
+    first played. A sublevel made more than once (All Treasures purple farms: BK 1-3, out, then
+    BK 1-7) gets the seed of its first visit, or of the first visit with a trusted seed.
+    `entries` are a judge.json's entries after judge_report.mark_neighbors."""
     from .judge_report import trusted
-    seen: dict[int, int] = {}
+    out: dict[int, tuple[str, int, int, int]] = {}
     for e in entries:
         if e.get("cave") in CAVE_IDS and e.get("sublevel") and e.get("layout_seed") and trusted(e):
-            seen[key(e["cave"], int(e["sublevel"]))] = int(str(e["layout_seed"]), 16) & 0x7FFFFFFF
-    return list(seen.items())
+            sub = int(e["sublevel"])
+            k = key(e["cave"], sub)
+            out.setdefault(k, (e["cave"], sub, k, int(str(e["layout_seed"]), 16) & 0x7FFFFFFF))
+    return list(out.values())
+
+
+def table(entries) -> list[tuple[int, int]]:
+    """The code's table: (key, seed) per sublevel (see sublevels)."""
+    return [(k, s) for _, _, k, s in sublevels(entries)]
 
 
 def words(v: Version, pairs: list[tuple[int, int]]) -> list[int]:

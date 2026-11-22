@@ -27,7 +27,8 @@ def test_encodings_match_instructions_read_from_the_game():
 
 def test_hook_is_createMapPartsList_after_its_prologue():
     for v in gecko.VERSIONS:
-        assert v.hook == v.create_map_parts_list + 0x2C
+        assert v.hook == v.create_map_parts_list + (0x30 if v.game_id.startswith("R92") else 0x2C)
+    assert gecko.BY_KEY["R92E01"].hook == 0x802D0F00 and gecko.body(gecko.BY_KEY["R92E01"])[-1] == gecko.LI_R27_0
     assert gecko.BY_KEY["GPVE01_D17"].hook == 0x8024C118        # where Meeo's set-seed code hooks
     assert USA.hook == 0x8024C138
 
@@ -42,11 +43,11 @@ def _e(cave, sub, seed, conf="high"):
     return {"cave": cave, "sublevel": sub, "layout_seed": seed, "letter_seed": seed, "confidence": conf}
 
 
-def test_table_keeps_trusted_seeds_and_the_last_visit():
-    es = [_e("BK", 1, "0x1"), _e("BK", 2, "0x2", "low"), _e("BK", 1, "0x80000003"), _e("SH", 1, "0x4", "medium"),
-          {"cave": None, "sublevel": None}, _e("XX", 1, "0x5")]
-    t = gecko.table(es)
-    assert t == [(gecko.key("BK", 1), 3)]            # bit 31 dropped; low, lone medium and unknown caves left out
+def test_table_takes_each_sublevels_first_trusted_visit():
+    es = [_e("BK", 1, "0x80000001"), _e("BK", 2, "0x2", "low"), _e("BK", 1, "0x3"), _e("BK", 2, "0x4"),
+          _e("SH", 1, "0x5", "medium"), {"cave": None, "sublevel": None}, _e("XX", 1, "0x6")]
+    # bit 31 dropped; BK 2's first visit unread, so its second; lone medium SH 1 and unknown caves left out
+    assert gecko.table(es) == [(gecko.key("BK", 1), 1), (gecko.key("BK", 2), 4)]
 
 
 def test_code_layout():
@@ -58,7 +59,7 @@ def test_code_layout():
     assert w[0] == 0x48000001 | (4 + 4 * 5)          # bl over 2 entries and the end marker
     assert w[1:6] == [pairs[0][0], 0x1234, pairs[1][0], 0x7FFFFFFF, 0]
     assert w[6:6 + len(gecko.body(USA))] == gecko.body(USA)
-    assert gecko.body(USA)[-1] == gecko.ORIGINAL
+    assert gecko.body(USA)[-1] == gecko.LI_R26_0
     assert len(gecko.words(USA, [])) % 2 == 0
 
 
@@ -95,3 +96,72 @@ def test_nav_has_the_gecko_tab_at_the_site_root():
     h = theme.header("../", "x", "judge", "at")
     assert 'href="../../gecko.html"' in h
     assert 'href="gecko.html" aria-current=page' in theme.header("", None, "gecko", "pod")
+
+
+def _run(v, pairs, cave, floor, mem, story=True):
+    """Run the code once on a tiny PowerPC model (instructions decoded by capstone), as at the
+    hook: returns the rand state afterwards. `mem` (address -> word) carries the table between
+    calls, as the game's RAM does."""
+    capstone = pytest.importorskip("capstone")
+    md = capstone.Cs(capstone.CS_ARCH_PPC, capstone.CS_MODE_32 | capstone.CS_MODE_BIG_ENDIAN)
+    base, section = 0x80001800, 0x81000000
+    w = gecko.words(v, pairs)
+    for i, x in enumerate(w[:-1]):
+        mem.setdefault(base + 4 * i, x)
+    mem.update({v.game_system: 0x80F00000, 0x80F00000 + 0x58: section,
+                section: v.single_vtable if story else 0x80400000, v.rand_next: 0xDEAD})
+    getters = {v.get_cave_id: int.from_bytes(gecko.CAVE_IDS[cave].encode(), "big"), v.get_curr_floor: floor}
+    r, lr, ctr, cr, pc = [0] * 32, 0, 0, 0, base
+    reg = lambda t: int(t.strip().lstrip("r"))
+    for _ in range(10000):
+        if pc == base + 4 * (len(w) - 1):
+            return mem[v.rand_next]
+        x = mem[pc]
+        ins = next(md.disasm(x.to_bytes(4, "big"), pc))
+        op, a = ins.mnemonic, [t.strip() for t in ins.op_str.split(",")] if ins.op_str else []
+        nxt = pc + 4
+        if op == "nop": pass
+        elif op == "bl": lr, nxt = pc + 4, int(a[0], 0)
+        elif op == "b": nxt = int(a[0], 0)
+        elif op == "mflr": r[reg(a[0])] = lr
+        elif op == "lis": r[reg(a[0])] = (int(a[1], 0) << 16) & 0xFFFFFFFF
+        elif op == "li": r[reg(a[0])] = int(a[1], 0) & 0xFFFFFFFF
+        elif op == "addi": r[reg(a[0])] = (r[reg(a[1])] + int(a[2], 0)) & 0xFFFFFFFF
+        elif op in ("lwz", "stw"):
+            off, ra = a[1].rstrip(")").split("(")
+            addr = (r[reg(ra)] + int(off, 0)) & 0xFFFFFFFF
+            if op == "lwz": r[reg(a[0])] = mem.get(addr, 0)
+            else: mem[addr] = r[reg(a[0])]
+        elif op in ("cmpwi", "cmpw"):
+            s32 = lambda y: y - (1 << 32) if y & 0x80000000 else y
+            lhs, rhs = s32(r[reg(a[0])]), (int(a[1], 0) if op == "cmpwi" else s32(r[reg(a[1])]))
+            cr = 0 if lhs < rhs else 1 if lhs > rhs else 2
+        elif op in ("beq", "bne"):
+            if (cr == 2) == (op == "beq"): nxt = int(a[0], 0)
+        elif op == "mr": r[reg(a[0])] = r[reg(a[1])]
+        elif op == "mtctr": ctr = r[reg(a[0])]
+        elif op == "bctrl": r[3] = getters[ctr]
+        elif op == "rlwimi":
+            ra, rs, sh, mb, me = reg(a[0]), reg(a[1]), *(int(t, 0) for t in a[2:])
+            rot = ((r[rs] << sh) | (r[rs] >> (32 - sh))) & 0xFFFFFFFF if sh else r[rs]
+            mask = sum(1 << (31 - i) for i in range(mb, me + 1))
+            r[ra] = (rot & mask) | (r[ra] & ~mask & 0xFFFFFFFF)
+        else:
+            raise AssertionError(f"unexpected {op} {ins.op_str}")
+        pc = nxt
+    raise AssertionError("no return")
+
+
+def test_simulated_code_sets_the_runs_seed():
+    pairs = gecko.table([_e("BK", 1, "0x11"), _e("BK", 2, "0x12", "low"), _e("BK", 2, "0x22"), _e("BK", 1, "0x21"),
+                         _e("SH", 3, "0x33")])
+    for v in gecko.VERSIONS:
+        mem = {}
+        assert _run(v, pairs, "BK", 0, mem) == 0x11            # first visit's seed
+        assert _run(v, pairs, "BK", 1, mem) == 0x22            # first trusted visit
+        assert _run(v, pairs, "BK", 0, mem) == 0x11            # and again on every later visit
+        assert _run(v, pairs, "SH", 2, mem) == 0x33
+        assert _run(v, pairs, "SH", 3, mem) == 0xDEAD          # not in the run
+        assert _run(v, pairs, "CoS", 0, mem) == 0xDEAD
+        assert _run(v, pairs, "SH", 2, mem, story=False) == 0xDEAD     # not story mode
+        assert _run(v, [], "SH", 2, {}) == 0xDEAD             # empty table
