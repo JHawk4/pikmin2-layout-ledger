@@ -337,6 +337,7 @@ New tooling:
 | CH10 Twilight Garden | `0E95D78F` | confirmed (§5) |
 | CH20 Giant's Bath (2 floors, Wii) | `5D221DD2`, k = 191,595 | confirmed by the user; the only fit in k 0–1.2M |
 | CH14 Dweevil Nest (1 floor, Wii) | `246C1C78`, k = 136,736 (42.5 draws/frame, CMAL 39.5–63.3) | strong: the only seed fitting all 9 readings in k 0–600k |
+| CH8 Red Chasm (1 floor, Wii) | `6A0AB9F5`, k = 57,424 (17.1 draws/frame, CMAL 18.6–28.5) | strong: 9/9 Glowcaps, 1 seed in 250k; floor outline matches |
 | CH17 Three Color Training | family `25835E4D` / `1C8189E4` (identical layouts), k = 119,870 | weak: suggestive only |
 | CH4 Creator's Garden | none | calibration failed |
 | CH22 Subterranean Lair | none | too few readable features |
@@ -381,6 +382,26 @@ New tooling:
   - Not checked in gameplay beyond the comedown; spots 0 and 5 (behind the title, off screen)
     are predicted to hold the blue toy ring and the Paradoxical Enigma.
   - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH14-1&seed=246C1C78
+- **CH8** (Glowcaps; `pointscan.py`):
+  - CH8 has no loose treasures, but its 12 Common Glowcaps glow in the comedown as small
+    blue-white dots, even though enemies aren't drawn. 9 dots are readable on frame 332.
+  - `pointscan.py` unprojects the dots through a grid of comedown cameras and counts, per seed,
+    the dots with a Glowcap within 100 units; three cameras share one 27-bit scan.
+  - The zoom has to be right: the comedown zooms in over time, and at ~76 frames after the dive
+    CH14 and CH20 fitted zoom 1.3–1.35. A first run at zoom 0.8–1.2 found nothing above 6/9.
+    At zoom 1.25–1.6, turn −8…4, shift 0/50/100 px: `6A0AB9F5` (k = 57,424) scores 9/9 at 11
+    cameras around zoom 1.25–1.4, turn −8…0. The only other 9/9, `775EA6C4`, hits at one camera
+    (zoom 1.5, shift 50). The count histogram's tail: 22 seeds at 8, 2 at 9, out of 250k.
+  - Check: through zoom 1.3, turn −4 the seed's unit footprints cover the cave's outline exactly
+    (including the bottom arm, where the geyser is predicted), and the predicted Glowcaps sit on
+    every dot, including two half-hidden by the title.
+  - The floor-shape matcher alone failed here (z ≈ 2.5): at this zoom the whole cave is visible,
+    but many layouts share its rough outline.
+  - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH8-1&seed=6A0AB9F5
+- **CH9** (not solved): 19 treasures, but the comedown shows few (most of the treasure room is
+  behind the title). Gameplay frames show many, but a perspective fit of six of them to the
+  room's spots is ambiguous (2,635 assignments fit equally, since the spots form a regular
+  pattern). Needs a calibrated gameplay camera, e.g. from a CMAL run with a known CH9 seed.
 - **CH17** (fork; fly-over calibrated on cmal04 `3CB60D07` from 3 objects; the record registered
   by hand on 6 fence and block points; `obs/ch17_*`):
   - Four observations leave 14 seeds in k 0–400k (about 9 families). Only one family falls in the

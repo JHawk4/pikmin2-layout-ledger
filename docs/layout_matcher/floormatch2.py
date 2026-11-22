@@ -33,6 +33,12 @@ TURNS = np.arange(-12, 5, 4)
 if os.environ.get("FM_FULLTURN"):
     ZOOMS = np.round(np.arange(0.8, 1.61, 0.1), 2)
     TURNS = np.arange(-180, 180, 10)
+if os.environ.get("FM_ZOOMS"):          # "lo,hi,step"
+    lo, hi, st = (float(v) for v in os.environ["FM_ZOOMS"].split(","))
+    ZOOMS = np.round(np.arange(lo, hi + st / 2, st), 3)
+if os.environ.get("FM_TURNS"):
+    lo, hi, st = (float(v) for v in os.environ["FM_TURNS"].split(","))
+    TURNS = np.arange(lo, hi + st / 2, st)
 
 
 def averaged(video, frames, crop):
