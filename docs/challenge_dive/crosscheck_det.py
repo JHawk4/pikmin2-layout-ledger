@@ -41,13 +41,15 @@ def main():
     ap.add_argument("--grey-shortlist", type=int, default=0,
                     help="refit and rank only the grey reader's candidates plus its N best coarse states")
     ap.add_argument("--blind", action="store_true", help="do not add the truth to the states refit")
+    ap.add_argument("--grey-only", action="store_true", help="only make the cached grey reads (for det_eval.py)")
     a = ap.parse_args()
     name = os.path.basename(a.video)
     rolls = [r for r in json.load(open(os.path.join(ROOT, "data", "challenge", "results_rolls.json")))[name]["results"]
              if r.get("decoded")]
     visits = [tuple(v) for v in json.load(open(os.path.join(ROOT, "data", "challenge", f"visits_{name}.json")))]
     out_dir = os.path.join(ROOT, "data", "challenge", "crosscheck")
-    known = {tuple(r["visit"]): r.get("ch") for r in json.load(open(os.path.join(out_dir, name + ".json")))}
+    base = os.path.join(out_dir, name + ".json")
+    known = {tuple(r["visit"]): r.get("ch") for r in json.load(open(base))} if os.path.exists(base) else None
     tag = (f"_grey{a.grey_shortlist}" if a.grey_shortlist else "") + ("_blind" if a.blind else "")
     out_path = os.path.join(out_dir, f"{name}_det_{a.parts.replace(',', '+')}{tag}.json")
     out = json.load(open(out_path)) if os.path.exists(out_path) else []
@@ -55,10 +57,10 @@ def main():
     pairs = []
     for prev, nxt in zip(rolls, rolls[1:]):
         vs = [v for v in visits if prev["last_frame"] < v[0] < nxt["first_frame"]]
-        if len(vs) == 1 and tuple(vs[0]) in known:      # one visit only: the truth is valid
+        if len(vs) == 1 and (known is None or tuple(vs[0]) in known):      # one visit only: the truth is valid
             pairs.append((prev, nxt, vs[0]))
     if a.ch:
-        pairs = [x for x in pairs if known.get(tuple(x[2])) in a.ch]
+        pairs = [x for x in pairs if (known or {}).get(tuple(x[2])) in a.ch]
     print(f"{name}: {len(pairs)} stages", flush=True)
     for prev, nxt, v in pairs:
         if tuple(v) in done:
@@ -77,6 +79,9 @@ def main():
                 os.makedirs(os.path.dirname(cache), exist_ok=True)
                 json.dump(r, open(cache, "w"), default=float)
             grey = r.get("candidates", [{}])[0].get("state")
+            if a.grey_only:
+                print(f"    cached grey read CH{r.get('ch')} ({time.time() - t:.0f}s)", flush=True)
+                continue
             sl = None
             if a.grey_shortlist:
                 sl = [c["state"] for c in r.get("candidates", [])] + [c["state"] for c in r.get("top", [])[:a.grey_shortlist]]
@@ -90,7 +95,7 @@ def main():
                        grey_best=grey, grey_correct=None if grey is None else (grey & 0x7FFFFFFF) == (truth & 0x7FFFFFFF),
                        grey_margin=r.get("margin"))
         except Exception as e:
-            rec = dict(visit=list(v), ch=known.get(tuple(v)), truth=truth, correct=False, note=repr(e),
+            rec = dict(visit=list(v), ch=(known or {}).get(tuple(v)), truth=truth, correct=False, note=repr(e),
                        seconds=time.time() - t)
         print(json.dumps(rec, default=float), flush=True)
         out.append(rec)
