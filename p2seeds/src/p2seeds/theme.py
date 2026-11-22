@@ -83,6 +83,7 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs", categ
             links.append(("pokos", "pokos.html", "Pokos"))
         links += [("howjudge", "how-judge.html", "The judge"), ("accuracy", "accuracy.html", "Judge accuracy"),
                   ("seeds", "seeds.html", "Seed check")]
+    links.append(("gecko", f"{root}gecko.html", "Gecko code"))
     links.append(("suggest", f"{root}suggest.html", "Suggestion box"))
     nav = "".join(f'<a href="{href}"{" aria-current=page" if key == active else ""}'
                   f'{" class=nav-suggest" if key == "suggest" else ""}>{label}</a>' for key, href, label in links)

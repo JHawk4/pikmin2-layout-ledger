@@ -1122,9 +1122,18 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages",
                 shutil.copy2(run / name, dest / name)
         if (run / "img").exists():
             shutil.copytree(run / "img", dest / "img")
-    if at_root is not None and (Path(at_root) / "index.html").exists():
+    has_at = at_root is not None and (Path(at_root) / "index.html").exists()
+    if has_at:
         _copy_section(Path(at_root), out / "at")
+    write_gecko(out / "gecko.html", [(_load(root), "")] + ([(_load(Path(at_root)), "at/")] if has_at else []))
     return out
+
+
+def write_gecko(dest: Path, sections: list[tuple[list[dict], str]]) -> Path:
+    """The Gecko code page, over the runs of every section (each with its path from the site root)."""
+    from . import gecko_page
+    dest.write_text(theme.apply(gecko_page.page(sections), prefix="", active="gecko"), encoding="utf-8")
+    return dest
 
 
 def _copy_section(root: Path, out: Path) -> None:
