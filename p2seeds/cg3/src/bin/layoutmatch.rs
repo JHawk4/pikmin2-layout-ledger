@@ -256,10 +256,157 @@ fn feat(data: &GameData, sub: &str, end: u32, count: usize, out_path: &str, name
     }
 }
 
+/// Floor match: POINTS.bin holds (ahead, side, weight) f32 triples in the pod's frame. For each
+/// seed, the score is the sum of the weights of the points that lie on a unit's footprint (its
+/// cells, grown by MARGIN units). Bright points get positive weights and dark points negative
+/// ones, so the true layout scores highest. One f32 per seed.
+fn floor(data: &GameData, sub: &str, end: u32, count: usize, points_path: &str, margin: f32, out_path: &str) {
+    let sl = data.sublevel(sub).expect("sublevel");
+    let ci = data.caveinfo(&sl).expect("caveinfo");
+    let raw = std::fs::read(points_path).expect("POINTS.bin");
+    let pts: Vec<[f32; 3]> = raw
+        .chunks_exact(12)
+        .map(|c| std::array::from_fn(|i| f32::from_le_bytes(c[4 * i..4 * i + 4].try_into().unwrap())))
+        .collect();
+    let (ia, ic) = jump((1u64 << 32) - 1);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let chunk = count.div_ceil(threads).max(1);
+    let mut out = vec![f32::NAN; count];
+    std::thread::scope(|s| {
+        for (t, part) in out.chunks_mut(chunk).enumerate() {
+            let pts = &pts;
+            s.spawn(move || {
+                let k0 = t * chunk;
+                let (ja, jc) = jump((1u64 << 32) - k0 as u64 % (1u64 << 32));
+                let mut seed = if k0 == 0 { end } else { ja.wrapping_mul(end).wrapping_add(jc) };
+                let mut rects: Vec<[f32; 4]> = Vec::new();
+                for v in part.iter_mut() {
+                    let layout = Layout::generate(seed, ci);
+                    seed = ia.wrapping_mul(seed).wrapping_add(ic);
+                    let Some((px, pz, fx, fz, _, _)) = pod(&layout) else { continue };
+                    rects.clear();
+                    for u in &layout.units {
+                        rects.push([
+                            u.x as f32 * 170.0 - margin,
+                            u.z as f32 * 170.0 - margin,
+                            (u.x + u.unit.width as i32) as f32 * 170.0 + margin,
+                            (u.z + u.unit.height as i32) as f32 * 170.0 + margin,
+                        ]);
+                    }
+                    let mut score = 0.0;
+                    for p in pts {
+                        // pod frame -> world: forward (fx, fz), right (-fz, fx)
+                        let x = px + fx * p[0] - fz * p[1];
+                        let z = pz + fz * p[0] + fx * p[1];
+                        if rects.iter().any(|r| x >= r[0] && x <= r[2] && z >= r[1] && z <= r[3]) {
+                            score += p[2];
+                        }
+                    }
+                    *v = score;
+                }
+            });
+        }
+    });
+    let mut f = std::io::BufWriter::new(std::fs::File::create(out_path).expect("output"));
+    for v in out {
+        f.write_all(&v.to_le_bytes()).unwrap();
+    }
+}
+
+/// Floor match with an unknown camera: PROBES.bin is a header (u32 n_points, u32 n_cameras),
+/// then n_cameras blocks of n_points (side, ahead) f32 pairs (each probe pixel mapped to the pod's
+/// frame under that camera; NaN = not usable), then n_points f32 weights. For each seed and camera
+/// the score is the sum of the weights of probes on a unit cell; OUT.bin gets (best score f32,
+/// best camera index f32) per seed.
+fn floor2(data: &GameData, sub: &str, end: u32, count: usize, probes_path: &str, out_path: &str) {
+    let sl = data.sublevel(sub).expect("sublevel");
+    let ci = data.caveinfo(&sl).expect("caveinfo");
+    let raw = std::fs::read(probes_path).expect("PROBES.bin");
+    let u = |i: usize| u32::from_le_bytes(raw[4 * i..4 * i + 4].try_into().unwrap()) as usize;
+    let f = |i: usize| f32::from_le_bytes(raw[4 * i..4 * i + 4].try_into().unwrap());
+    let (np, nc) = (u(0), u(1));
+    let cams: Vec<Vec<(f32, f32)>> = (0..nc).map(|c| (0..np).map(|p| (f(2 + 2 * (c * np + p)), f(3 + 2 * (c * np + p)))).collect()).collect();
+    let w0 = 2 + 2 * nc * np;
+    let weights: Vec<f32> = (0..np).map(|p| f(w0 + p)).collect();
+    let (ia, ic) = jump((1u64 << 32) - 1);
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    let chunk = count.div_ceil(threads).max(1);
+    let mut out = vec![f32::NAN; count * 2];
+    std::thread::scope(|s| {
+        for (t, part) in out.chunks_mut(chunk * 2).enumerate() {
+            let (cams, weights) = (&cams, &weights);
+            s.spawn(move || {
+                let k0 = t * chunk;
+                let (ja, jc) = jump((1u64 << 32) - k0 as u64 % (1u64 << 32));
+                let mut seed = if k0 == 0 { end } else { ja.wrapping_mul(end).wrapping_add(jc) };
+                const G: usize = 64;
+                let mut occ = vec![false; G * G];
+                for v in part.chunks_mut(2) {
+                    let layout = Layout::generate(seed, ci);
+                    seed = ia.wrapping_mul(seed).wrapping_add(ic);
+                    let Some((px, pz, fx, fz, _, _)) = pod(&layout) else { continue };
+                    occ.iter_mut().for_each(|o| *o = false);
+                    for un in &layout.units {
+                        for cx in 0..un.unit.width as i32 {
+                            for cz in 0..un.unit.height as i32 {
+                                let (gx, gz) = (un.x + cx, un.z + cz);
+                                if (0..G as i32).contains(&gx) && (0..G as i32).contains(&gz) {
+                                    occ[gz as usize * G + gx as usize] = true;
+                                }
+                            }
+                        }
+                    }
+                    let mut best = (f32::NEG_INFINITY, 0usize);
+                    for (c, pts) in cams.iter().enumerate() {
+                        let mut sc = 0.0;
+                        for (p, &(side, ahead)) in pts.iter().enumerate() {
+                            if side.is_nan() {
+                                continue;
+                            }
+                            let x = px + fx * ahead - fz * side;
+                            let z = pz + fz * ahead + fx * side;
+                            let (gx, gz) = ((x / 170.0).floor() as i32, (z / 170.0).floor() as i32);
+                            if (0..G as i32).contains(&gx) && (0..G as i32).contains(&gz) && occ[gz as usize * G + gx as usize] {
+                                sc += weights[p];
+                            }
+                        }
+                        if sc > best.0 {
+                            best = (sc, c);
+                        }
+                    }
+                    v[0] = best.0;
+                    v[1] = best.1 as f32;
+                }
+            });
+        }
+    });
+    let mut f = std::io::BufWriter::new(std::fs::File::create(out_path).expect("output"));
+    for v in out {
+        f.write_all(&v.to_le_bytes()).unwrap();
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let data = GameData::bundled().expect("CaveGen3 data");
     match args.get(1).map(String::as_str) {
+        Some("floor2") if args.len() == 7 => floor2(
+            &data,
+            &args[2],
+            parse_seed(&args[3]),
+            args[4].parse().expect("COUNT"),
+            &args[5],
+            &args[6],
+        ),
+        Some("floor") if args.len() == 8 => floor(
+            &data,
+            &args[2],
+            parse_seed(&args[3]),
+            args[4].parse().expect("COUNT"),
+            &args[5],
+            args[6].parse().expect("MARGIN"),
+            &args[7],
+        ),
         Some("feat") if args.len() >= 7 => feat(
             &data,
             &args[2],

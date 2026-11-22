@@ -258,3 +258,74 @@ also matches the layout is very strong evidence.
   - the observation files for cmal08 and the record.
 - Data (gitignored, `data/lm/`): references built from cmal04 frames 80380–80440, scan bitmasks,
   logs.
+
+## 8. Extending to every Challenge Mode record (attempt, Nov 2026)
+
+**Result: no new seeds yet.** CH10 (`0E95D78F`) is still the only record solved. The per-sublevel
+method in §3 works, but it does not carry over between stages, and the calibration-free shortcut
+tried below separates seeds only on some stages.
+
+**Inventory** (`inventory.py`, `known_seeds.py`):
+
+| status | stages |
+|---|---|
+| results roll and dive found | 25 records |
+| no dive found, but the floor-1 comedown is in the video | CH13, CH18 |
+| impossible | CH21 (the video starts on floor 2), CH23 (no video) |
+| no decoded roll, so no window | CH27 |
+
+- On most sublevels the pod's start is fixed: 23 of 29 have one start room and spawn point.
+- The CMAL runs give **168 stage starts with known floor-1 seeds**: every stage, in up to 7 runs.
+  That is enough ground truth to calibrate and test each sublevel.
+
+**Fly-over calibration is per sublevel.** The "FINAL FLOOR!" camera path transfers between players
+on CH10, but Snack Pit's (CH16) path is different. CH29, a variant of CH10's room, does not
+register to CH10's references. Each single-floor stage needs its own calibration on a known seed.
+
+**Comedown floor matcher** (`comedown.py`, `floormatch2.py`, `layoutmatch floor2`):
+
+- **The idea:** the overhead shot under the floor title is the same cutscene on every floor, and
+  its camera is known from CaveGen3 (`COMEDOWN_CAMERA`). Lit floor stands out against black, so
+  every candidate's unit footprint can be scored against it automatically, fitting zoom and turn
+  per seed. There is no agent reading. Scoring 300k seeds takes about 5 minutes.
+- **Camera:** the shot is closer than CaveGen3's frame-0 model.
+
+  | case | zoom | turn |
+  |---|---|---|
+  | cmal04 CH8 | 1.1 | −1° |
+  | CH10 record | 1.58 | −6° |
+  | CH2 | no consistent fit | |
+
+  The zoom probably depends on the floor height relative to the cutscene's anchor. The CH10 record
+  and the CH28 record (known seed) both line up under the CH10 values.
+- **Where it works:** on cmal04's Red Chasm (CH8, known seed) the true seed ranks **first of
+  300,000**, tied with 6 seeds that have the same floor shape in view.
+- **Where it doesn't:**
+  - CH1, CH5 and CH9: only the pod's own room is lit, and it is the same in every layout, so every
+    seed scores the same.
+  - CH28 (dark): truth ranked 3,624th of 300k.
+  - CH2, cmal04 known seed: truth ranked 32,124th of 100k, at any turn. The known layout (three
+    rooms in a straight column) doesn't resemble the video. Either something is off in CaveGen3's
+    CH2-1 for this release, or in how the shot is centred. Not resolved.
+  - On the records run so far (CH1, 2, 5, 6, 8, 9) no stage gave a clear winner.
+
+**What it would take.** Per stage, roughly 30–60 minutes of agent work, as on CH10:
+
+1. Calibrate the stage's fly-over (single-floor stages) or landing view (multi-floor stages) on a
+   CMAL run with a known seed.
+2. Register the record's frames to that calibration.
+3. Read about 10 objects and scan the window.
+4. Confirm the survivors on a later frame.
+
+Bright stages with many distinct plants and treasures near the pod (gardens: CH4, CH17, CH26; tiled
+rooms: CH20, CH22) are the best candidates. Dark stages (CH16, CH28, CH29) and stages where the
+start shows only the fixed pod room are the hardest. The comedown floor score is still useful there
+as a cheap pre-filter: it costs nothing to run and on CH8 it kept the truth in the top 7 of 300k.
+
+New tooling:
+- `comedown.py`, `cd_overlay.py`, `fp_overlay.py`, `fit_comedown.py`;
+- `floormatch.py` / `floormatch2.py` and layoutmatch `floor` / `floor2`;
+- `calib_view.py`, which helps mark calibration objects, optionally in the 110° landing-camera
+  frame;
+- `wr_comedown.py`, `run_floor_wrs.py`;
+- `obs/comedown_frames.json` (comedown frames picked for 27 records).
