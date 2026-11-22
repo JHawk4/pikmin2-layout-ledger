@@ -312,10 +312,19 @@ That is consistent with the answer: musl's is mod 2^64, outside this test's rang
 
 ## Next steps, if Switch seeds are wanted
 
-1. **Add a Switch generator mode to the pipeline:** `rng.py`, `lattice.search` (64-bit, as
-   `musl_letters.py`), `chain.py`, and the Challenge Mode reader.
+1. **Done: a Switch generator mode in the pipeline.** `rng.use("switch")` switches `rng.py` to
+   the 64-bit musl LCG (stepping, exact distances, letter speeds), `lattice.search` to a 64-bit
+   box (up to 16 letters), and `search_near`, `chain.link` and `layout_seed` follow. Seeds are
+   written as 16 hex digits and `seeds.json` records `meta.rng`. `p2seeds analyze --rng switch`
+   selects it; `p2seeds run` picks it from the run's platform. CaveGen steps (render, details,
+   judge, treasures) are skipped for Switch runs. Re-searching tcbtrio's saved fits this way
+   (`research_switch.py`): 36 high-confidence entries from the letters alone, **51 of 55 after
+   `chain.link`**, 46 confirmed by the previous sublevel (largest gap 377,123 draws). Left out:
+   2 entries with no seed, 1 medium, 1 low. Tests: `p2seeds/tests/test_switch_rng.py`.
 2. **Add the same mode to CaveGen,** then check a Switch layout against a decoded seed. The
    Challenge Mode floor-1s are the easiest place to start, as on GC.
+3. **Challenge Mode reader:** decode Switch score rolls in `challenge_results` with the musl
+   digit formula (`musl_rolls.py` has it), once that branch is merged.
 
 ## Reproduce
 
@@ -337,4 +346,7 @@ python docs/switch/musl_rolls.py data/switch/digits/cmal01_switch.json
 python docs/switch/musl_letters.py data/switch/out/04_tcbtrio/fits.json
 python docs/switch/stern.py data/output/12_tcbtrio_y64e4x0m/fits.json        # GC control: finds 0x41C64E6D
 python docs/switch/stern.py data/switch/out/04_tcbtrio/fits.json --lo 16
+# the pipeline's Switch mode
+python docs/switch/research_switch.py data/switch/out/04_tcbtrio     # saved fits, no video
+python -m p2seeds analyze data/switch/videos/04_tcbtrio_z194e07m.mp4 --out data/switch/out/04_tcbtrio_full --rng switch
 ```
