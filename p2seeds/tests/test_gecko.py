@@ -27,7 +27,8 @@ def test_encodings_match_instructions_read_from_the_game():
 
 def test_hook_is_createMapPartsList_after_its_prologue():
     for v in gecko.VERSIONS:
-        assert v.hook == v.create_map_parts_list + 0x2C
+        assert v.hook == v.create_map_parts_list + (0x30 if v.game_id.startswith("R92") else 0x2C)
+    assert gecko.BY_KEY["R92E01"].hook == 0x802D0F00 and gecko.body(gecko.BY_KEY["R92E01"])[-1] == gecko.LI_R27_0
     assert gecko.BY_KEY["GPVE01_D17"].hook == 0x8024C118        # where Meeo's set-seed code hooks
     assert USA.hook == 0x8024C138
 
@@ -42,12 +43,11 @@ def _e(cave, sub, seed, conf="high"):
     return {"cave": cave, "sublevel": sub, "layout_seed": seed, "letter_seed": seed, "confidence": conf}
 
 
-def test_table_keeps_every_visit_in_order():
-    es = [_e("BK", 1, "0x1"), _e("BK", 2, "0x2", "low"), _e("BK", 1, "0x80000003"), _e("SH", 1, "0x4", "medium"),
-          {"cave": None, "sublevel": None}, _e("XX", 1, "0x5")]
-    assert gecko.table(es) == [(gecko.key("BK", 1), 1), (gecko.key("BK", 1), 3)]   # bit 31 dropped; BK 2, SH 1, XX left out
-    es = [_e("BK", 1, "0x1", "low"), _e("BK", 1, "0x2")]         # an unread first visit keeps its turn
-    assert gecko.table(es) == [(gecko.key("BK", 1), gecko.RANDOM), (gecko.key("BK", 1), 2)]
+def test_table_takes_each_sublevels_first_trusted_visit():
+    es = [_e("BK", 1, "0x80000001"), _e("BK", 2, "0x2", "low"), _e("BK", 1, "0x3"), _e("BK", 2, "0x4"),
+          _e("SH", 1, "0x5", "medium"), {"cave": None, "sublevel": None}, _e("XX", 1, "0x6")]
+    # bit 31 dropped; BK 2's first visit unread, so its second; lone medium SH 1 and unknown caves left out
+    assert gecko.table(es) == [(gecko.key("BK", 1), 1), (gecko.key("BK", 2), 4)]
 
 
 def test_code_layout():
@@ -59,7 +59,7 @@ def test_code_layout():
     assert w[0] == 0x48000001 | (4 + 4 * 5)          # bl over 2 entries and the end marker
     assert w[1:6] == [pairs[0][0], 0x1234, pairs[1][0], 0x7FFFFFFF, 0]
     assert w[6:6 + len(gecko.body(USA))] == gecko.body(USA)
-    assert gecko.body(USA)[-1] == gecko.ORIGINAL
+    assert gecko.body(USA)[-1] == gecko.LI_R26_0
     assert len(gecko.words(USA, [])) % 2 == 0
 
 
@@ -152,17 +152,16 @@ def _run(v, pairs, cave, floor, mem, story=True):
     raise AssertionError("no return")
 
 
-def test_simulated_code_sets_each_visits_seed_in_turn():
+def test_simulated_code_sets_the_runs_seed():
     pairs = gecko.table([_e("BK", 1, "0x11"), _e("BK", 2, "0x12", "low"), _e("BK", 2, "0x22"), _e("BK", 1, "0x21"),
                          _e("SH", 3, "0x33")])
     for v in gecko.VERSIONS:
         mem = {}
-        assert _run(v, pairs, "BK", 0, mem) == 0x11            # first visit
-        assert _run(v, pairs, "BK", 1, mem) == 0xDEAD          # BK 2's first visit wasn't read: random
-        assert _run(v, pairs, "BK", 1, mem) == 0x22
-        assert _run(v, pairs, "BK", 0, mem) == 0x21            # second visit
-        assert _run(v, pairs, "BK", 0, mem) == 0x21            # and again after that
+        assert _run(v, pairs, "BK", 0, mem) == 0x11            # first visit's seed
+        assert _run(v, pairs, "BK", 1, mem) == 0x22            # first trusted visit
+        assert _run(v, pairs, "BK", 0, mem) == 0x11            # and again on every later visit
         assert _run(v, pairs, "SH", 2, mem) == 0x33
         assert _run(v, pairs, "SH", 3, mem) == 0xDEAD          # not in the run
         assert _run(v, pairs, "CoS", 0, mem) == 0xDEAD
         assert _run(v, pairs, "SH", 2, mem, story=False) == 0xDEAD     # not story mode
+        assert _run(v, [], "SH", 2, {}) == 0xDEAD             # empty table

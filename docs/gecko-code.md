@@ -31,25 +31,20 @@ insert there:
 3. Call `SingleGameSection::getCaveID` and `::getCurrFloor` by address (each is `lwz r3, x(r3); blr`,
    so the field offsets, which differ between builds, don't matter).
 4. Key = cave ID (`'f_03'` etc.) with its second byte replaced by the 0-based floor. Walk the table of
-   (key, seed) words to the first entry with that key. If a later entry has the same key, mark this
-   one spent (key := FFFFFFFF), so the next time the sublevel is made the next visit's entry is
-   used; the last entry for a key is never spent. Unless the seed is FFFFFFFF ("no trusted seed for
-   this visit: leave it random"), store it into `rand()`'s state (MSL `rand.c` `next`).
-5. `li r26, 0` (the replaced instruction); the code handler adds the branch back.
+   (key, seed) words; on a match store the seed into `rand()`'s state (MSL `rand.c` `next`).
+5. `li r26, 0` (the replaced instruction; `li r27, 0` on the Wii); the code handler adds the branch back.
 
-Only volatile registers are used (r3, r7–r12, ctr, cr0); the prologue has already saved the link
+Only volatile registers are used (r3, r9–r12, ctr, cr0); the prologue has already saved the link
 register and nothing after the hook reads r4–r12 before setting them. Cave IDs come from the game's
 `user/Abe/stages.txt`: EC `t_01`, SCx `t_02`, FC `t_03`, HoB `f_01`, WFG `f_02`, BK `f_03`, SH `f_04`,
 CoS `y_01`, GK `y_02`, SR `y_03`, SC `y_04`, CoC `l_01`, HoH `l_02`, DD `l_03`.
 
-A run's table has one entry per visit of each sublevel, in the order played, for the sublevels with
-at least one trusted seed (`judge_report.trusted`: high confidence, or medium in order with its high
-neighbours). A visit without a trusted seed keeps its place as FFFFFFFF. All Treasures runs make
-some sublevels more than once (BK purple farms, EC twice), so each visit gets its own layout in turn,
-and the last one stays for any later visit (dying, re-entering, reloading). The spent marks live in
-RAM with the code, so a fresh start of the game (stopping and starting emulation) starts again from
-the first visit; whether Dolphin's Reset reinstalls the codes is untested. 8 bytes per visit; the
-fixed part is 48 instructions plus the `bl`, the end marker and the return slot.
+A run's table has one entry per sublevel with a trusted seed (`judge_report.trusted`: high
+confidence, or medium in order with its high neighbours), in the order first played. All Treasures
+runs make some sublevels more than once (BK purple farms, EC twice); the table takes the first
+visit's seed, or the first visit with a trusted seed. The layout is set every time the sublevel is
+made, so re-entering gives the same layout. 8 bytes per sublevel; the fixed part is 36 instructions
+plus the `bl`, the end marker and the return slot.
 
 ## Addresses per version
 
@@ -60,10 +55,39 @@ fixed part is 48 instructions plus the `bl`, the end marker and the return slot.
 | USA demo 18 (GPVE01) | 8024C118 | 805158A8 | 804B1190 | 801530F8 | 80155F34 | 805146E0 | no |
 | PAL GPVP01 | 8024C11C | 80516768 | 804B1EE0 | 80153284 | 801560C0 | 805155A0 | no |
 | JPN GPVJ01 | 8024C79C | 80517568 | 804B2DB0 | 8015310C | 80156388 | 805163A8 | no |
+| Wii USA R92E01 | 802D0F00 (`li r27, 0`) | 8066C9F0 | 80590E00 | 801E63AC | 801E92A4 | 8066AAA0 | RAM dump |
 
-All from the decomp's `config/<version>/symbols.txt`. Not supported: the Wii New Play Control!
-versions (R92E01, R92P01, R92J01: no symbol map; the user has a Wii practice ISO to find them from)
-and romhacks. No Korean GameCube release is known to the decomp.
+GameCube addresses are from the decomp's `config/<version>/symbols.txt`. Not supported: the Wii
+New Play Control! Europe and Japan versions (R92P01, R92J01: no copy to search) and romhacks. No
+Korean GameCube release is known to the decomp.
+
+### Wii (R92E01)
+
+There is no Wii decomp. The addresses were found in a Dolphin RAM dump of the USA Wii game
+(`Documents/Dolphin Emulator/Dump/mem1.raw`, made from the user's `Pikmin2Wii_practice.iso`):
+
+- `rand` at 80109DC4 (the `0x41C64E6D` / `0x3039` update), its state at `r13-0x7D60`; r13 is
+  80672800 (`lis r13 / ori r13` at 80006314), so the state is at 8066AAA0.
+- `createMapPartsList` at 802D0ED0: the string "RandMapMgr" leads to the `RandMapMgr` constructor
+  (802C9240); the next function is `loadResource` (802C92CC), whose first constructor call is
+  `MapUnitGenerator`'s (802D0898); that calls `createEditMapInfo`, `createMemList`,
+  `memMapListSorting`, then `createMapPartsList`, as on GameCube. Its first `rand` call
+  (802D0F88) comes after the hook.
+- The practice build already hooks 802D0F00 (`bl 80688794`): its routine either writes a stored
+  seed to 8066AAA0 or saves the current one, then runs `li r27, 0` and returns. So the hook is the
+  same spot, the RNG state address is confirmed, and the replaced instruction is `li r27, 0`.
+- `gameSystem` at `r13-0x5E10` = 8066C9F0: the game's own `getCaveID() == 'y_04'` checks
+  (`addis r0, r3, -0x795F; cmplwi r0, 0x3034`) load it, then `mSection` at +0x58, then call vtable
+  slot 0x7C (0x78 on GameCube).
+- `SingleGameSection`'s vtable is 80590E00: slot 0x7C is `lwz r3, 0x23C(r3); blr` (801E63AC) and
+  slot 0x5C is `lwz r3, 0x24C(r3); blr` (801E92A4), the GameCube fields (0x238 / 0x248) moved by 4,
+  and a constructor that first calls the base section constructor stores it at offset 0.
+- After the hook, nothing reads r3–r12 before setting it.
+
+Because the dump is of a practice build, the code at the hook in a clean copy is inferred from
+what the practice routine runs; everything else is the base game's code, which the practice build
+doesn't move. Seeds read from Wii runs replay on the Wii version; GameCube runs' seeds on the Wii give the layout
+the Wii's cave files make from that seed (the same where the files match).
 
 ## What is verified
 
@@ -79,7 +103,7 @@ and romhacks. No Korean GameCube release is known to the decomp.
 - Tests: the assembler's encodings against words read from the game; the body disassembled with
   capstone; table rules; the page's script against the Python reference (node); and the whole code
   run, for every version, on a small PowerPC model (instructions decoded by capstone, fake game
-  memory): repeat visits in turn, an unread visit left random, other sublevels, non-story sections.
+  memory): the run's seed for its sublevels (first trusted visit), others and non-story sections left alone.
 - PAL, JPN and demo 18 use the same function (same size, 0x14C) and the decomp's addresses, but
   were not checked against a disc.
 - Not yet run in Dolphin or on Nintendont.
