@@ -338,6 +338,7 @@ New tooling:
 | CH20 Giant's Bath (2 floors, Wii) | `5D221DD2`, k = 191,595 | confirmed by the user; the only fit in k 0–1.2M |
 | CH14 Dweevil Nest (1 floor, Wii) | `246C1C78`, k = 136,736 (42.5 draws/frame, CMAL 39.5–63.3) | strong: the only seed fitting all 9 readings in k 0–600k |
 | CH8 Red Chasm (1 floor, Wii) | `6A0AB9F5`, k = 57,424 (17.1 draws/frame, CMAL 18.6–28.5) | strong: 9/9 Glowcaps, 1 seed in 250k; floor outline matches |
+| CH24 Abduction Den (1 floor, Wii) | `5B21CDB6`, k = 92,529 (28.5 draws/frame, CMAL 24.4–35.3) | strong: 6/6 Glowcaps and all 3 visible treasures, 1 seed in 300k |
 | CH17 Three Color Training | family `25835E4D` / `1C8189E4` (identical layouts), k = 119,870 | weak: suggestive only |
 | CH4 Creator's Garden | none | calibration failed |
 | CH22 Subterranean Lair | none | too few readable features |
@@ -398,6 +399,24 @@ New tooling:
   - The floor-shape matcher alone failed here (z ≈ 2.5): at this zoom the whole cave is visible,
     but many layouts share its rough outline.
   - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH8-1&seed=6A0AB9F5
+- **CH24** (Glowcaps plus treasures; frame 300):
+  - 6 Glowcap dots read; `pointscan.py` at zoom 1.25–1.6 leaves 21 seeds at 6/6 in k 0–300k.
+  - `rank_cands.py` projects each one's treasures through its best camera. Only `5B21CDB6`
+    (camera zoom 1.35, turn −8) puts the three treasures seen in the frame within 25 px: the
+    Paradoxical Enigma (4 px), the Rubber Ugly (14 px) and the Combustion Berry (23 px, the red
+    one). Every other candidate misses at least one by 90 px or more.
+  - `seed_overlay.py` draws its outline, teki and treasures on the frame: the rooms cover the lit
+    floor and the treasures sit on the visible ones.
+  - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH24-1&seed=5B21CDB6
+- **Tried and set aside this round:**
+  - CH25: only the pod's room is lit; its Glowstems don't show.
+  - CH19: only the pod's room is lit; the orange flecks there look like flame effects (hidden
+    teki), and there are two dark pits where one hole is expected.
+  - CH5: Key, two treasures and the hole in 9 arm spots carry ~12 bits against a ~18-bit window.
+  - CH16: 12 cookies in one room, but the comedown is too dark to read them.
+  - The "READY?" landing frame (`landing.py`, CaveGen3's landing camera) doesn't fit as modelled
+    in Challenge Mode: the captain doesn't start beside the pod, and neither heading 110° nor 0°
+    puts CH9's spots on its floor, even with the view moved so the pod lands on its pixel.
 - **CH9** (not solved): 19 treasures, but the comedown shows few (most of the treasure room is
   behind the title). Gameplay frames show many, but a perspective fit of six of them to the
   room's spots is ambiguous (2,635 assignments fit equally, since the spots form a regular
