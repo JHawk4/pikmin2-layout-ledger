@@ -492,7 +492,7 @@ class DetScorer:
                 st = np.array([m], np.uint64)
                 k = members.index(m) - members.index(cur)
                 gc = geoms[cur]
-                for f0 in np.arange(gc.f0 + 0.1 * k / 0.15 - 0.8, gc.f0 + 0.1 * k / 0.15 + 0.8 + 1e-9, 0.05):
+                for f0 in gc.f0 + np.arange(-3, 3.01, 0.1):   # the score steps where f0 crosses a frame time
                     v = float(self.score(gc.copy(f0=float(f0)), st)[0])
                     if v > best.get(m, -1e30):
                         best[m] = v
@@ -528,13 +528,64 @@ class DetScorer:
         best = max(res, key=lambda x: x[0])
         return best[2], best[3], [(lv, v, m) for lv, v, m, gm in res]
 
-    def fit(self, g, state: int, slack: float = 6.0, f0_slack: float = 3.0):
-        """Maximise the score of one state over the geometry (Powell)."""
+    def fit(self, g, state: int, slack: float = 6.0, f0_slack: float = 3.0, rounds: int = 3,
+            f0_scan: bool = False):
+        """Maximise the score of one state over the geometry (Powell).
+
+        The video shows the dive after floor(frame - f0) updates, so the score is a step function of
+        f0 and Powell can stall on it. With f0_scan, f0 is scanned in 0.1-frame steps over the slack
+        and alternated with Powell over the other parameters: each state reaches a higher score, but
+        so do wrong states, and on cmal04 blind reads fell from 7 to 4 of 13 correct, so it is off
+        by default."""
+        if not f0_scan:
+            return self._fit_powell(g, state, slack, f0_slack)
+        from scipy.optimize import minimize
+        t0 = np.array(cd.geometry_vector(g), float)
+        used = [cd.COLOURS.index(c) for c in self.colours]
+        act = [i for i in [0, 1, 3, 4, 5] + [6 + 2 * c + k for c in used for k in (0, 1)]
+               if i not in getattr(self, "fixed", ())]     # e.g. (0, 1, 3): scale and v100 known per video
+        lo, hi = t0.copy(), t0.copy()
+        lo[:2] *= 0.9; hi[:2] *= 1.1
+        lo[2] -= f0_slack; hi[2] += f0_slack
+        lo[3:] -= slack; hi[3:] += slack
+        st = np.array([state], np.uint64)
+        cur = t0.copy()
+
+        def sc(th):
+            return float(self.score(cd.geometry_from_vector(np.clip(th, lo, hi)), st)[0])
+
+        f0s = t0[2] + np.arange(-f0_slack, f0_slack + 1e-9, 0.1)   # frame times are fractional
+        best = -1e30
+        for rnd in range(rounds):
+            prev = cur[2]
+            vals = []
+            for f in f0s:
+                th = cur.copy()
+                th[2] = f
+                vals.append(sc(th))
+            cur[2] = f0s[int(np.argmax(vals))]
+
+            def fun(x, base=cur.copy()):
+                th = base.copy()
+                th[act] = x
+                return -sc(th)
+
+            r = minimize(fun, cur[act], method="Powell", options=dict(maxfev=3000, xtol=0.05, ftol=1e-6))
+            cur[act] = r.x
+            cur = np.clip(cur, lo, hi)
+            v = -float(r.fun)
+            if rnd > 0 and cur[2] == prev and v <= best + 1e-6:
+                best = max(best, v)
+                break
+            best = max(best, v)
+        return cd.geometry_from_vector(cur), sc(cur)
+
+    def _fit_powell(self, g, state: int, slack: float = 6.0, f0_slack: float = 3.0):
         from scipy.optimize import minimize
         t0 = np.array(cd.geometry_vector(g), float)
         used = [cd.COLOURS.index(c) for c in self.colours]
         act = [i for i in [0, 1, 2, 3, 4, 5] + [6 + 2 * c + k for c in used for k in (0, 1)]
-               if i not in getattr(self, "fixed", ())]     # e.g. (0, 1, 3): scale and v100 known per video
+               if i not in getattr(self, "fixed", ())]
         lo, hi = t0.copy(), t0.copy()
         lo[:2] *= 0.9; hi[:2] *= 1.1
         lo[2] -= f0_slack; hi[2] += f0_slack

@@ -57,8 +57,31 @@ def prepare(video, r, parts, sp, colour_body=False):
     return ds, g
 
 
-def evaluate(ds, g, states, truth, sample):
+def offset(s, truth, span=16):
+    """Draws from truth to s (None if further than span)."""
+    for j in range(-span, span + 1):
+        m = rng.next_seed(truth, j) if j >= 0 else rng.prev_seed(truth, -j)
+        if (m & 0x7FFFFFFF) == (s & 0x7FFFFFFF):
+            return j
+    return None
+
+
+def neighbours(s, k):
+    """s moved by -k..k draws (not 0)."""
+    return [rng.next_seed(s, j) if j > 0 else rng.prev_seed(s, -j) for j in range(-k, k + 1) if j]
+
+
+def evaluate(ds, g, states, truth, sample, expand=0, nexp=5):
     fits = sorted(((ds.fit(g, int(s))[::-1]) + (int(s),) for s in states), key=lambda x: -x[0])
+    if expand:                     # the grey reader can be off by a draw or two: try the neighbours of the leaders
+        seen = {s & 0x7FFFFFFF for v, gk, s in fits}
+        extra = []
+        for v, gk, s in fits[:nexp]:
+            for m in neighbours(s, expand):
+                if (m & 0x7FFFFFFF) not in seen:
+                    seen.add(m & 0x7FFFFFFF)
+                    extra.append(ds.fit(gk, m)[::-1] + (m,))
+        fits = sorted(fits + extra, key=lambda x: -x[0])
     gb = fits[0][1]
     again = []
     for v, gk, s in fits[:10]:
@@ -68,8 +91,7 @@ def evaluate(ds, g, states, truth, sample):
     med = float(np.median(ds.score(gb, sample)))
     tr = next((k for k, (v, s) in enumerate(rank) if (s & 0x7FFFFFFF) == (truth & 0x7FFFFFFF)), None)
     margin = (rank[0][0] - rank[1][0]) / max(1e-6, rank[0][0] - med)
-    sb, _, fam = ds.resolve_shift(gb, rank[0][1])
-    return tr, margin, rank[0][1], sb, fam
+    return tr, margin, rank[0][1], rank[0][1], []
 
 
 def main():
@@ -81,6 +103,8 @@ def main():
     ap.add_argument("--out")
     ap.add_argument("--colour-body", action="store_true", help="body colour evidence for red/yellow/blue")
     ap.add_argument("--ch", type=int, nargs="*", help="only these stages")
+    ap.add_argument("--blind", action="store_true", help="do not add the truth to the states")
+    ap.add_argument("--expand", type=int, default=0, help="also fit the top 5's neighbours within this many draws")
     ap.add_argument("--late", type=float, default=1.0, help="weight of the landing phase")
     a = ap.parse_args()
     variants = [tuple(float(x) for x in v.split(",")) for v in a.variants.split(";")]
@@ -96,7 +120,7 @@ def main():
             grey = [c["state"] for c in r.get("candidates", [])] + [c["state"] for c in r.get("top", [])[:a.short]]
             inn = any((s & 0x7FFFFFFF) == (truth & 0x7FFFFFFF) for s in grey)
             uniq = {}
-            for x in grey + [truth]:                 # bit 31 does not change a dive: one of each pair
+            for x in grey + ([] if a.blind else [truth]):   # bit 31 does not change a dive: one of each pair
                 uniq.setdefault(x & 0x7FFFFFFF, x)
             states = np.array(list(uniq.values()), np.uint64)
             end, n = r["window"]
@@ -109,21 +133,21 @@ def main():
                 ds.back_w, ds.sigma = var[0], var[1]
                 if len(var) > 2:
                     ds.set_detections(var[2])
-                tr, m, best, sb, fam = evaluate(ds, g, states, truth, sample)
-                sok = (sb & 0x7FFFFFFF) == (truth & 0x7FFFFFFF)
-                row["res"][str(var)] = dict(rank=tr, margin=m, best=best, shift_best=sb, shift_ok=sok, family=fam)
-                line += f" {var}: rank {tr} m {m:.3f} shift {'OK' if sok else 'x'} |"
+                tr, m, best, sb, fam = evaluate(ds, g, states, truth, sample, a.expand)
+                ok = (best & 0x7FFFFFFF) == (truth & 0x7FFFFFFF)
+                row["res"][str(var)] = dict(rank=tr, margin=m, best=best, ok=ok, off=offset(best, truth))
+                line += f" {var}: rank {tr} m {m:.3f} off {offset(best, truth)} |"
             print(line + f" ({time.time() - t0:.0f}s)", flush=True)
             rows.append(row)
             if a.out:
                 json.dump(rows, open(a.out, "w"), indent=1, default=float)
     for var in variants:
         k = str(var)
-        ok = sum(1 for r in rows if r["res"][k]["rank"] == 0 and r["truth_in"])
+        ok = sum(1 for r in rows if r["res"][k]["ok"] and (a.blind or r["truth_in"]))
+        fam = sum(1 for r in rows if r["res"][k]["off"] is not None and abs(r["res"][k]["off"]) <= 4)
         conf = [r for r in rows if r["res"][k]["margin"] >= 0.08]
-        print(f"{var}: correct blind {ok}/{len(rows)}; margin>=8%: {sum(1 for r in conf if r['res'][k]['rank'] == 0 and r['truth_in'])}/{len(conf)} correct")
-        sok = sum(1 for r in rows if r["res"][k]["shift_ok"] and r["truth_in"])
-        print(f"{var}: after shift resolution, correct blind {sok}/{len(rows)}")
+        print(f"{var}: correct blind {ok}/{len(rows)}; within 4 draws {fam}/{len(rows)}; "
+              f"margin>=8%: {sum(1 for r in conf if r['res'][k]['ok'])}/{len(conf)} correct")
 
 
 if __name__ == "__main__":
