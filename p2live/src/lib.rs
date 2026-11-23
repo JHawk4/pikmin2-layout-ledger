@@ -8,6 +8,7 @@ pub mod digits;
 pub mod fit;
 pub mod img;
 pub mod lattice;
+pub mod live;
 pub mod rng;
 pub mod templates;
 pub mod track;

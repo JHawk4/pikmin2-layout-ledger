@@ -134,3 +134,57 @@ impl Frames for Window {
         self.info.frames
     }
 }
+
+/// A video played as a stream of frames, as a capture would hand them over: one ffmpeg process
+/// from `start` onwards, gray as OpenCV converts it, cropped to `feed`.
+pub struct Stream {
+    child: std::process::Child,
+    out: std::process::ChildStdout,
+    w: usize,
+    h: usize,
+    feed: Feed,
+    buf: Vec<u8>,
+}
+
+impl Stream {
+    pub fn open(path: &str, info: &Info, feed: Feed, start: usize) -> std::io::Result<Self> {
+        let t = if start == 0 { 0.0 } else { (start as f64 - 0.5) / info.fps };
+        let mut child = Command::new(ffmpeg())
+            .args(["-v", "error", "-nostdin", "-ss", &format!("{t:.6}"), "-i", path, "-an", "-vf", "scale=in_color_matrix=bt601", "-f", "rawvideo", "-pix_fmt", "bgr24", "-"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let out = child.stdout.take().unwrap();
+        Ok(Stream { child, out, w: info.w, h: info.h, feed, buf: vec![0u8; info.w * info.h * 3] })
+    }
+}
+
+impl Iterator for Stream {
+    type Item = Gray;
+    fn next(&mut self) -> Option<Gray> {
+        self.out.read_exact(&mut self.buf).ok()?;
+        Some(bgr_to_gray_crop(&self.buf, self.w, self.h, self.feed))
+    }
+}
+
+impl Drop for Stream {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// BGR24 frame -> OpenCV gray, cropped to `feed`.
+pub fn bgr_to_gray_crop(buf: &[u8], w: usize, h: usize, feed: Feed) -> Gray {
+    let fw = feed.x1.min(w) - feed.x0;
+    let fh = feed.y1.min(h) - feed.y0;
+    let mut g = vec![0u8; fw * fh];
+    for y in 0..fh {
+        let row = &buf[((feed.y0 + y) * w + feed.x0) * 3..];
+        for x in 0..fw {
+            let (b, gg, r) = (row[x * 3] as u32, row[x * 3 + 1] as u32, row[x * 3 + 2] as u32);
+            g[y * fw + x] = ((b * 1868 + gg * 9617 + r * 4899 + 8192) >> 14) as u8;
+        }
+    }
+    Gray::new(fw, fh, g)
+}

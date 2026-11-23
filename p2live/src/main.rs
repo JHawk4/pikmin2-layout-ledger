@@ -1,9 +1,13 @@
 //! p2live command line.
 //!
 //!   p2live entries data/output/RUN/seeds.json [--jobs N] [--limit N] [--frames F1,F2] [--out FILE.jsonl]
+//!   p2live replay data/output/RUN/seeds.json [--speed 1|0] [--double] ...
 //!
-//! Re-analyzes every entry screen of a run the way profile_realtime.py does (detect around the
-//! recorded frame, then analyze_event) and compares the seed with the one in seeds.json.
+//! `entries` re-analyzes every entry screen of a run the way profile_realtime.py does (detect
+//! around the recorded frame, then analyze_event) and compares the seed with the one in
+//! seeds.json. `replay` plays a video through the live detector (src/replay.rs).
+
+mod replay;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -27,8 +31,11 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(|s| s.as_str()) {
         Some("entries") => entries(&args[2..]),
+        Some("replay") => replay::replay(&args[2..]),
         _ => {
             eprintln!("usage: p2live entries SEEDS.json [--jobs N] [--limit N] [--frames F1,F2] [--out FILE.jsonl]");
+            eprintln!("       p2live replay VIDEO|SEEDS.json [--feed x0,y0,x1,y1] [--start S] [--duration S] [--speed 1|0] [--double]");
+            eprintln!("              [--caves all|en|ja|pod|pod-ja] [--tails 20,40] [--workers N] [--no-chain] [--out FILE.jsonl]");
             std::process::exit(2);
         }
     }

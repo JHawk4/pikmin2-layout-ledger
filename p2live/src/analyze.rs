@@ -345,6 +345,13 @@ pub fn analyze_event(src: &dyn Frames, ev: &Event, opts: &Options, only: Option<
 
 /// analyze._analyze_entry. `frames` start at absolute frame `start`.
 pub fn analyze_entry(src: &dyn Frames, frames: &[Gray], start: usize, cal: Calibration, a: usize, b: usize, k: usize) -> EntryResult {
+    analyze_entry_with(src, frames, start, cal, a, b, k, FALL_LEAD, FALL_TAIL)
+}
+
+/// analyze_entry with the fall window as parameters: `lead` frames before the settled run and
+/// `tail` after its start (a 60 fps capture of the 30 fps game needs twice FALL_LEAD / FALL_TAIL).
+#[allow(clippy::too_many_arguments)]
+pub fn analyze_entry_with(src: &dyn Frames, frames: &[Gray], start: usize, cal: Calibration, a: usize, b: usize, k: usize, lead: usize, tail: usize) -> EntryResult {
     let mut r = EntryResult::empty("");
     r.settled_frame = Some(start + k);
     r.cave_score = cal.score;
@@ -357,14 +364,14 @@ pub fn analyze_entry(src: &dyn Frames, frames: &[Gray], start: usize, cal: Calib
 
     let mut frames: Vec<Gray> = frames.to_vec();
     let mut a = a;
-    if a < FALL_LEAD {
-        let extra = src.frames(start.saturating_sub(FALL_LEAD), start);
+    if a < lead {
+        let extra = src.frames(start.saturating_sub(lead), start);
         a += extra.len();
         let mut f = extra;
         f.extend(frames);
         frames = f;
     }
-    let clip: Vec<Gray> = frames[a.saturating_sub(FALL_LEAD)..(a + FALL_TAIL).min(frames.len())].to_vec();
+    let clip: Vec<Gray> = frames[a.saturating_sub(lead)..(a + tail).min(frames.len())].to_vec();
     let ja = lang == "ja";
     let (base_score, min_letters) = if ja { (0.5f64, 2) } else { (0.55f64, 3) };
     let feed_h = frames[0].h as f64;
