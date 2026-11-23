@@ -9,7 +9,8 @@ setseed code", which hooks the same instruction on the USA demo build).
 
 There the code reads Game::gameSystem->mSection; if it is the story mode section (its vtable is
 SingleGameSection's), it calls SingleGameSection::getCaveID and ::getCurrFloor and looks up
-(cave, floor) in a table placed inside the code; on a hit it stores the seed into rand()'s state.
+(cave, floor) in a table placed inside the code; on a hit it stores the seed into rand()'s state
+and plays a sound (PSSE_SY_2PSLOT_GO, as Meeo's set-seed code does), so a recording shows the code was on.
 Then it runs the instruction it replaced (li r26, 0; li r27, 0 on the Wii) and returns.
 
 Table entry: key, seed. key = the cave's ID32 (e.g. 'f_03') with its second byte replaced by
@@ -29,6 +30,7 @@ CAVE_IDS = {
 }
 LI_R26_0 = 0x3B400000          # li r26, 0 : the instruction at the hook on every GameCube build
 LI_R27_0 = 0x3B600000          # li r27, 0 : on the Wii build
+SOUND = 0x183C                 # PSSE_SY_2PSLOT_GO, played when a seed is set (as Meeo's set-seed code does)
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,8 @@ class Version:
     get_curr_floor: int        # Game::SingleGameSection::getCurrFloor
     rand_next: int             # rand()'s state (MSL rand.c `next`)
     checked: bool              # addresses and the hooked instruction read from a real copy of the game
+    play_system_se: int        # PSSystem::SysIF::playSystemSe(u32 id, u32 flag)
+    sys_if: int                # PSSystem::spSysIF (pointer)
     hook_offset: int = 0x2C    # into createMapPartsList: after the prologue, before the first rand()
     original: int = LI_R26_0   # the instruction the hook replaces (the code runs it before returning)
     cave_id_slot: int = 0x78   # vtable slots (documentation; the code calls the getters directly)
@@ -55,13 +59,13 @@ class Version:
 
 # Addresses from the projectPiki/pikmin2 decomp's symbol maps (config/<version>/symbols.txt).
 VERSIONS = [
-    Version("GPVE01", "USA (GPVE01)", "GPVE01", 0x8024C10C, 0x80515A68, 0x804B1350, 0x80153118, 0x80155F54, 0x805148A8, True),
-    Version("GPVP01", "Europe / PAL (GPVP01)", "GPVP01", 0x8024C0F0, 0x80516768, 0x804B1EE0, 0x80153284, 0x801560C0, 0x805155A0, False),
-    Version("GPVJ01", "Japan (GPVJ01)", "GPVJ01", 0x8024C770, 0x80517568, 0x804B2DB0, 0x8015310C, 0x80156388, 0x805163A8, False),
-    Version("GPVE01_D17", "USA demo 1 (GPVE01, demo build 17)", "GPVE01", 0x8024C0EC, 0x805159A8, 0x804B1290, 0x801530F8, 0x80155F34, 0x805147E0, True),
-    Version("GPVE01_D18", "USA demo 2 (GPVE01, demo build 18)", "GPVE01", 0x8024C0EC, 0x805158A8, 0x804B1190, 0x801530F8, 0x80155F34, 0x805146E0, False),
+    Version("GPVE01", "USA (GPVE01)", "GPVE01", 0x8024C10C, 0x80515A68, 0x804B1350, 0x80153118, 0x80155F54, 0x805148A8, True, 0x80338630, 0x80515ED8),
+    Version("GPVP01", "Europe / PAL (GPVP01)", "GPVP01", 0x8024C0F0, 0x80516768, 0x804B1EE0, 0x80153284, 0x801560C0, 0x805155A0, False, 0x803387BC, 0x80516BD8),
+    Version("GPVJ01", "Japan (GPVJ01)", "GPVJ01", 0x8024C770, 0x80517568, 0x804B2DB0, 0x8015310C, 0x80156388, 0x805163A8, False, 0x80338C48, 0x805179D8),
+    Version("GPVE01_D17", "USA demo 1 (GPVE01, demo build 17)", "GPVE01", 0x8024C0EC, 0x805159A8, 0x804B1290, 0x801530F8, 0x80155F34, 0x805147E0, True, 0x80338664, 0x80515E18),
+    Version("GPVE01_D18", "USA demo 2 (GPVE01, demo build 18)", "GPVE01", 0x8024C0EC, 0x805158A8, 0x804B1190, 0x801530F8, 0x80155F34, 0x805146E0, False, 0x80338610, 0x80515D18),
     # No decomp for the Wii: found in a RAM dump of the USA game (docs/gecko-code.md).
-    Version("R92E01", "Wii New Play Control! USA (R92E01)", "R92E01", 0x802D0ED0, 0x8066C9F0, 0x80590E00, 0x801E63AC, 0x801E92A4, 0x8066AAA0, True,
+    Version("R92E01", "Wii New Play Control! USA (R92E01)", "R92E01", 0x802D0ED0, 0x8066C9F0, 0x80590E00, 0x801E63AC, 0x801E92A4, 0x8066AAA0, True, 0x803B8384, 0x8066CE70,
             hook_offset=0x30, original=LI_R27_0, cave_id_slot=0x7C, floor_slot=0x5C),
 ]
 BY_KEY = {v.key: v for v in VERSIONS}
@@ -142,6 +146,11 @@ def body(v: Version) -> list[int]:
         ("b", "loop"),
         ("hit:", lwz(12, 4, 11)),
         ("", lis(11, _ha(v.rand_next))), ("", stw(12, _lo(v.rand_next), 11)),   # rand state = seed
+        ("", lis(12, _ha(v.sys_if))), ("", lwz(3, _lo(v.sys_if), 12)),         # a sound, so a recording shows it
+        ("", cmpwi(3, 0)), ("beq", "done"),
+        ("", li(4, SOUND)), ("", li(5, 0)),
+        ("", lis(12, _ha(v.play_system_se))), ("", addi(12, 12, _lo(v.play_system_se))),
+        ("", mtctr(12)), ("", BCTRL),                    # spSysIF->playSystemSe(SOUND, 0)
         ("done:", v.original),
     ]
     labels = {tag[:-1]: 4 * i for i, (tag, _) in enumerate(prog) if tag.endswith(":")}

@@ -98,7 +98,7 @@ def test_nav_has_the_gecko_tab_at_the_site_root():
     assert 'href="gecko.html" aria-current=page' in theme.header("", None, "gecko", "pod")
 
 
-def _run(v, pairs, cave, floor, mem, story=True):
+def _run(v, pairs, cave, floor, mem, story=True, sound=True, played=None):
     """Run the code once on a tiny PowerPC model (instructions decoded by capstone), as at the
     hook: returns the rand state afterwards. `mem` (address -> word) carries the table between
     calls, as the game's RAM does."""
@@ -109,7 +109,9 @@ def _run(v, pairs, cave, floor, mem, story=True):
     for i, x in enumerate(w[:-1]):
         mem.setdefault(base + 4 * i, x)
     mem.update({v.game_system: 0x80F00000, 0x80F00000 + 0x58: section,
-                section: v.single_vtable if story else 0x80400000, v.rand_next: 0xDEAD})
+                section: v.single_vtable if story else 0x80400000, v.rand_next: 0xDEAD,
+                v.sys_if: 0x80E00000 if sound else 0})
+    played = [] if played is None else played
     getters = {v.get_cave_id: int.from_bytes(gecko.CAVE_IDS[cave].encode(), "big"), v.get_curr_floor: floor}
     r, lr, ctr, cr, pc = [0] * 32, 0, 0, 0, base
     reg = lambda t: int(t.strip().lstrip("r"))
@@ -140,7 +142,12 @@ def _run(v, pairs, cave, floor, mem, story=True):
             if (cr == 2) == (op == "beq"): nxt = int(a[0], 0)
         elif op == "mr": r[reg(a[0])] = r[reg(a[1])]
         elif op == "mtctr": ctr = r[reg(a[0])]
-        elif op == "bctrl": r[3] = getters[ctr]
+        elif op == "bctrl":
+            if ctr == v.play_system_se:
+                played.append((r[3], r[4], r[5]))
+                r[3:13] = [0x5EAD] * 10                 # a real call clobbers the volatile registers
+            else:
+                r[3] = getters[ctr]
         elif op == "rlwimi":
             ra, rs, sh, mb, me = reg(a[0]), reg(a[1]), *(int(t, 0) for t in a[2:])
             rot = ((r[rs] << sh) | (r[rs] >> (32 - sh))) & 0xFFFFFFFF if sh else r[rs]
@@ -152,16 +159,21 @@ def _run(v, pairs, cave, floor, mem, story=True):
     raise AssertionError("no return")
 
 
-def test_simulated_code_sets_the_runs_seed():
+def test_simulated_code_sets_the_runs_seed_and_plays_the_sound():
     pairs = gecko.table([_e("BK", 1, "0x11"), _e("BK", 2, "0x12", "low"), _e("BK", 2, "0x22"), _e("BK", 1, "0x21"),
                          _e("SH", 3, "0x33")])
     for v in gecko.VERSIONS:
-        mem = {}
-        assert _run(v, pairs, "BK", 0, mem) == 0x11            # first visit's seed
-        assert _run(v, pairs, "BK", 1, mem) == 0x22            # first trusted visit
-        assert _run(v, pairs, "BK", 0, mem) == 0x11            # and again on every later visit
-        assert _run(v, pairs, "SH", 2, mem) == 0x33
-        assert _run(v, pairs, "SH", 3, mem) == 0xDEAD          # not in the run
-        assert _run(v, pairs, "CoS", 0, mem) == 0xDEAD
-        assert _run(v, pairs, "SH", 2, mem, story=False) == 0xDEAD     # not story mode
-        assert _run(v, [], "SH", 2, {}) == 0xDEAD             # empty table
+        mem, played = {}, []
+        assert _run(v, pairs, "BK", 0, mem, played=played) == 0x11     # first visit's seed
+        assert played == [(0x80E00000, gecko.SOUND, 0)]                # spSysIF->playSystemSe(0x183C, 0)
+        assert _run(v, pairs, "BK", 1, mem, played=played) == 0x22     # first trusted visit
+        assert _run(v, pairs, "BK", 0, mem, played=played) == 0x11     # and again on every later visit
+        assert _run(v, pairs, "SH", 2, mem, played=played) == 0x33
+        assert len(played) == 4
+        assert _run(v, pairs, "SH", 3, mem, played=played) == 0xDEAD   # not in the run: no seed, no sound
+        assert _run(v, pairs, "CoS", 0, mem, played=played) == 0xDEAD
+        assert _run(v, pairs, "SH", 2, mem, story=False, played=played) == 0xDEAD     # not story mode
+        assert _run(v, [], "SH", 2, {}, played=played) == 0xDEAD       # empty table
+        assert len(played) == 4
+        assert _run(v, pairs, "SH", 2, mem, sound=False, played=played) == 0x33   # no sound system: seed only
+        assert len(played) == 4

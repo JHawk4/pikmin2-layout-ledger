@@ -31,7 +31,11 @@ insert there:
 3. Call `SingleGameSection::getCaveID` and `::getCurrFloor` by address (each is `lwz r3, x(r3); blr`,
    so the field offsets, which differ between builds, don't matter).
 4. Key = cave ID (`'f_03'` etc.) with its second byte replaced by the 0-based floor. Walk the table of
-   (key, seed) words; on a match store the seed into `rand()`'s state (MSL `rand.c` `next`).
+   (key, seed) words; on a match store the seed into `rand()`'s state (MSL `rand.c` `next`), then,
+   if `PSSystem::spSysIF` is set, call `spSysIF->playSystemSe(0x183C, 0)`: the sound
+   `PSSE_SY_2PSLOT_GO` (the 2-player card slot's "GO"), which Meeo's set-seed code also plays. A
+   moderator asked for it, so a recording shows when the code set a layout. No sound when nothing is
+   set.
 5. `li r26, 0` (the replaced instruction; `li r27, 0` on the Wii); the code handler adds the branch back.
 
 Only volatile registers are used (r3, r9–r12, ctr, cr0); the prologue has already saved the link
@@ -43,19 +47,19 @@ A run's table has one entry per sublevel with a trusted seed (`judge_report.trus
 confidence, or medium in order with its high neighbours), in the order first played. All Treasures
 runs make some sublevels more than once (BK purple farms, EC twice); the table takes the first
 visit's seed, or the first visit with a trusted seed. The layout is set every time the sublevel is
-made, so re-entering gives the same layout. 8 bytes per sublevel; the fixed part is 36 instructions
+made, so re-entering gives the same layout. 8 bytes per sublevel; the fixed part is 44 instructions
 plus the `bl`, the end marker and the return slot.
 
 ## Addresses per version
 
-| Version | Hook | `gameSystem` | `SingleGameSection` vtable | `getCaveID` | `getCurrFloor` | `rand` state | Checked on a real DOL |
-|---|---|---|---|---|---|---|---|
-| USA GPVE01 | 8024C138 | 80515A68 | 804B1350 | 80153118 | 80155F54 | 805148A8 | yes |
-| USA demo 17 (GPVE01, "Demo1 (USA)") | 8024C118 | 805159A8 | 804B1290 | 801530F8 | 80155F34 | 805147E0 | yes |
-| USA demo 18 (GPVE01) | 8024C118 | 805158A8 | 804B1190 | 801530F8 | 80155F34 | 805146E0 | no |
-| PAL GPVP01 | 8024C11C | 80516768 | 804B1EE0 | 80153284 | 801560C0 | 805155A0 | no |
-| JPN GPVJ01 | 8024C79C | 80517568 | 804B2DB0 | 8015310C | 80156388 | 805163A8 | no |
-| Wii USA R92E01 | 802D0F00 (`li r27, 0`) | 8066C9F0 | 80590E00 | 801E63AC | 801E92A4 | 8066AAA0 | yes (RAM dump + clean DOL) |
+| Version | Hook | `gameSystem` | `SingleGameSection` vtable | `getCaveID` | `getCurrFloor` | `rand` state | `playSystemSe` | `spSysIF` | Checked on a real DOL |
+|---|---|---|---|---|---|---|---|---|---|
+| USA GPVE01 | 8024C138 | 80515A68 | 804B1350 | 80153118 | 80155F54 | 805148A8 | 80338630 | 80515ED8 | yes |
+| USA demo 17 (GPVE01, "Demo1 (USA)") | 8024C118 | 805159A8 | 804B1290 | 801530F8 | 80155F34 | 805147E0 | 80338664 | 80515E18 | yes |
+| USA demo 18 (GPVE01) | 8024C118 | 805158A8 | 804B1190 | 801530F8 | 80155F34 | 805146E0 | 80338610 | 80515D18 | no |
+| PAL GPVP01 | 8024C11C | 80516768 | 804B1EE0 | 80153284 | 801560C0 | 805155A0 | 803387BC | 80516BD8 | no |
+| JPN GPVJ01 | 8024C79C | 80517568 | 804B2DB0 | 8015310C | 80156388 | 805163A8 | 80338C48 | 805179D8 | no |
+| Wii USA R92E01 | 802D0F00 (`li r27, 0`) | 8066C9F0 | 80590E00 | 801E63AC | 801E92A4 | 8066AAA0 | 803B8384 | 8066CE70 | yes (RAM dump + clean DOL) |
 
 GameCube addresses are from the decomp's `config/<version>/symbols.txt`. Not supported: the Wii
 New Play Control! Europe and Japan versions (R92P01, R92J01: no copy to search) and romhacks. No
@@ -82,7 +86,13 @@ There is no Wii decomp. The addresses were found in a Dolphin RAM dump of the US
 - `SingleGameSection`'s vtable is 80590E00: slot 0x7C is `lwz r3, 0x23C(r3); blr` (801E63AC) and
   slot 0x5C is `lwz r3, 0x24C(r3); blr` (801E92A4), the GameCube fields (0x238 / 0x248) moved by 4,
   and a constructor that first calls the base section constructor stores it at offset 0.
-- After the hook, nothing reads r3–r12 before setting it.
+- After the hook, nothing reads r3–r12 before setting it, and only nonvolatile float registers
+  (f30, f31) are live, so the sound call can clobber the volatile ones.
+- Sound: `spSysIF` at `r13-0x5990` = 8066CE70 and `playSystemSe` at 803B8384 are the pair most
+  calls with a constant 0x18xx sound ID go through (190 sites; the same search on USA retail finds
+  its known pair, 199 sites). Callers pass (spSysIF, id, 0) as on GameCube. The Wii version also
+  sends a few sounds to the Wii Remote speaker; 0x183C isn't one of them. Both games play 0x183C
+  from the 2-player card-slot code (802BABF8 on Wii, 8023676C on GameCube).
 
 Checked afterwards on a clean Wii `main.dol` (SHA-1 d69f9083b7c47665a4f701099ec029176f2e3aeb, the
 user's `Hack/ckit_wii_base/ckit/pikmin.dol`): 802D0F00 is `li r27, 0` (`3B600000`), `rand`, both
@@ -99,13 +109,16 @@ the Wii's cave files make from that seed (the same where the files match).
   `getCaveID` and `getCurrFloor`; both getters are `lwz r3, x(r3); blr` (x = 0x238 / 0x248 on retail,
   0x25C / 0x26C on demo 17, which is why the code calls them instead of reading fields);
   `gameSystem` +0x58 is among the most read fields right after loading `gameSystem`, as `mSection`.
-- The demo 17 hook equals Meeo's set-seed code (`C224C118`, ends with `li r26, 0`). On the retail
+- The demo 17 hook equals Meeo's set-seed code (`C224C118`, ends with `li r26, 0`), and its sound
+  call is the same as ours there: `lwz r3, -0x67A8(r13)` (spSysIF, 80515E18), `li r4, 0x183C`,
+  `li r5, 0`, call 80338664 (`playSystemSe`). On the retail
   build 0x8024C118 is a prologue instruction (`stfd f31`), so a set-seed code at that address is for
   the demo build only.
 - Tests: the assembler's encodings against words read from the game; the body disassembled with
   capstone; table rules; the page's script against the Python reference (node); and the whole code
   run, for every version, on a small PowerPC model (instructions decoded by capstone, fake game
-  memory): the run's seed for its sublevels (first trusted visit), others and non-story sections left alone.
+  memory): the run's seed for its sublevels (first trusted visit) with one sound call per seed set
+  (right arguments), none on a miss or outside story mode, and the seed still set without a sound system.
 - PAL, JPN and demo 18 use the same function (same size, 0x14C) and the decomp's addresses, but
   were not checked against a disc.
 - Not yet run in Dolphin or on Nintendont.

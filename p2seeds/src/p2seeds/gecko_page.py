@@ -129,7 +129,9 @@ li {{ margin:3px 0; }}
 <p class="intro">Pick your copy of the game and a run. The code below makes every cave sublevel that run has a
 trusted seed for come out with the run's layout, so you can practise the same caves the runner had. Sublevels the
 run doesn't have (or whose seed wasn't read with confidence) stay random. Story mode only; challenge mode and 2-player
-battle are left alone.</p>
+battle are left alone. Each time it sets a sublevel's layout it plays a short
+sound (the "GO" from 2-player battle's card slot, as Meeo's set-seed code does), so anyone watching or recording can
+tell the code is on.</p>
 <div class="card">
 <div class="pick">
 <label class="field"><span>Game version</span><select id="version"></select></label>
@@ -167,7 +169,7 @@ USA game and checked against an unmodified copy. If an untested one doesn't work
 <p>Pikmin 2 makes each sublevel from its global random number generator. This code hooks
 <code>MapUnitGenerator::createMapPartsList</code> (on both GameCube and Wii), just before the game's first draw for the layout (the same place
 as Meeo's set-seed code, whose seeds CaveGen uses). There it reads the cave and floor from the story mode section
-and, if the run has a seed for that sublevel, writes it into the generator's state. Seeds are the layout seeds this
+and, if the run has a seed for that sublevel, writes it into the generator's state and plays the sound. Seeds are the layout seeds this
 site shows on each run's page; the CaveGen3 links show what each one should look like. Details:
 <a href="https://github.com/JHawk4/pikmin2-layout-ledger/blob/main/docs/gecko-code.md">docs/gecko-code.md</a>.</p>
 </details>
