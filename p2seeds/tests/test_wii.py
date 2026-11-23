@@ -49,3 +49,18 @@ def test_rescue_takes_a_cut_short_title_from_its_neighbours():
     assert rescue_caves([cut], [hob2, hob4], wide=True) == [(cut, "HoB", RESCUE_MARGIN_NEAR)]
     # not next to a HoB entry: no rescue
     assert rescue_caves([cut], [found(30000, "EC"), found(50000, "WFG")], wide=True) == []
+
+
+def test_route_names_the_sublevels_between_two_entries():
+    from p2seeds.analyze import EventResult
+    from p2seeds.events import Event
+    from p2seeds.route_rescue import _missing
+
+    def at(cave, sub):
+        return EventResult(Event(0, 0, 1), settled_frame=1, cave_id=cave, sublevel=sub)
+
+    assert _missing(at("HoB", 4), at("WFG", 1)) == [("HoB", 5)]          # a final floor
+    assert _missing(at("HoB", 1), at("HoB", 4)) == [("HoB", 2), ("HoB", 3)]
+    assert _missing(at("HoB", 5), at("WFG", 2)) == [("WFG", 1)]
+    assert _missing(None, at("EC", 2)) == [("EC", 1)]                    # from the surface
+    assert _missing(at("WFG", 3), at("WFG", 1)) == []                    # a reset: nothing between

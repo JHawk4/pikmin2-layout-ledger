@@ -5,6 +5,9 @@ with a neighbouring high seed (consecutive sublevels' seeds sit within STEP_LIMI
 steps of each other, which almost never happens by chance). seeds.json is rewritten (the old
 one is kept as seeds.before_redo.json) and the changed sublevels' pictures are dropped so the
 detection page redraws them. Judging and poko counts are left to `judge` and `treasures`.
+
+On Wii U captures it also looks for titles cut to black before the cave name landed
+(route_rescue) and adds the ones whose seed chains with a neighbour.
 """
 
 from __future__ import annotations
@@ -14,7 +17,7 @@ import shutil
 from pathlib import Path
 
 from . import analyze, rng
-from .events import Event
+from .events import Event, is_wide
 from .feed import Feed
 from .video import Video
 
@@ -53,6 +56,10 @@ def redo(out_dir: str | Path, progress=None) -> list[int]:
             "runner_up_score": round(r.candidates[1].score, 2) if len(r.candidates) > 1 else None,
             "note": ", ".join(x for x in (r.note, "redone with a newer detector, seed confirmed by its neighbour") if x)})
         changed.append(e["frame"])
+    if is_wide(feed):
+        added = _rescue(video, feed, data, STEP_LIMIT, progress)
+        changed += added
+        es = data["entries"]
     if changed:
         shutil.copy2(path, out / "seeds.before_redo.json")
         path.write_text(json.dumps(data, indent=2), encoding="utf-8")
@@ -60,3 +67,52 @@ def redo(out_dir: str | Path, progress=None) -> list[int]:
             for p in [out / "img" / f"fall_{f}.jpg", out / "img" / f"layout_views_{f}.jpg"]:
                 p.unlink(missing_ok=True)
     return changed
+
+
+def _rescue(video, feed, data: dict, limit: int, progress=None) -> list[int]:
+    """Add the route rescue's titles to data["entries"] (replacing a seedless entry it stands for)
+    when the letter seed chains with a neighbouring high one, the rescued ones included."""
+    import re
+
+    from . import report, route_rescue
+    from .analyze import EventResult
+    es = data["entries"]
+    stand = [EventResult(Event(e["frame"], e["frame"], 1), settled_frame=e["frame"], cave_id=e["cave"],
+                         sublevel=e.get("sublevel"), confidence=e["confidence"], lang=e.get("lang") or "en",
+                         layout_seed=int(e["layout_seed"], 16) if e.get("layout_seed") else None)
+             for e in es if e.get("cave") and e.get("frame")]
+    extra = [r for r in route_rescue.rescue(video, feed, stand, log=lambda m: progress and progress(None, m, False))
+             if r.letter_seed is not None and r.confidence in ("high", "medium")]
+    anchors = {e["frame"]: int(e["letter_seed"], 16) for e in es if e["confidence"] == "high" and e.get("letter_seed")}
+    kept: list = []
+    grew = True
+    while grew:                      # a run of rescued sublevels confirms itself from either end
+        grew = False
+        for r in extra:
+            if r in kept:
+                continue
+            before = [f for f in anchors if f < r.settled_frame]
+            after = [f for f in anchors if f > r.settled_frame]
+            ok = ((before and rng.distance(anchors[max(before)], r.letter_seed, limit=limit) is not None)
+                  or (after and rng.distance(r.letter_seed, anchors[min(after)], limit=limit) is not None))
+            if ok:
+                kept.append(r)
+                anchors[r.settled_frame] = r.letter_seed
+                grew = True
+    for r in extra:
+        if progress:
+            progress({"cave": r.cave_id, "sublevel": r.sublevel, "confidence": "missing"}, r, r in kept)
+    if not kept:
+        return []
+    link = next((e["link"] for e in es if e.get("link")), None)
+    url = re.sub(r"[?&]t=\d+s?$", "", link) if link else None
+    for r in kept:
+        r.confidence = "high"
+        if r.sublevel is None:
+            r.sublevel, r.sublevel_source = r.digit_value, "digit"
+        r.note = ", ".join(x for x in (r.note, "seed confirmed by its neighbour") if x)
+    rows = report.rows(kept, data["meta"].get("fps") or video.fps, url)
+    near = route_rescue.NEAR
+    data["entries"] = sorted([e for e in es if e.get("layout_seed") or not any(abs(e["frame"] - r.settled_frame) < near for r in kept)]
+                             + rows, key=lambda e: e["frame"])
+    return [r.settled_frame for r in kept]

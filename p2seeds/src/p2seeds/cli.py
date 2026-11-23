@@ -77,6 +77,15 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
         dedup.append(r)
     results = dedup
     sublevels.assign(results)
+    if is_wide(feed):
+        # Wii U VC: titles cut to black before the name lands, found from the route (route_rescue)
+        from . import route_rescue
+        extra = route_rescue.rescue(video, feed, results, log=log)
+        for r in extra:
+            show(r, r.event)
+        if extra:
+            results = route_rescue.replaced(results, extra)
+            sublevels.assign(results)
     out_dir.mkdir(parents=True, exist_ok=True)
     chain.dump(results, out_dir / "fits.json")      # pre-link state, for re-tuning chains offline
     chain.link(results)
@@ -169,9 +178,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "redo":
         from . import redo
-        changed = redo.redo(args.out_dir, progress=lambda e, r, ok: log(
-            f"  {e['cave']} {e['sublevel']}: {e['confidence']} -> {r.confidence}"
-            + (" (kept: confirmed by a neighbour)" if ok else " (not kept)")))
+        def progress(e, r, ok):
+            if e is None:            # a message from the route rescue
+                return log(r)
+            log(f"  {e['cave']} {e['sublevel']}: {e['confidence']} -> {r.confidence}"
+                + (" (kept: confirmed by a neighbour)" if ok else " (not kept)"))
+        changed = redo.redo(args.out_dir, progress=progress)
         log(f"{len(changed)} sublevel(s) changed; run judge, treasures and details next")
         return 0
 
