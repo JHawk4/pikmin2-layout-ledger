@@ -71,11 +71,14 @@ pub fn replay(args: &[String]) {
     let (mut live, rx) = Live::new(cfg.clone(), Box::new(|s| eprintln!("  {s}")));
     let printer = std::thread::spawn(move || {
         let mut rows: Vec<LiveResult> = Vec::new();
+        let mut refined = 0usize;
+        let mut firsts: Vec<f64> = Vec::new();
         for r in rx {
             let s = game_frame(r.run_start) as f64 / fps;
             let sub = format!("{}{}", r.sublevel.map(|x| x.to_string()).unwrap_or("?".into()), if r.sublevel_source == "digit" { "" } else { "~" });
             if r.update {
                 if r.refined {
+                    refined += 1;
                     eprintln!(
                         "[{}:{:05.2}] {}-{}  {}  {:?}{}  (full analysis, ready {:.2}s after settling)",
                         (s / 60.0) as u64,
@@ -112,9 +115,12 @@ pub fn replay(args: &[String]) {
                 r.chain_s,
                 r.tail
             );
+            if r.letter_seed.is_some() {
+                firsts.push(r.ready_after_s);
+            }
             rows.push(r);
         }
-        rows
+        (rows, refined, firsts)
     });
     let mut stream = Stream::open(&video, &info, feed, start_f).expect("ffmpeg");
     let t_start = Instant::now();
@@ -141,7 +147,7 @@ pub fn replay(args: &[String]) {
     let check_ms = 1000.0 * live.check_s / live.frames_seen.max(1) as f64;
     let hint = live.hint();
     live.close();
-    let rows = printer.join().unwrap();
+    let (rows, refined, first) = printer.join().unwrap();
     println!(
         "{n_in} frames ({:.0} s of video) in {:.0} s; entry-screen check {check_ms:.2} ms/frame; capture fell behind by at most {max_lag:.2} s; scale {hint:?}",
         n_in as f64 / info.fps,
@@ -156,12 +162,18 @@ pub fn replay(args: &[String]) {
             let _ = writeln!(f, "{v}");
         }
     }
-    let mut ready: Vec<f64> = rows.iter().filter(|r| r.letter_seed.is_some()).map(|r| r.ready_after_s).collect();
-    ready.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    if !ready.is_empty() {
-        let q = |p: f64| ready[((ready.len() - 1) as f64 * p).round() as usize];
-        println!("seed ready after the screen settled: median {:.2} s, p90 {:.2} s, max {:.2} s ({} seeds)", q(0.5), q(0.9), q(1.0), ready.len());
-    }
+    // the first answer per entry and the final one (after refinements)
+    let stats = |mut v: Vec<f64>| -> String {
+        v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        if v.is_empty() {
+            return "none".into();
+        }
+        let q = |p: f64| v[((v.len() - 1) as f64 * p).round() as usize];
+        format!("median {:.2} s, p90 {:.2} s, max {:.2} s ({} seeds)", q(0.5), q(0.9), q(1.0), v.len())
+    };
+    let fin: Vec<f64> = rows.iter().filter(|r| r.letter_seed.is_some()).map(|r| r.ready_after_s).collect();
+    println!("first answer after the screen settled: {}", stats(first));
+    println!("final answer ({refined} improved by a later analysis): {}", stats(fin));
     if known.is_empty() {
         return;
     }
