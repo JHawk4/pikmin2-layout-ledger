@@ -20,7 +20,7 @@ use crate::digits;
 use crate::fit::{fit, FitResult, Segment};
 use crate::lattice::{self, Candidate};
 use crate::templates::{caves, layout_seed, Cave, POD_CAVES};
-use crate::track::{track_all, Blend, Track};
+use crate::track::{track_all, Blend, MatchCache, Reuse, Track};
 use crate::img::Gray;
 
 pub const MIN_CAVE_SCORE: f64 = 0.38;
@@ -182,8 +182,9 @@ fn combinations(items: &[usize], k: usize) -> Vec<Vec<usize>> {
     out
 }
 
-/// analyze._search: lattice search; when inconclusive, retry leaving out one letter, then two.
-pub fn search_fit(f: &FitResult, retries: bool) -> (Vec<Candidate>, Conf) {
+/// analyze._search: lattice search; when inconclusive, retry leaving out one letter, then two
+/// (`max_out` caps how many letters are left out; 0 means no retries).
+pub fn search_fit(f: &FitResult, max_out: usize) -> (Vec<Candidate>, Conf) {
     let measured: Vec<usize> = (0..f.v.len()).filter(|&i| f.v[i].is_finite() && f.sigma[i].is_finite()).collect();
     let attempt = |out: &[usize]| -> (Vec<Candidate>, Conf) {
         match lattice::search(&f.v, &f.sigma, out, if out.is_empty() { 500_000 } else { 100_000 }) {
@@ -196,8 +197,8 @@ pub fn search_fit(f: &FitResult, retries: bool) -> (Vec<Candidate>, Conf) {
     };
     let key = |c: &(Vec<Candidate>, Conf)| (c.1, -(c.0.first().map(|x| x.score).unwrap_or(1e9)));
     let mut best = attempt(&[]);
-    if retries {
-        for k in [1usize, 2] {
+    {
+        for k in 1..=max_out.min(2) {
             if best.1 == Conf::High || measured.len() < 6 + k || f.rms_px > MAX_FIT_RMS_PX {
                 break;
             }
@@ -345,13 +346,29 @@ pub fn analyze_event(src: &dyn Frames, ev: &Event, opts: &Options, only: Option<
 
 /// analyze._analyze_entry. `frames` start at absolute frame `start`.
 pub fn analyze_entry(src: &dyn Frames, frames: &[Gray], start: usize, cal: Calibration, a: usize, b: usize, k: usize) -> EntryResult {
-    analyze_entry_with(src, frames, start, cal, a, b, k, FALL_LEAD, FALL_TAIL)
+    analyze_entry_with(src, frames, start, cal, a, b, k, FALL_LEAD, FALL_TAIL, false, None)
 }
 
 /// analyze_entry with the fall window as parameters: `lead` frames before the settled run and
 /// `tail` after its start (a 60 fps capture of the 30 fps game needs twice FALL_LEAD / FALL_TAIL).
+/// `quick` (the live detector's first answer) leaves out at most one letter in the lattice
+/// retries (the two-letter retries are most of the search time on a weak fit); otherwise it is
+/// the full analysis. `cache` keeps the letters' template matches between analyses of the same
+/// entry screen (the live detector's attempts with more frames, then the full analysis).
 #[allow(clippy::too_many_arguments)]
-pub fn analyze_entry_with(src: &dyn Frames, frames: &[Gray], start: usize, cal: Calibration, a: usize, b: usize, k: usize, lead: usize, tail: usize) -> EntryResult {
+pub fn analyze_entry_with(
+    src: &dyn Frames,
+    frames: &[Gray],
+    start: usize,
+    cal: Calibration,
+    a: usize,
+    b: usize,
+    k: usize,
+    lead: usize,
+    tail: usize,
+    quick: bool,
+    cache: Option<&MatchCache>,
+) -> EntryResult {
     let mut r = EntryResult::empty("");
     r.settled_frame = Some(start + k);
     r.cave_score = cal.score;
@@ -364,14 +381,17 @@ pub fn analyze_entry_with(src: &dyn Frames, frames: &[Gray], start: usize, cal: 
 
     let mut frames: Vec<Gray> = frames.to_vec();
     let mut a = a;
+    let mut first_abs = start;
     if a < lead {
         let extra = src.frames(start.saturating_sub(lead), start);
         a += extra.len();
+        first_abs -= extra.len();
         let mut f = extra;
         f.extend(frames);
         frames = f;
     }
     let clip: Vec<Gray> = frames[a.saturating_sub(lead)..(a + tail).min(frames.len())].to_vec();
+    let clip_abs = first_abs + a.saturating_sub(lead);
     let ja = lang == "ja";
     let (base_score, min_letters) = if ja { (0.5f64, 2) } else { (0.55f64, 3) };
     let feed_h = frames[0].h as f64;
@@ -403,7 +423,9 @@ pub fn analyze_entry_with(src: &dyn Frames, frames: &[Gray], start: usize, cal: 
             .entry(bkey)
             .or_insert_with(|| {
                 let fall: Vec<Gray> = keep.iter().map(|&i| clip[i].clone()).collect();
-                timed(1, || track_all(&fall, &cal, if weak { LOW_MATCH } else { 0.5 }, blended))
+                let ids: Vec<usize> = keep.iter().map(|&i| clip_abs + i).collect();
+                let reuse = cache.map(|cache| Reuse { cache, ids: &ids });
+                timed(1, || track_all(&fall, &cal, if weak { LOW_MATCH } else { 0.5 }, blended, reuse))
             })
             .clone();
         let tracks: Vec<Track> = raw.into_iter().map(|t| Track { frames: to_time(&t.frames, &times), ..t }).collect();
@@ -435,7 +457,7 @@ pub fn analyze_entry_with(src: &dyn Frames, frames: &[Gray], start: usize, cal: 
         .filter(|s| !s.is_empty())
         .collect();
         let how = how.join(", ");
-        let (cands, conf) = timed(4, || search_fit(&f, true));
+        let (cands, conf) = timed(4, || search_fit(&f, if quick { 1 } else { 2 }));
         if r.fit.is_none() || conf > r.confidence {
             r.fit = Some(f.clone());
             r.candidates = cands;
@@ -444,7 +466,7 @@ pub fn analyze_entry_with(src: &dyn Frames, frames: &[Gray], start: usize, cal: 
         }
         if conf != Conf::High && n_meas >= 5 {
             for (f2, d, k) in timed(3, || fit_with_step(&tracks, num_chars, s_guess, &f, segment)) {
-                let (c2, conf2) = search_fit(&f2, false);
+                let (c2, conf2) = search_fit(&f2, 0);
                 if conf2 > r.confidence {
                     r.fit = Some(f2);
                     r.candidates = c2;

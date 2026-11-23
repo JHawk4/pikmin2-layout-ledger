@@ -6,13 +6,16 @@
 //!
 //! 1. **Name**, `CAL_AFTER` game frames after the screen settled: read the cave name. The
 //!    stream's first screen calibrates in full; after that the stream's learned scale
-//!    (`ScaleHint`) needs about a tenth of the matches. Running it early hides it behind the wait
-//!    for the fall's last frames.
+//!    (`ScaleHint`) needs about a tenth of the matches. Then match every letter on the buffered
+//!    fall frames (`track::prefill`), so the seed attempts only match the frames that arrive
+//!    after. Running it early hides it behind the wait for the fall's last frames.
 //! 2. **Seed**, at each of `tails` game frames after the settle (e.g. 20, then 40): the offline
 //!    analysis of the buffered fall (`analyze_entry_with`). If it is not high confidence, chain
 //!    from the previous sublevel's layout seed (a bounded number of RNG steps earlier), which
-//!    settles most weak fits. A high or chained seed is reported at once; otherwise the next
-//!    attempt has more of the fall, and the last attempt reports whatever it has.
+//!    settles most weak fits. Attempts run the quick analysis (see `analyze_entry_with`). A high
+//!    or chained seed is reported at once; otherwise the next attempt has more of the fall, and
+//!    the last attempt reports whatever it has, then runs the full analysis (all variants and
+//!    timing-step refits, seconds on a hard fall) and sends an update if that does better.
 //! 3. **Digits**, `DIGITS_AT` game frames after the settle (or when the screen ends): read the
 //!    sublevel number on the settled frames. Until then a seed reports the sublevel the order of
 //!    play implies (the previous one in the same cave + 1, else 1), and the digit read sends an
@@ -33,6 +36,7 @@ use crate::calibrate::{calibrate, calibrate_hinted, is_entry_screen, Calibration
 use crate::digits::read_sublevel;
 use crate::img::{resize_area, Gray, Img};
 use crate::lattice::search_near;
+use crate::track::{prefill, MatchCache};
 use crate::templates::{layout_seed, Cave};
 
 /// Frames kept, in game frames (13 s at 30 fps): the fall lead plus a long title.
@@ -85,8 +89,10 @@ impl LiveConfig {
 pub struct LiveResult {
     /// Capture frame index where the settled entry screen began (identifies the entry).
     pub run_start: usize,
-    /// A correction of an earlier result for the same entry (the sublevel number was read).
+    /// A correction of an earlier result for the same entry (the sublevel number was read, or
+    /// the full analysis found a better seed: then `refined`).
     pub update: bool,
+    pub refined: bool,
     pub cave: String,
     pub cave_name: String,
     pub sublevel: Option<u32>,
@@ -103,9 +109,23 @@ pub struct LiveResult {
     /// Seconds from the screen settling to the seed being ready.
     pub ready_after_s: f64,
     pub name_s: f64,
+    /// letter matching on the buffered fall right after the name read
+    pub prefill_s: f64,
     pub analyze_s: f64,
     pub chain_s: f64,
     pub hinted: bool,
+}
+
+/// An entry screen that was reported: a flicker of it (the same cave again within FLICKER_S) is
+/// the same entry. When the report was not trusted (low or medium, not chained) the flicker is
+/// analyzed again and replaces it if it does better: a flicker can cut the first run short.
+struct Found {
+    cave: String,
+    run_start: usize,
+    trusted: bool,
+    conf: Conf,
+    sublevel: Option<u32>,
+    source: String,
 }
 
 /// Frame source for analyze_entry: the job carries every frame it may use.
@@ -136,6 +156,9 @@ struct EntryState {
     sim_free_at: f64,
     digit: Option<u32>,
     reported: Option<LiveResult>,
+    /// letter template matches, shared by this screen's analyses
+    cache: Arc<MatchCache>,
+    prefill_s: f64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -164,7 +187,7 @@ struct Shared {
     prev_layout: Mutex<Option<u64>>,
     /// (cave, sublevel) of the latest entry with a known sublevel
     last_sub: Mutex<Option<(String, u32)>>,
-    found: Mutex<Vec<(String, usize)>>,
+    found: Mutex<Vec<Found>>,
     results: Sender<LiveResult>,
     log: Box<dyn Fn(&str) + Send + Sync>,
 }
@@ -432,14 +455,26 @@ fn read_name(sh: &Shared, job: &Job, a: usize, b: usize, full_fallback: bool) ->
 fn name_job(sh: &Shared, job: Job) {
     let t0 = Instant::now();
     let (a, b) = (job.a - job.first, job.b - job.first);
-    let got = if a < FALL_LEAD * sh.cfg.mult() { None } else { read_name(sh, &job, a, b, false) };
+    let lead = FALL_LEAD * sh.cfg.mult();
+    let got = if a < lead { None } else { read_name(sh, &job, a, b, false) };
     let took = t0.elapsed().as_secs_f64();
+    // the seed attempts wait for this job (name_pending): match the fall so far for them
+    let mut prefill_s = 0.0;
+    if let Some((c, _, _)) = &got {
+        let t1 = Instant::now();
+        let cache = job.state.lock().unwrap().cache.clone();
+        let lo = a - lead;
+        let ids: Vec<usize> = (lo..=b).map(|j| job.first + j).collect();
+        prefill(&job.frames[lo..=b], &ids, c, &cache);
+        prefill_s = t1.elapsed().as_secs_f64();
+    }
     let mut st = job.state.lock().unwrap();
     st.name_pending = false;
     if let Some((c, k, hinted)) = got {
         if st.cal.is_none() {
             st.cal = Some((c, k + job.first, hinted, took));
-            st.name_ready_sim = job.sim_due.map(|d| d + took);
+            st.prefill_s = prefill_s;
+            st.name_ready_sim = job.sim_due.map(|d| d + took + prefill_s);
         }
     }
 }
@@ -500,33 +535,23 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
         },
     };
     let t_cal = Instant::now();
-    {
+    let replaces = {
         let found = sh.found.lock().unwrap();
         let flicker = (FLICKER_S * cfg.fps) as usize;
-        if found.iter().any(|(c, a0)| c == cal.cave.cavegen && job.a > *a0 && job.a - a0 < flicker) {
+        let same: Vec<&Found> = found.iter().filter(|f| f.cave == cal.cave.cavegen && job.a > f.run_start && job.a - f.run_start < flicker).collect();
+        if same.iter().any(|f| f.trusted) {
             job.state.lock().unwrap().done = true;
             return;
         }
-    }
-    let r = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m);
+        same.last().map(|f| (f.run_start, f.conf, f.sublevel, f.source.clone()))
+    };
+    let (cache, prefill_s) = {
+        let st = job.state.lock().unwrap();
+        (st.cache.clone(), st.prefill_s)
+    };
+    let r = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, true, Some(&cache));
     let t_seed = Instant::now();
-    let mut letter = r.letter_seed;
-    let mut conf = r.confidence;
-    let mut chained = None;
-    if cfg.chain && conf != Conf::High {
-        let prev = *sh.prev_layout.lock().unwrap();
-        if let (Some(prev), Some(f)) = (prev, r.fit.as_ref()) {
-            if let Ok(c) = search_near(&f.v, &f.sigma, prev, NEAR, 2) {
-                if let Some(best) = c.first() {
-                    if c.len() < 2 || c[1].score - best.score > 15.0 {
-                        letter = Some(best.letter_seed);
-                        chained = Some(best.distance.unwrap_or(0));
-                        conf = conf.max(Conf::Medium);
-                    }
-                }
-            }
-        }
-    }
+    let (letter, conf, chained) = settle(sh, &r);
     let t_chain = Instant::now();
     let good = conf == Conf::High || chained.is_some();
     if !good && !last {
@@ -547,12 +572,128 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
         return; // another attempt finished this entry first
     }
     st.done = true;
-    let layout = letter.map(|s| layout_seed(s, cal.cave.num_chars()));
-    if good {
-        if let Some(l) = layout {
-            *sh.prev_layout.lock().unwrap() = Some(l);
+    if let Some((a0, conf0, ..)) = &replaces {
+        if !good && conf <= *conf0 {
+            (sh.log)(&format!("[{}] flicker of the screen at {a0}; no better", job.a));
+            return;
         }
-        sh.found.lock().unwrap().push((cal.cave.cavegen.to_string(), job.a));
+    }
+    let layout = letter.map(|s| layout_seed(s, cal.cave.num_chars()));
+    // the sublevel: read on screen, else what the order of play implies (a flicker keeps the
+    // replaced report's)
+    let (sublevel, source) = match (r.digit_value.or(st.digit), &replaces) {
+        (Some(d), _) => (Some(d), "digit".to_string()),
+        (None, Some((_, _, s0, src0))) => (*s0, src0.clone()),
+        (None, None) => {
+            let last_sub = sh.last_sub.lock().unwrap().clone();
+            let guess = match last_sub {
+                Some((c, s)) if c == cal.cave.cavegen => s + 1,
+                _ => 1,
+            };
+            (Some(guess.min(cal.cave.sublevels)), "sequence".to_string())
+        }
+    };
+    if let Some(s) = sublevel {
+        *sh.last_sub.lock().unwrap() = Some((cal.cave.cavegen.to_string(), s));
+    }
+    let run_start = replaces.as_ref().map(|r| r.0).unwrap_or(job.a);
+    sh.found.lock().unwrap().push(Found { cave: cal.cave.cavegen.to_string(), run_start, trusted: good, conf, sublevel, source: source.clone() });
+    if good {
+        remember(sh, &cal, layout, conf);
+    }
+    let analysis = (t_chain - t_cal).as_secs_f64();
+    let ready = match job.sim_due {
+        // simulation: work starts when the job is due and the name is ready
+        Some(due) => due.max(st.sim_free_at).max(st.name_ready_sim.unwrap_or(due)) + (t_chain - t_wait).as_secs_f64(),
+        None => job.t_land.elapsed().as_secs_f64(),
+    };
+    let res = LiveResult {
+        run_start,
+        update: replaces.is_some(),
+        refined: replaces.is_some(),
+        cave: cal.cave.cavegen.to_string(),
+        cave_name: cal.cave.label().to_string(),
+        sublevel,
+        sublevel_source: source,
+        letter_seed: hex(letter),
+        layout_seed: hex(layout),
+        confidence: conf,
+        chained,
+        note: r.note.clone(),
+        tail,
+        ready_after_s: ready,
+        name_s,
+        prefill_s,
+        analyze_s: analysis - (t_chain - t_seed).as_secs_f64(),
+        chain_s: (t_chain - t_seed).as_secs_f64(),
+        hinted,
+    };
+    st.reported = Some(res.clone());
+    drop(st);
+    let _ = sh.results.send(res);
+    if conf == Conf::High {
+        return;
+    }
+    // the full analysis; an update if it does better than the quick answer
+    let t_full = Instant::now();
+    let r2 = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, false, Some(&cache));
+    let (letter2, conf2, chained2) = settle(sh, &r2);
+    let full_s = t_full.elapsed().as_secs_f64();
+    if letter2.is_none() || (letter2 == letter && conf2 <= conf) || conf2 < conf {
+        (sh.log)(&format!("[{}] full analysis ({full_s:.1} s) found nothing better", job.a));
+        return;
+    }
+    let layout2 = letter2.map(|s| layout_seed(s, cal.cave.num_chars()));
+    let mut st = job.state.lock().unwrap();
+    let Some(mut upd) = st.reported.clone() else { return };
+    if conf2 == Conf::High || chained2.is_some() {
+        remember(sh, &cal, layout2, conf2);
+        let mut found = sh.found.lock().unwrap();
+        if let Some(f) = found.iter_mut().rev().find(|f| f.run_start == upd.run_start && f.cave == upd.cave) {
+            f.trusted = true;
+            f.conf = conf2;
+        }
+    }
+    upd.update = true;
+    upd.refined = true;
+    upd.letter_seed = hex(letter2);
+    upd.layout_seed = hex(layout2);
+    upd.confidence = conf2;
+    upd.chained = chained2;
+    upd.note = r2.note.clone();
+    upd.ready_after_s += full_s;
+    st.reported = Some(upd.clone());
+    drop(st);
+    (sh.log)(&format!("[{}] full analysis ({full_s:.1} s): {:?} -> {:?}", job.a, conf, conf2));
+    let _ = sh.results.send(upd);
+}
+
+/// The seed an analysis settles on: its own when high confidence, else chained from the
+/// previous sublevel's layout seed when that is clear, else its own at its confidence.
+fn settle(sh: &Shared, r: &crate::analyze::EntryResult) -> (Option<u64>, Conf, Option<u64>) {
+    let (mut letter, mut conf, mut chained) = (r.letter_seed, r.confidence, None);
+    if sh.cfg.chain && conf != Conf::High {
+        let prev = *sh.prev_layout.lock().unwrap();
+        if let (Some(prev), Some(f)) = (prev, r.fit.as_ref()) {
+            if let Ok(c) = search_near(&f.v, &f.sigma, prev, NEAR, 2) {
+                if let Some(best) = c.first() {
+                    if c.len() < 2 || c[1].score - best.score > 15.0 {
+                        letter = Some(best.letter_seed);
+                        chained = Some(best.distance.unwrap_or(0));
+                        conf = conf.max(Conf::Medium);
+                    }
+                }
+            }
+        }
+    }
+    (letter, conf, chained)
+}
+
+/// A trusted seed: the next sublevel chains from it, and a high-confidence read teaches the
+/// stream's scale.
+fn remember(sh: &Shared, cal: &Calibration, layout: Option<u64>, conf: Conf) {
+    if let Some(l) = layout {
+        *sh.prev_layout.lock().unwrap() = Some(l);
     }
     if conf == Conf::High {
         let h = cal.hint();
@@ -562,49 +703,6 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
             None => h,
         });
     }
-    // the sublevel: read on screen, else what the order of play implies
-    let (sublevel, source) = match r.digit_value.or(st.digit) {
-        Some(d) => (Some(d), "digit"),
-        None => {
-            let last_sub = sh.last_sub.lock().unwrap().clone();
-            let guess = match last_sub {
-                Some((c, s)) if c == cal.cave.cavegen => s + 1,
-                _ => 1,
-            };
-            (Some(guess.min(cal.cave.sublevels)), "sequence")
-        }
-    };
-    if let Some(s) = sublevel {
-        *sh.last_sub.lock().unwrap() = Some((cal.cave.cavegen.to_string(), s));
-    }
-    let analysis = (t_chain - t_cal).as_secs_f64();
-    let ready = match job.sim_due {
-        // simulation: work starts when the job is due and the name is ready
-        Some(due) => due.max(st.sim_free_at).max(st.name_ready_sim.unwrap_or(due)) + (t_chain - t_wait).as_secs_f64(),
-        None => job.t_land.elapsed().as_secs_f64(),
-    };
-    let res = LiveResult {
-        run_start: job.a,
-        update: false,
-        cave: cal.cave.cavegen.to_string(),
-        cave_name: cal.cave.label().to_string(),
-        sublevel,
-        sublevel_source: source.to_string(),
-        letter_seed: hex(letter),
-        layout_seed: hex(layout),
-        confidence: conf,
-        chained,
-        note: r.note.clone(),
-        tail,
-        ready_after_s: ready,
-        name_s,
-        analyze_s: analysis - (t_chain - t_seed).as_secs_f64(),
-        chain_s: (t_chain - t_seed).as_secs_f64(),
-        hinted,
-    };
-    st.reported = Some(res.clone());
-    drop(st);
-    let _ = sh.results.send(res);
 }
 
 fn digits_job(sh: &Shared, job: Job) {

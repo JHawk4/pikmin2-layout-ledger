@@ -344,6 +344,38 @@ fn normalize_with(corr: Vec<f64>, rw: usize, rh: usize, ii: &Integral, t: &Img) 
 
 /// templates.match by direct summation (small searches: letter strips).
 pub fn match_direct(im: &Img, t: &Img) -> Img {
+    let corr = corr_direct(im, t);
+    normalize(corr, im.w - t.w + 1, im.h - t.h + 1, im, t)
+}
+
+/// match_direct for a family of "pair" templates built from `t`: template d is 0.5 t at row 0
+/// plus 0.5 t at row d (a letter shown doubled, `d` rows apart), for d in 0..=max_d. The raw
+/// correlation is linear in the template, so each is two rows of `t`'s correlation added; only
+/// the normalization is per template. `pairs[d]` must be that template (for its norm). Templates
+/// taller than `im` give None.
+pub fn match_pairs(im: &Img, t: &Img, pairs: &[Img]) -> Vec<Option<Img>> {
+    if t.w > im.w || t.h > im.h {
+        return pairs.iter().map(|_| None).collect();
+    }
+    let rw = im.w - t.w + 1;
+    let base = corr_direct(im, t);
+    let ii = Integral::new(im);
+    pairs
+        .iter()
+        .enumerate()
+        .map(|(d, p)| {
+            if p.h > im.h {
+                return None;
+            }
+            let rh = im.h - p.h + 1;
+            let corr: Vec<f64> = (0..rh * rw).map(|i| 0.5 * base[i] + 0.5 * base[i + d * rw]).collect();
+            Some(normalize_with(corr, rw, rh, &ii, p))
+        })
+        .collect()
+}
+
+/// The raw correlation of `t` at every position in `im` (rows of width im.w - t.w + 1).
+fn corr_direct(im: &Img, t: &Img) -> Vec<f64> {
     assert!(t.w <= im.w && t.h <= im.h);
     let rw = im.w - t.w + 1;
     let rh = im.h - t.h + 1;
@@ -366,7 +398,7 @@ pub fn match_direct(im: &Img, t: &Img) -> Img {
             corr[y * rw + x] = s as f64;
         }
     }
-    normalize(corr, rw, rh, im, t)
+    corr
 }
 
 /// A search image prepared once for many templates (the cave-name band): its 2D spectrum (real FFT

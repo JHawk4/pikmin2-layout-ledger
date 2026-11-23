@@ -1,9 +1,12 @@
 //! Track each falling letter's height frame by frame (track.py).
 
+use std::collections::HashMap;
+use std::sync::Mutex;
+
 use rayon::prelude::*;
 
 use crate::calibrate::{Calibration, LetterBox};
-use crate::img::{bright_level, match_direct, prep, pyround, Gray, Img};
+use crate::img::{bright_level, match_direct, match_pairs, prep, pyround, Gray, Img};
 
 pub const MIN_BRIGHT: f64 = 25.0;
 
@@ -79,21 +82,113 @@ fn geometry(b: &LetterBox) -> (usize, usize, usize, usize) {
     (x0, x1, y_bot, h)
 }
 
-pub fn track_letter(frames: &[Gray], b: &LetterBox, min_score: f64, refs: &[f64], blended: bool) -> Track {
+/// One letter's template match on one frame: the best column of the match result and its row.
+#[derive(Clone)]
+struct Single {
+    column: Vec<f32>,
+    row: usize,
+}
+
+/// The pair-template match on one frame: every gap's best score, the best gap `d` and its column.
+#[derive(Clone)]
+struct PairMatch {
+    scores: Vec<f64>,
+    d: usize,
+    row: usize,
+    column: Vec<f32>,
+}
+
+/// Template matches by (letter index, absolute frame), shared by every analysis of one entry
+/// screen. The live detector analyzes the same fall again with more frames and in several
+/// variants; the variants differ only in thresholds, so each frame is matched once per letter.
+/// `None` is a frame the letter cannot be matched on (too dark or flat).
+#[derive(Default)]
+pub struct MatchCache {
+    single: Mutex<HashMap<(usize, usize), Option<Single>>>,
+    pair: Mutex<HashMap<(usize, usize), Option<PairMatch>>>,
+}
+
+impl MatchCache {
+    pub fn len(&self) -> usize {
+        self.single.lock().unwrap().len() + self.pair.lock().unwrap().len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// Where a call's frames sit in the stream, for the cache: `ids[k]` is frame k's absolute index.
+#[derive(Clone, Copy)]
+pub struct Reuse<'a> {
+    pub cache: &'a MatchCache,
+    pub ids: &'a [usize],
+}
+
+fn single_match(gray: &Gray, b: &LetterBox, rf: f64) -> Option<Single> {
     let t = &b.template;
+    if rf < MIN_BRIGHT {
+        return None;
+    }
     let (x0, x1, y_bot, pad) = geometry(b);
-    let h = t.h;
+    let s = strip(gray, x0, x1, y_bot, pad, rf);
+    if s.std() < 1e-3 || s.w < t.w || s.h < t.h {
+        return None;
+    }
+    let (column, row) = best_column(&match_direct(&s, t));
+    Some(Single { column, row })
+}
+
+fn pair_match(gray: &Gray, b: &LetterBox, rf: f64, pairs: &[Img]) -> Option<PairMatch> {
+    let t = &b.template;
+    if rf < MIN_BRIGHT {
+        return None;
+    }
+    let (x0, x1, y_bot, pad) = geometry(b);
+    let s = strip(gray, x0, x1, y_bot, pad, rf);
+    if s.std() < 1e-3 || s.w < t.w {
+        return None;
+    }
+    let best: Vec<(f64, usize, Vec<f32>)> = match_pairs(&s, t, pairs)
+        .into_iter()
+        .map(|res| match res {
+            None => (-1.0, 0, Vec::new()),
+            Some(res) => {
+                let (column, row) = best_column(&res);
+                (column[row] as f64, row, column)
+            }
+        })
+        .collect();
+    let mut d = 0;
+    for i in 1..best.len() {
+        if best[i].0 > best[d].0 {
+            d = i;
+        }
+    }
+    let scores = best.iter().map(|x| x.0).collect();
+    let (_, row, column) = best.into_iter().nth(d).unwrap();
+    Some(PairMatch { scores, d, row, column })
+}
+
+/// Frame k's match, from the cache when there is one.
+fn cached<T: Clone>(map: Option<&Mutex<HashMap<(usize, usize), Option<T>>>>, key: Option<(usize, usize)>, f: impl FnOnce() -> Option<T>) -> Option<T> {
+    if let (Some(m), Some(k)) = (map, key) {
+        if let Some(v) = m.lock().unwrap().get(&k) {
+            return v.clone();
+        }
+        let v = f();
+        m.lock().unwrap().insert(k, v.clone());
+        return v;
+    }
+    f()
+}
+
+pub fn track_letter(frames: &[Gray], b: &LetterBox, min_score: f64, refs: &[f64], blended: bool, reuse: Option<Reuse>) -> Track {
+    let h = b.template.h;
+    let pad = geometry(b).3;
     let (mut fr, mut ys, mut sc) = (Vec::new(), Vec::new(), Vec::new());
     for (k, gray) in frames.iter().enumerate() {
-        if refs[k] < MIN_BRIGHT {
-            continue;
-        }
-        let s = strip(gray, x0, x1, y_bot, pad, refs[k]);
-        if s.std() < 1e-3 || s.w < t.w || s.h < t.h {
-            continue;
-        }
-        let res = match_direct(&s, t);
-        let (column, row) = best_column(&res);
+        let key = reuse.map(|r| (b.index, r.ids[k]));
+        let Some(Single { column, row }) = cached(reuse.map(|r| &r.cache.single), key, || single_match(gray, b, refs[k])) else { continue };
         if blended {
             let sep = 3usize.max((0.25 * h as f64) as usize);
             let mut masked = column.clone();
@@ -140,44 +235,26 @@ fn pair_templates(t: &Img, max_d: usize) -> Vec<Img> {
         .collect()
 }
 
-pub fn track_letter_pair(frames: &[Gray], b: &LetterBox, min_score: f64, refs: &[f64]) -> Track {
-    let t = &b.template;
-    let max_d = (1.6 * t.h as f64) as usize;
-    let pairs = pair_templates(t, max_d);
-    let (x0, x1, y_bot, pad) = geometry(b);
+fn letter_pairs(b: &LetterBox) -> Vec<Img> {
+    pair_templates(&b.template, (1.6 * b.template.h as f64) as usize)
+}
+
+pub fn track_letter_pair(frames: &[Gray], b: &LetterBox, min_score: f64, refs: &[f64], reuse: Option<Reuse>) -> Track {
+    let pad = geometry(b).3;
+    let mut pairs: Option<Vec<Img>> = None;
     let (mut fr, mut ys, mut sc) = (Vec::new(), Vec::new(), Vec::new());
     for (k, gray) in frames.iter().enumerate() {
-        if refs[k] < MIN_BRIGHT {
+        let key = reuse.map(|r| (b.index, r.ids[k]));
+        let m = cached(reuse.map(|r| &r.cache.pair), key, || pair_match(gray, b, refs[k], pairs.get_or_insert_with(|| letter_pairs(b))));
+        let Some(PairMatch { scores, d, row, column }) = m else { continue };
+        let score = scores[d];
+        if score < min_score {
             continue;
         }
-        let s = strip(gray, x0, x1, y_bot, pad, refs[k]);
-        if s.std() < 1e-3 || s.w < t.w {
-            continue;
-        }
-        let best: Vec<(f64, usize, Vec<f32>)> = pairs
-            .iter()
-            .map(|p| {
-                if p.h > s.h {
-                    return (-1.0, 0, Vec::new());
-                }
-                let (column, row) = best_column(&match_direct(&s, p));
-                (column[row] as f64, row, column)
-            })
-            .collect();
-        let mut d = 0;
-        for i in 1..best.len() {
-            if best[i].0 > best[d].0 {
-                d = i;
-            }
-        }
-        let (score, row, column) = (&best[d].0, best[d].1, &best[d].2);
-        if *score < min_score {
-            continue;
-        }
-        let top = subpixel(column, row) - pad as f64;
+        let top = subpixel(&column, row) - pad as f64;
         let mut dd = d as f64;
-        if d > 0 && d + 1 < best.len() {
-            let (a, bb, c) = (best[d - 1].0, best[d].0, best[d + 1].0);
+        if d > 0 && d + 1 < scores.len() {
+            let (a, bb, c) = (scores[d - 1], scores[d], scores[d + 1]);
             let den = a - 2.0 * bb + c;
             if den < 0.0 {
                 dd = d as f64 + 0.5 * (a - c) / den;
@@ -187,20 +264,31 @@ pub fn track_letter_pair(frames: &[Gray], b: &LetterBox, min_score: f64, refs: &
         fr.push(k as f64 + 0.5);
         ys.push(top);
         ys.push(top + dd);
-        sc.push(*score);
-        sc.push(*score);
+        sc.push(score);
+        sc.push(score);
     }
     Track { index: b.index, ch: b.ch, rest_y: b.y, frames: fr, y: ys, score: sc }
 }
 
-pub fn track_all(frames: &[Gray], cal: &Calibration, min_score: f64, blended: Blend) -> Vec<Track> {
+pub fn track_all(frames: &[Gray], cal: &Calibration, min_score: f64, blended: Blend, reuse: Option<Reuse>) -> Vec<Track> {
     let refs: Vec<f64> = frames.iter().map(bright_level).collect();
     cal.letters
         .par_iter()
         .map(|b| match blended {
-            Blend::Pair => track_letter_pair(frames, b, min_score, &refs),
-            Blend::Yes => track_letter(frames, b, min_score, &refs, true),
-            Blend::No => track_letter(frames, b, min_score, &refs, false),
+            Blend::Pair => track_letter_pair(frames, b, min_score, &refs, reuse),
+            Blend::Yes => track_letter(frames, b, min_score, &refs, true, reuse),
+            Blend::No => track_letter(frames, b, min_score, &refs, false, reuse),
         })
         .collect()
+}
+
+/// Match every letter on `frames` (absolute indices `ids`) ahead of the analyses that will need
+/// them: the live detector does this once the name is read, while the fall's last frames arrive.
+pub fn prefill(frames: &[Gray], ids: &[usize], cal: &Calibration, cache: &MatchCache) {
+    let reuse = Some(Reuse { cache, ids });
+    let refs: Vec<f64> = frames.iter().map(bright_level).collect();
+    cal.letters.par_iter().for_each(|b| {
+        let _ = track_letter(frames, b, 2.0, &refs, false, reuse);
+        let _ = track_letter_pair(frames, b, 2.0, &refs, reuse);
+    });
 }

@@ -75,14 +75,28 @@ pub fn replay(args: &[String]) {
             let s = game_frame(r.run_start) as f64 / fps;
             let sub = format!("{}{}", r.sublevel.map(|x| x.to_string()).unwrap_or("?".into()), if r.sublevel_source == "digit" { "" } else { "~" });
             if r.update {
-                eprintln!("[{}:{:05.2}] {}-{}  (sublevel read on screen)", (s / 60.0) as u64, s % 60.0, r.cave, sub);
+                if r.refined {
+                    eprintln!(
+                        "[{}:{:05.2}] {}-{}  {}  {:?}{}  (full analysis, ready {:.2}s after settling)",
+                        (s / 60.0) as u64,
+                        s % 60.0,
+                        r.cave,
+                        sub,
+                        r.letter_seed.as_deref().unwrap_or("none"),
+                        r.confidence,
+                        r.chained.map(|d| format!(" +chained {d}")).unwrap_or_default(),
+                        r.ready_after_s
+                    );
+                } else {
+                    eprintln!("[{}:{:05.2}] {}-{}  (sublevel read on screen)", (s / 60.0) as u64, s % 60.0, r.cave, sub);
+                }
                 if let Some(old) = rows.iter_mut().find(|x| x.run_start == r.run_start) {
                     *old = r;
                 }
                 continue;
             }
             eprintln!(
-                "[{}:{:05.2}] {}-{}  {}  {:?}{}  ready {:.2}s after settling (name {:.2}{}, analysis {:.2}, chain {:.2}) tail {}",
+                "[{}:{:05.2}] {}-{}  {}  {:?}{}  ready {:.2}s after settling (name {:.2}{}, prefill {:.2}, analysis {:.2}, chain {:.2}) tail {}",
                 (s / 60.0) as u64,
                 s % 60.0,
                 r.cave,
@@ -93,6 +107,7 @@ pub fn replay(args: &[String]) {
                 r.ready_after_s,
                 r.name_s,
                 if r.hinted { " hinted" } else { "" },
+                r.prefill_s,
                 r.analyze_s,
                 r.chain_s,
                 r.tail
@@ -132,6 +147,7 @@ pub fn replay(args: &[String]) {
         n_in as f64 / info.fps,
         t_start.elapsed().as_secs_f64()
     );
+    println!("analysis stage time (all threads): {}", crate::stage_report());
     if let Some(p) = arg(args, "--out") {
         let mut f = std::fs::File::create(p).unwrap();
         for r in &rows {
