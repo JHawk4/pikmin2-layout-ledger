@@ -1716,6 +1716,74 @@ def closing_end(path: str, first: int, last: int):
 CLOSING_LAG = 6     # closing_end minus the burst-start frame the f0 trials are centred on
 
 
+def _lines(v, n, tol):
+    """n equally spaced cluster centres among values v (clusters = runs with gaps <= tol)."""
+    v = np.sort(v)
+    groups, cur = [], [v[0]]
+    for x in v[1:]:
+        if x - cur[-1] > tol:
+            groups.append(cur); cur = [x]
+        else:
+            cur.append(x)
+    groups.append(cur)
+    cs = [(float(np.median(g)), len(g)) for g in groups if len(g) >= 2]
+    best = None
+    for i in range(len(cs) - n + 1):
+        c = np.array([x for x, k in cs[i:i + n]]); k = sum(k for x, k in cs[i:i + n])
+        d, x0 = np.polyfit(np.arange(n), c, 1)
+        res = np.abs(c - (x0 + d * np.arange(n))).max()
+        if res < 0.12 * d and (best is None or k > best[0]):
+            best = (k, d, x0)
+    return best
+
+def register_grid(f):
+    """Menu registration from the 5x6 grid of stage flowers alone (no text, so any language):
+    pink blobs -> column and row lattice -> scale and offset. None when the grid is not found."""
+    R = load_reference(); gr = R['grid']
+    f = f.astype(np.int16); b,g,r = f[...,0],f[...,1],f[...,2]
+    pink = ((r>140)&(b>110)&(g<170)&(r-g>40)&(b-g>10)).astype(np.uint8)
+    pink = cv2.morphologyEx(pink, cv2.MORPH_OPEN, np.ones((3,3),np.uint8))
+    n, lab, stats, cen = cv2.connectedComponentsWithStats(pink)
+    ar = stats[1:, 4]; cen = cen[1:]
+    if len(ar) < 12: return None
+    med = np.median(np.sort(ar)[-30:])
+    keep = (ar > med/2.2) & (ar < med*2.2)
+    P = cen[keep]
+    if len(P) < 12: return None
+    w = np.sqrt(med)
+    bx = _lines(P[:,0], 5, w*0.6)
+    if bx is None: return None
+    _, dx, x0 = bx
+    P = P[(P[:,0] > x0 - dx/2) & (P[:,0] < x0 + 4.5*dx)]
+    by = _lines(P[:,1], 6, w*0.45)
+    if by is None: return None
+    _, dy, y0 = by
+    sx, sy = dx/gr['dx'], dy/gr['dy']
+    return dict(score=1.0, sx=float(sx), sy=float(sy), lx=float(x0-(gr['x0']-REF_R0[0])*sx), ly=float(y0-(gr['y0']-REF_R0[1])*sy), grid=int(len(P)))
+
+
+def video_registration(path: str, visits, n: int = 9):
+    """One registration for a whole video (the capture layout does not change): the median of the
+    flower-grid registration over frames just after the "Pick one!" window closes in up to n visits."""
+    cap = cv2.VideoCapture(path)
+    regs = []
+    step = max(1, len(visits) // n)
+    for v in list(visits)[::step]:
+        e = closing_end(path, max(0, v[0] - 75), v[1] + 14)
+        for fr in ((e + 3, e + 9) if e is not None else (v[0] + 3,)):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, fr)
+            ok, f = cap.read()
+            r = register_grid(f) if ok else None
+            if r is not None:
+                regs.append(r)
+    if len(regs) < 3:
+        return None
+    out = {k: float(np.median([r[k] for r in regs])) for k in ("sx", "sy", "lx", "ly")}
+    out.update(score=1.0, frames=len(regs),
+               spread={k: float(np.ptp([r[k] for r in regs])) for k in ("sx", "sy", "lx", "ly")})
+    return out
+
+
 def refine_registration(frame, reg, min_score: float = 0.85, search: int = 22):
     """Sharpen a menu registration with the tally icons themselves: match each reference icon near
     its registered place and refit x and y scale/offset from the icons that match well (the colours

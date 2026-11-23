@@ -49,7 +49,26 @@ def anchored_dives(video, span):
 
 NEAR = 110_000      # draws before the results roll that hold ~93% of dives (dive_distances.json)
 DET_CLEAR = 0.10    # with an unclear grey read, a detection margin at or above this wins
+SMALL = 15          # stages with at most this many Pikmin are read over the whole window in one go
 CLEAR = 0.05        # a grey margin at or above this is taken without widening or cross-checking
+
+
+_REG = {}
+
+
+def video_reg(video):
+    """The video's menu registration (flower grid, median over visits), cached beside the dives."""
+    name = os.path.basename(video)
+    if name not in _REG:
+        cache = os.path.join(ROOT, "data", "challenge", "crosscheck", "dives", f"{name}_reg.json")
+        if os.path.exists(cache):
+            _REG[name] = json.load(open(cache))
+        else:
+            visits = json.load(open(os.path.join(ROOT, "data", "challenge", f"visits_{name}.json")))
+            _REG[name] = cd.video_registration(video, visits)
+            os.makedirs(os.path.dirname(cache), exist_ok=True)
+            json.dump(_REG[name], open(cache, "w"))
+    return _REG[name]
 
 
 def _grey(video, v, truth, window, tag, log):
@@ -58,7 +77,7 @@ def _grey(video, v, truth, window, tag, log):
     if os.path.exists(cache):
         return json.load(open(cache))
     t = time.time()
-    r = cd.read_dive(video, v, window=window, probe=[truth], log=log, skip_if_clear=True,
+    r = cd.read_dive(video, v, window=window, probe=[truth], log=log, skip_if_clear=True, reg=video_reg(video),
                      prune_coarse=(4, 4), rank_mid=500)
     r["seconds"] = time.time() - t
     r["window"] = list(window)
@@ -67,11 +86,16 @@ def _grey(video, v, truth, window, tag, log):
     return r
 
 
-def grey_read(video, v, truth, end, span, log=lambda s: None, near=NEAR, tag="g"):
+def grey_read(video, v, truth, end, span, log=lambda s: None, near=NEAR, tag="h"):
     """Grey reader over the window, nearest states first: the `near` draws before the roll, and the
     rest only when that read has no clear leader. Returns the read with the larger margin."""
     r = _grey(video, v, truth, (end, min(near, span), 0), f"{tag}n{near // 1000}k", log)
     r["stages"] = 1
+    if span > near and r.get("counts") and sum(r["counts"]) <= SMALL:
+        # few Pikmin: a wrong state can lead a part of the window clearly, so rank the whole window at once
+        r = _grey(video, v, truth, (end, span, 0), f"{tag}w{span // 1000}k", log)
+        r["stages"] = 1
+        return r
     if span <= near or (r.get("margin") or 0) >= CLEAR or not r.get("candidates"):
         return r
     r2 = _grey(video, v, truth, (end, span - near, near), f"{tag}r{near // 1000}k_{span // 1000}k", log)
@@ -182,7 +206,7 @@ def main():
     ap.add_argument("--colour-body", action="store_true")
     ap.add_argument("--family", type=int, default=3, help="refit the leader's +-4j shifts, j <= this")
     ap.add_argument("--always-det", action="store_true", help="run the detection cross-check on clear grey reads too")
-    ap.add_argument("--tag", default="g", help="cache tag for the grey reads")
+    ap.add_argument("--tag", default="h", help="cache tag for the grey reads")
     ap.add_argument("--out")
     a = ap.parse_args()
     sp = dr.load_sprites()
