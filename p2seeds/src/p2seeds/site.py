@@ -1147,6 +1147,11 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages",
                 + ([(_load(Path(wii_root)), "wii/")] if has_wii else []))
     write_gecko(out / "gecko.html", sections)
     i18n.write_js(out / "i18n.js", runner_names([r for runs, _ in sections for r in runs]))
+    for page in out.rglob("*.html"):         # a section built before the switch existed gets it here
+        text = page.read_text(encoding="utf-8")
+        fixed = i18n.add_switch(text, "../" * (len(page.relative_to(out).parts) - 1))
+        if fixed != text:
+            page.write_text(fixed, encoding="utf-8")
     return out
 
 
