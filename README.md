@@ -104,6 +104,20 @@ The report site is at https://jhawk4.github.io/pikmin2-layout-ledger/. To update
 This copies the landing page and each run's pages and layout images into `data/pages` and pushes them to the
 `gh-pages` branch as a single commit that replaces the previous one, so the history doesn't grow with each rebuild.
 
+### Japanese
+
+Every page has an English/日本語 switch in its header, like CaveGen3's. The pages are written in English once;
+`i18n.js` at the site root (written by `site` and `publish`) swaps each piece of English it knows for Japanese
+in the browser, including chart tooltips and text the pages' scripts add later. The choice is remembered
+(`?lang=ja` / `?lang=en` in a link also sets it), and browsers set to Japanese get Japanese first. Numbers,
+seeds, cave codes and runners' names fill placeholders, and treasure and cave names become the game's Japanese
+names. The Japanese is in `p2seeds/src/p2seeds/ja_table.py` (see `i18n.py` for how it is matched). After
+changing a page's English, list what the table lacks with:
+
+```bash
+.venv/Scripts/python -m p2seeds i18n data/pages
+```
+
 ## How a seed is found
 
 Each falling letter is tracked down its column by template matching (`track.py`). Some captures blend

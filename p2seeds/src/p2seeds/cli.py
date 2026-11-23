@@ -170,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
     pb.add_argument("--wii-root", default="data/output_wii", help="the Wii Pay Off Debt section's runs (built with site --root), published under wii/")
     pb.add_argument("--out", default="data/pages")
     pb.add_argument("--no-push", action="store_true", help="only copy the files")
+    ja = sub.add_parser("i18n", help="list the English on a built site (e.g. data/pages) that the Japanese table lacks")
+    ja.add_argument("site_dir", nargs="?", default="data/pages")
     dg = sub.add_parser("debug", help="debug image of the letter tracking and fall fit for one entry screen")
     dg.add_argument("video")
     dg.add_argument("--frame", type=int, required=True, help="a frame inside the entry screen (seeds.json 'frame')")
@@ -207,6 +209,14 @@ def main(argv: list[str] | None = None) -> int:
             site.publish(out)
             log("pushed to gh-pages")
         return 0
+
+    if args.cmd == "i18n":
+        from . import i18n
+        missing = i18n.check(Path(args.site_dir))
+        for k in missing:
+            print(k)
+        log(f"{len(missing)} missing; add them to ja_table.py (or its KEEP list)")
+        return 1 if missing else 0
 
     if args.cmd == "debug":
         from . import debug
