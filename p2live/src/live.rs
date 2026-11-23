@@ -465,7 +465,7 @@ fn name_job(sh: &Shared, job: Job) {
         let cache = job.state.lock().unwrap().cache.clone();
         let lo = a - lead;
         let ids: Vec<usize> = (lo..=b).map(|j| job.first + j).collect();
-        prefill(&job.frames[lo..=b], &ids, c, &cache);
+        prefill(&job.frames[lo..=b], &ids, c, &cache, false);
         prefill_s = t1.elapsed().as_secs_f64();
     }
     let mut st = job.state.lock().unwrap();
@@ -639,7 +639,12 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
     let r2 = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, false, Some(&cache));
     let (letter2, conf2, chained2) = settle(sh, &r2);
     let full_s = t_full.elapsed().as_secs_f64();
-    if letter2.is_none() || (letter2 == letter && conf2 <= conf) || conf2 < conf {
+    // a different seed replaces the shown one only when it can be trusted (high or chained): on a
+    // weak fall the variants disagree, and an equally unsure answer is no better (replays: three
+    // of four such swaps moved away from the offline answer)
+    let trusted2 = conf2 == Conf::High || chained2.is_some();
+    let better = if letter2 == letter { conf2 > conf } else { trusted2 && (conf2 > conf || chained.is_none()) };
+    if letter2.is_none() || !better {
         (sh.log)(&format!("[{}] full analysis ({full_s:.1} s) found nothing better", job.a));
         return;
     }

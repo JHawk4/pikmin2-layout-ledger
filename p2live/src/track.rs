@@ -284,11 +284,15 @@ pub fn track_all(frames: &[Gray], cal: &Calibration, min_score: f64, blended: Bl
 
 /// Match every letter on `frames` (absolute indices `ids`) ahead of the analyses that will need
 /// them: the live detector does this once the name is read, while the fall's last frames arrive.
-pub fn prefill(frames: &[Gray], ids: &[usize], cal: &Calibration, cache: &MatchCache) {
+/// `pairs` also matches the doubled-letter templates, which only a hard fall needs (and which
+/// cost more than the single matches); without it they are matched when an analysis asks.
+pub fn prefill(frames: &[Gray], ids: &[usize], cal: &Calibration, cache: &MatchCache, pairs: bool) {
     let reuse = Some(Reuse { cache, ids });
     let refs: Vec<f64> = frames.iter().map(bright_level).collect();
     cal.letters.par_iter().for_each(|b| {
         let _ = track_letter(frames, b, 2.0, &refs, false, reuse);
-        let _ = track_letter_pair(frames, b, 2.0, &refs, reuse);
+        if pairs {
+            let _ = track_letter_pair(frames, b, 2.0, &refs, reuse);
+        }
     });
 }
