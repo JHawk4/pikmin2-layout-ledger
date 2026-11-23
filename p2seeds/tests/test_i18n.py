@@ -104,3 +104,10 @@ console.log(JSON.stringify(samples.map(s => [window.ledgerI18n.template(s), wind
     assert by["SH 6 · JackDraz 1:30:25 · 12:04"] is None            # nothing to translate: names, codes and times stay
     assert by["timed by the video clock, timing step of 1 frame at fall frame 9 seed confirmed by its neighbor's"] == \
         "動画の時刻で計時、落下9フレーム目で1フレームのずれ、前後の階でシードを確認"
+
+
+def test_export_adds_the_switch_to_pages_built_without_it():
+    old = '<body><header class="site-header"><nav></nav></header><main>x</main></body>'
+    new = i18n.add_switch(old, "../../")
+    assert 'id="lang-toggle"' in new and 'src="../../i18n.js"' in new and "<main>x</main>" in new
+    assert i18n.add_switch(new, "../../") == new and i18n.add_switch("<p>no header</p>", "") == "<p>no header</p>"

@@ -326,6 +326,13 @@ def header_html(root: str) -> str:
             f'<script src="{root}i18n.js" defer></script>')
 
 
+def add_switch(page: str, root: str) -> str:
+    """A themed page built before the switch existed, with it added to the end of its header."""
+    if 'id="lang-toggle"' in page or '<header class="site-header">' not in page:
+        return page
+    return page.replace("</header>", header_html(root) + "</header>", 1)
+
+
 RUNTIME = r"""// Japanese for the Pikmin 2 Layout Ledger. Built by p2seeds/i18n.py; see there for how it works.
 (() => {
 const DATA = /*TABLE*/null;
