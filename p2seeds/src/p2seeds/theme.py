@@ -11,6 +11,8 @@ from __future__ import annotations
 import html
 import re
 
+from . import i18n
+
 SITE = "Pikmin 2 Layout Ledger"
 
 LOGO = ('<svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true">'
@@ -80,7 +82,8 @@ def category_of(kind: str | None, where=None) -> str:
 def header(prefix: str = "", run: str | None = None, active: str = "runs", category: str = "pod") -> str:
     """Site header. `prefix` leads from the page to its section's root ("" or "../"); on a run's
     pages `run` names it and its two pages appear in the navigation. Each category has its own
-    section (Pay Off Debt at the site root, All Treasures under at/), with a switch between them."""
+    section (Pay Off Debt at the site root, All Treasures under at/), with a switch between them.
+    The English/Japanese switch and i18n.js (at the site root) come last (see i18n.py)."""
     root = prefix + next(("../" * sub.count("/") for key, _, sub in CATEGORIES if key == category), "")
     links = [("runs", f"{prefix}index.html", "All runs")]
     if run:
@@ -100,7 +103,7 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs", categ
                    for key, label, sub in CATEGORIES)
     return (f'<header class="site-header"><a class="site-logo" href="{root}index.html">{LOGO}{SITE}</a>'
             f'<nav class="site-cats" aria-label="Category">{cats}</nav>'
-            f'<nav class="site-nav">{nav}</nav></header>')
+            f'<nav class="site-nav">{nav}</nav>{i18n.header_html(root)}</header>')
 
 
 FOOTER = ('<footer class="site-footer">Layouts, pictures, treasures and the judge from '

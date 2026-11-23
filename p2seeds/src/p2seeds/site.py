@@ -9,6 +9,7 @@
   data/output/detection.html           pick a run's seed detection page
   data/output/timesave.html            every run's time per sublevel, raw or beyond the layout
   data/output/<run>/judge.html         layouts and luck for one run (run_page; judge_report for other categories)
+  data/output/i18n.js                  the Japanese for every page (i18n.py; export writes it at the site root)
 
 Seed order: each detected letter seed is located in the RNG sequence relative to
 the run's first one (how many RNG steps after it). Over a run that number must
@@ -30,7 +31,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cavegen, charts, judge2, judge_page, judge_report, luck, rng, run_page, theme, treasures
+from . import cavegen, charts, i18n, judge2, judge_page, judge_report, luck, rng, run_page, theme, treasures
 
 STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "SC", "CoC", "HoH", "DD"]
 
@@ -732,11 +733,12 @@ def _missing_note(manifest: Path = Path("data/videos/manifest.json")) -> str:
                   key=lambda r: (r.get("series") == "wr", r.get("place") or 99, r.get("date", "")))
     if not gone:
         return ""
-    items = ", ".join(f'{html.escape(_run_label(r, "?"))}'
-                      + (f' (rank {r["place"]})' if r.get("place") and r.get("series") != "wr" else " (former WR)")
-                      for r in gone)
-    return (f'<p class="muted small">Not here: {items}. Their videos could not be downloaded '
-            f'(deleted, private, or not available).</p>')
+    # each run in its own span, the name marked as not to translate, so the Japanese page can swap the words around it
+    items = "<span>, </span>".join(f'<span><bdi translate="no">{html.escape(_run_label(r, "?"))}</bdi>'
+                                   + (f' (rank {r["place"]})' if r.get("place") and r.get("series") != "wr" else " (former WR)")
+                                   + "</span>" for r in gone)
+    return (f'<p class="muted small"><span>Not here: their videos could not be downloaded (deleted, private, or not '
+            f'available).</span> {items}</p>')
 
 
 def _platform_badge(run: dict) -> str:
@@ -1095,9 +1097,15 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
         page = head.replace("@TITLE@", html.escape(title)) + body + tail.replace("@SCRIPTS@", scripts)
         (root / name).write_text(theme.apply(page, prefix="", active=active, category=category), encoding="utf-8")
     dest = root / "index.html"
-    if category == "pod":         # one suggestion box, at the site root
+    if category == "pod":         # one suggestion box, at the site root; and the Japanese (export rewrites it over every section)
         (root / "suggest.html").write_text(theme.apply(theme.suggest_page(), prefix="", active="suggest"), encoding="utf-8")
+        i18n.write_js(root / "i18n.js", runner_names(runs))
     return dest
+
+
+def runner_names(runs: list[dict]) -> list[str]:
+    """Every runner's name (kept as it is on the Japanese pages)."""
+    return sorted({p["name"] for r in runs for p in r["run"].get("players", []) if p.get("name")})
 
 
 def export(root: str | Path = "data/output", out: str | Path = "data/pages",
@@ -1135,9 +1143,10 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages",
     has_wii = wii_root is not None and (Path(wii_root) / "index.html").exists()
     if has_wii:
         _copy_section(Path(wii_root), out / "wii")
-    write_gecko(out / "gecko.html", [(_load(root), "")]
-                + ([(_load(Path(at_root)), "at/")] if has_at else [])
+    sections = ([(_load(root), "")] + ([(_load(Path(at_root)), "at/")] if has_at else [])
                 + ([(_load(Path(wii_root)), "wii/")] if has_wii else []))
+    write_gecko(out / "gecko.html", sections)
+    i18n.write_js(out / "i18n.js", runner_names([r for runs, _ in sections for r in runs]))
     return out
 
 
