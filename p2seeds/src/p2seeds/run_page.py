@@ -510,7 +510,7 @@ random layouts this one beats. Click a heading to sort, a sublevel to see its ca
     if info["kind"] == "at":
         for pod_text, at_text in AT_TEXT:
             page = page.replace(pod_text, at_text)
-    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge", category=theme.category_of(info["kind"]))
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="judge", category=theme.category_of(info["kind"], out_dir))
     dest = out_dir / "judge.html"
     dest.write_text(page, encoding="utf-8")
     return dest

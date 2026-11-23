@@ -233,7 +233,7 @@ def write(out_dir: str | Path, progress=None, force: bool = False) -> Path:
     from . import theme
     jp = out_dir / "judge.json"
     kind = json.loads(jp.read_text(encoding="utf-8")).get("kind", "pod") if jp.exists() else "pod"
-    page = theme.apply(page, prefix="../", run=out_dir.name, active="detection", category=theme.category_of(kind))
+    page = theme.apply(page, prefix="../", run=out_dir.name, active="detection", category=theme.category_of(kind, out_dir))
     path = out_dir / "report.html"
     path.write_text(page, encoding="utf-8")
     return path

@@ -43,3 +43,15 @@ def test_reheader_swaps_only_the_header():
     again = theme.reheader(page, category="at")
     assert again.count('class="site-header"') == 1 and "<main>x</main>" in again
     assert 'aria-current=page>All Treasures' in again
+
+
+def test_wii_section_has_its_own_folder_and_pokos(tmp_path):
+    wii_index = _links(theme.header("", None, "runs", "wii"))
+    wii_run = _links(theme.header("../", "x", "judge", "wii"))
+    assert wii_index["Pay Off Debt (Wii)"] == "../wii/index.html" and wii_index["Pay Off Debt"] == "../index.html"
+    assert wii_run["All Treasures"] == "../../at/index.html" and "Pokos" in wii_index
+    # Wii runs are judged as Pay Off Debt; the section root's section.txt puts them in their own section
+    (tmp_path / "section.txt").write_text("wii\n")
+    (tmp_path / "run").mkdir()
+    assert theme.category_of("pod", tmp_path) == "wii" and theme.category_of("pod", tmp_path / "run") == "wii"
+    assert theme.category_of("pod") == "pod" and theme.category_of("at", tmp_path.parent) == "at"

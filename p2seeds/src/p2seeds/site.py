@@ -421,7 +421,7 @@ are the sort's values; drag across a chart to see the slope of just that stretch
 
 
 def add_run_note(category: str = "pod") -> str:
-    root = "../" if category == "at" else ""
+    root = "" if category == "pod" else "../"
     return ('<p class="muted">Missing a run, or want one added? Share its video or speedrun.com link in the '
             f'<a href="{root}suggest.html">suggestion box</a>.</p>')
 
@@ -588,7 +588,7 @@ def timesave_page(runs: list[dict], acts: list[dict], category: str = "pod") -> 
         tip = (f"{sub} · {runner} · {e.get('time', '')}\n"
                f"took {a['took']:.1f} s (median run {a['median_took']:.1f} s)"
                + (f"\n{a['pokos']} pokos (median run {a['median_pokos']:g})" if a.get("pokos") is not None and a.get("median_pokos") is not None else "")
-               + f"\nvs the median run: {a['raw']:+.1f} s" + (", pokos counted" if category == "pod" else "")
+               + f"\nvs the median run: {a['raw']:+.1f} s" + (", pokos counted" if category in theme.POKO_CATEGORIES else "")
                + (f"\nlayout vs the median run's: {a['expected']:+.1f} s by the judge" if a.get("expected") else "")
                + f"\nbeyond the layout: {a['net']:+.1f} s"
                + f"\nvs par (median runner, median layout): {a['par']:+.1f} s")
@@ -616,7 +616,7 @@ def timesave_page(runs: list[dict], acts: list[dict], category: str = "pod") -> 
                       f"<tbody>{''.join(trs)}</tbody></table></div>")
     return f'''
 <h1>Time saved by sublevel</h1>
-<p>Seconds each run gained or lost on each sublevel{POKOS_NOTE if category == "pod" else ""}. Negative (green) is faster. Hover a cell for the details; click it to open the video there.</p>
+<p>Seconds each run gained or lost on each sublevel{POKOS_NOTE if category in theme.POKO_CATEGORIES else ""}. Negative (green) is faster. Hover a cell for the details; click it to open the video there.</p>
 <fieldset class="ts-pick"><legend class="muted">Show</legend>
 <label><input type="radio" name="ts" value="net" checked> <b>The runner beyond the layout</b>: the judge's difference between
 this layout and the median run's is taken out, so it shows execution, not luck</label>
@@ -757,6 +757,10 @@ CATEGORY_TEXT = {
             "luck": "CaveGen's layout judge re-tuned on these runs' real times",
             "runner": "allowing for the layouts (so a bad layout is not counted against the runner), with pokos counted: "
                       "2 pokos = 1 second"},
+    "wii": {"name": "Pay Off Debt (Wii)",
+            "luck": "CaveGen's layout judge re-tuned on these runs' real times",
+            "runner": "allowing for the layouts (so a bad layout is not counted against the runner), with pokos counted: "
+                      "2 pokos = 1 second"},
     "at": {"name": "All Treasures",
            "luck": "CaveGen's All Treasures judge with walking, carrying, enemy and gate times weighted as the re-tuned "
                    "Pay Off Debt judge, which matches these runs' real times (a missing treasure or missing purple flowers "
@@ -770,6 +774,9 @@ JUDGE_NOTE = {
             "treasures runners don't collect, a choice of which treasures to skip, and re-weighted walking, carrying, enemy "
             "and gate times. CaveGen's original judge had slope 0.79 here (it overstated layout differences by about a fifth) "
             "and R² 0.37."),
+    "wii": ("The judge is CaveGen's Pay Off Debt judge, with the parts and weights refit on the GameCube Pay Off Debt runs "
+            "(see that section's judge page), and its scale refit here on these Wii runs. Wii and Wii U loads are shorter, "
+            "and on the Wii U many sublevel titles are cut short or skipped, so fewer sublevels have a seed than on GameCube."),
     "at": ("The judge is CaveGen's All Treasures judge (with the Japanese treasure weights for Japanese runs), its walking, "
            "carrying, enemy and gate times weighted as the Pay Off Debt judge's, which were fitted on that category's runs and "
            "never on these. CaveGen's own weights had slope 0.78 here (they overstated layout differences by about a fifth) and "
@@ -786,7 +793,7 @@ def build(root: str | Path = "data/output") -> Path:
             if (d / "judge.json").exists():
                 judge2.add_to_run(d)          # only fills what is missing
     runs = _load(root)
-    category = theme.category_of(runs[0]["kind"] if runs else "pod")
+    category = theme.category_of(runs[0]["kind"] if runs else "pod", root)
     ctext = CATEGORY_TEXT[category]
     key0 = "judge2" if any(x.get("judge2_score") is not None for r in runs for x in r["entries"]) else "judge"
     cal0 = calibration(runs, key0)
@@ -1018,7 +1025,7 @@ Click a column to sort; open a runner for their layouts.</li>
 <thead><tr><th class="num" data-sort>Rank</th><th class="sticky" data-sort>Runner</th><th data-sort>Time</th>
 <th class="num" data-sort title="Seconds the layouts should save vs median layouts">Layout luck</th>
 <th class="num" data-sort title="Share of random runs over the same sublevels this run's layouts beat">Luck percentile</th>
-<th class="num" data-sort title="Seconds saved vs the median run beyond what the layouts gave{', pokos counted (2 = 1 s)' if category == 'pod' else ''}">Runner beyond layouts</th>
+<th class="num" data-sort title="Seconds saved vs the median run beyond what the layouts gave{', pokos counted (2 = 1 s)' if category in theme.POKO_CATEGORIES else ''}">Runner beyond layouts</th>
 <th class="num" data-sort title="Sublevels whose seed was read with confidence">Seeds read</th>
 <th data-sort>Date</th><th>Pages</th></tr></thead>
 <tbody>{"".join(trs)}</tbody></table></div>
@@ -1081,7 +1088,7 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
              ("pokos.html", "pokos", "Pikmin 2 Layout Ledger · pokos by sublevel", pokos_html.replace('<h2 id="pokos">', '<h1 id="pokos">', 1)
               .replace("Pokos by sublevel</h2>", "Pokos by sublevel</h1>", 1), ""),
              ("seeds.html", "seeds", "Pikmin 2 Layout Ledger · seed order check", seeds, "")]
-    if category != "pod":
+    if category not in theme.POKO_CATEGORIES:
         pages = [p for p in pages if p[0] != "pokos.html"]
         (root / "pokos.html").unlink(missing_ok=True)
     for name, active, title, body, scripts in pages:
@@ -1094,7 +1101,7 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
 
 
 def export(root: str | Path = "data/output", out: str | Path = "data/pages",
-           at_root: str | Path | None = "data/output_at") -> Path:
+           at_root: str | Path | None = "data/output_at", wii_root: str | Path | None = "data/output_wii") -> Path:
     """Copy the built site (landing page, each run's pages and layout images) into `out`,
     ready to serve as static files (GitHub Pages). Videos, caches and JSON stay behind.
     The All Treasures section, built in `at_root`, goes to `out`/at/."""
@@ -1125,7 +1132,12 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages",
     has_at = at_root is not None and (Path(at_root) / "index.html").exists()
     if has_at:
         _copy_section(Path(at_root), out / "at")
-    write_gecko(out / "gecko.html", [(_load(root), "")] + ([(_load(Path(at_root)), "at/")] if has_at else []))
+    has_wii = wii_root is not None and (Path(wii_root) / "index.html").exists()
+    if has_wii:
+        _copy_section(Path(wii_root), out / "wii")
+    write_gecko(out / "gecko.html", [(_load(root), "")]
+                + ([(_load(Path(at_root)), "at/")] if has_at else [])
+                + ([(_load(Path(wii_root)), "wii/")] if has_wii else []))
     return out
 
 
@@ -1139,7 +1151,8 @@ def write_gecko(dest: Path, sections: list[tuple[list[dict], str]]) -> Path:
 def _copy_section(root: Path, out: Path) -> None:
     import shutil
     out.mkdir(parents=True)
-    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "how-judge.html", "accuracy.html", "seeds.html"):
+    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "how-judge.html", "accuracy.html", "pokos.html",
+                 "seeds.html"):
         if (root / name).exists():
             shutil.copy2(root / name, out / name)
     for run in sorted(p for p in root.iterdir() if (p / "judge.html").exists()):

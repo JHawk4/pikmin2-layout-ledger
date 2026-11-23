@@ -56,12 +56,15 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
             show(r, e)
             (results if r.cave_id else rejected).append(r)
     # second pass: on blurry captures a whole cave can match just under the threshold
-    from .analyze import rescue_caves
-    for r0, cave in rescue_caves(rejected + [r for r in results if r.near], results):
-        for r in analyze_event(video, feed, r0.event, only=cave):
+    from .analyze import RESCUE_MARGIN_NEAR, rescue_caves
+    from .events import is_wide
+    for r0, cave, margin in rescue_caves(rejected + [r for r in results if r.near], results, wide=is_wide(feed)):
+        for r in analyze_event(video, feed, r0.event, only=cave, only_margin=margin):
             if r.cave_id and not any(x.cave_id == r.cave_id and abs((x.settled_frame or 0) - (r.settled_frame or 0)) < 90
                                      for x in results):
-                r.note = ", ".join(x for x in (r.note, "cave name matched weakly (blurry capture)") if x)
+                why = ("title cut short, cave as its neighbour's" if margin == RESCUE_MARGIN_NEAR
+                       else "cave name matched weakly (blurry capture)")
+                r.note = ", ".join(x for x in (r.note, why) if x)
                 show(r, r0.event)
                 results.append(r)
     results.sort(key=lambda r: r.settled_frame or r.event.first)
@@ -155,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     pb = sub.add_parser("publish", help="copy the built site into data/pages and push it to the gh-pages branch")
     pb.add_argument("--root", default="data/output")
     pb.add_argument("--at-root", default="data/output_at", help="the All Treasures section's runs (built with site --root), published under at/")
+    pb.add_argument("--wii-root", default="data/output_wii", help="the Wii Pay Off Debt section's runs (built with site --root), published under wii/")
     pb.add_argument("--out", default="data/pages")
     pb.add_argument("--no-push", action="store_true", help="only copy the files")
     dg = sub.add_parser("debug", help="debug image of the letter tracking and fall fit for one entry screen")
@@ -184,7 +188,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "publish":
         from . import site
-        out = site.export(args.root, args.out, args.at_root)
+        out = site.export(args.root, args.out, args.at_root, args.wii_root)
         log(f"exported: {out}")
         if not args.no_push:
             site.publish(out)

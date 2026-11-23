@@ -8,7 +8,7 @@ import numpy as np
 
 from . import digits, lattice, letters_model, templates
 from .calibrate import Calibration, calibrate
-from .events import Event, is_entry_screen
+from .events import Event, is_entry_screen, is_wide, normalize
 from .feed import Feed
 from .fit import FitResult, fit
 from .search import Candidate, search
@@ -20,6 +20,9 @@ MIN_CAVE_MARGIN = 0.12     # and the best cave must beat the second best by this
 RESCUE_SCORE = 0.33        # second pass on blurry captures: a Pay Off Debt cave the run is still
 RESCUE_MARGIN = 0.06       # missing sublevels of may match this weakly (stray screens that score
                            # this well match Dream Den or Sublevel Cave, not run caves)
+RESCUE_SCORE_NEAR = 0.40   # Wii: a title cut short (the fade starts before the last letters land) matches
+RESCUE_MARGIN_NEAR = 0.02  # the right cave clearly but its rivals closely; accepted when the entry just
+                           # before or after it is that cave (wrong guesses fail the fit or the chain)
 MIN_CAVE_SCORE_JA = 0.48   # short Japanese names match random text up to ~0.40; true ones score ~0.6
 # Japanese names share endings (百戦錬磨の穴 / けだものの穴 / 夢の穴), so a clear match can still
 # have a close runner-up: keisen's Hole of Heroes scored 0.72 against 0.60. A match this strong
@@ -58,7 +61,7 @@ class EventResult:
     near: list = field(default_factory=list)   # every rejected (cave, score, margin) in the window
 
 
-def entry_runs(frames: list[np.ndarray], min_len: int = 6) -> list[tuple[int, int]]:
+def entry_runs(frames: list[np.ndarray], min_len: int = 6, fade: bool = False) -> list[tuple[int, int]]:
     """Runs [a, b] of consecutive frames that look like a settled entry screen.
 
     While letters are still falling they cross the top of the screen, so a run
@@ -66,7 +69,7 @@ def entry_runs(frames: list[np.ndarray], min_len: int = 6) -> list[tuple[int, in
     dark text screens (menus, memory card checks, overworld titles) form runs
     too; the caller tells them apart by recognizing the cave name.
     """
-    flags = [is_entry_screen(f) for f in frames]
+    flags = [is_entry_screen(f, fade=fade) for f in frames]
     runs, k = [], 0
     while k < len(flags):
         if flags[k]:
@@ -101,8 +104,13 @@ def digit_crop(feed_gray: np.ndarray, lang: str = "en") -> np.ndarray | None:
             groups.append((start, a))
             start = b
     groups.append((start, cols[-1]))
-    x0, x1 = groups[-1]
     h = rows[-1] - rows[0] + 1
+    # specks (bubbles, noise lifted by a brightness-normalized fading frame) are not digits
+    def tall(g):
+        r = np.nonzero(on[:, g[0]: g[1] + 1].any(axis=1))[0]
+        return len(r) and r[-1] - r[0] + 1 >= 0.4 * h
+    groups = [g for g in groups if tall(g)] or groups
+    x0, x1 = groups[-1]
     if lang == "ja" and len(groups) > 1:
         a, b = groups[-2]
         if b - a + 1 < 0.45 * h and x0 - b <= 0.8 * h:
@@ -142,8 +150,37 @@ def split_digits(crop: np.ndarray | None) -> list[np.ndarray]:
     return out
 
 
+def entry_runs_for(frames: list[np.ndarray], feed: Feed) -> list[tuple[int, int]]:
+    """entry_runs with the settings for this feed: a 16:9 (Wii) title is often settled for only
+    3-15 frames before it fades out, so shorter runs of fading frames count."""
+    return entry_runs(frames, min_len=3, fade=True) if is_wide(feed) else entry_runs(frames)
+
+
+def calibrate_fading(frames: list[np.ndarray], a: int, b: int, n: int = 6) -> tuple[Calibration | None, int]:
+    """Wii: the settled run is the few frames between landing and black, while the trails clear
+    and the picture fades. Calibrate on up to `n` of them (brightness-normalized); keep the best."""
+    from .caves import CAVES
+    ks = sorted({int(x) for x in np.linspace(a, b, min(n, b - a + 1))})
+    # all caves on the middle frame, then only the two best on the others (calibrate is slow)
+    k = ks[len(ks) // 2]
+    cal = calibrate(normalize(frames[k]))
+    if cal is None:
+        return None, k
+    names = {cal.cave.name, cal.runner_up[0] if cal.runner_up else None}
+    caves = [c for c in CAVES if c.name in names]
+    for k2 in ks:
+        if k2 == k:
+            continue
+        c2 = calibrate(normalize(frames[k2]), caves=caves)
+        if c2 is not None and c2.score > cal.score:
+            if c2.runner_up is None or (cal.runner_up and c2.runner_up[1] < cal.runner_up[1]):
+                c2.runner_up = cal.runner_up      # keep the strongest rival seen
+            cal, k = c2, int(k2)
+    return cal, k
+
+
 def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None = None,
-                  only: str | None = None) -> list[EventResult]:
+                  only: str | None = None, only_margin: float = RESCUE_MARGIN) -> list[EventResult]:
     """All sublevel entries inside one candidate window (usually one, sometimes two
     when consecutive entries are only seconds apart). Unrecognized windows yield a
     single result with a note. With `only` (a cave id), only that cave is accepted, at the
@@ -153,7 +190,8 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
     frames = [feed.crop(g) for g in video.frames(start, stop)]
     if not frames:
         return [EventResult(event, note="no frames decoded")]
-    runs = entry_runs(frames)
+    wide = is_wide(feed)
+    runs = entry_runs_for(frames, feed)
     if not runs:
         return [EventResult(event, note="no settled entry screen")]
 
@@ -164,8 +202,11 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
     near = []
     for a, b in runs:
         k = max(a, b - 3)             # late in the run: bubbles have faded, before the fade-out
-        cal = calibrate(frames[k])
-        if b - a < 90:
+        if wide:
+            cal, k = calibrate_fading(frames, a, b)
+        else:
+            cal = calibrate(frames[k])
+        if b - a < 90 and not wide:
             # a short title (the runner moved on quickly) may already be fading at the end of its
             # run: also try a frame a little earlier and keep the better match
             k2 = a + (b - a) * 2 // 3
@@ -178,7 +219,7 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
         if cal is not None and cal.cave.lang == "ja" and cal.score >= STRONG_CAVE_SCORE_JA:
             min_margin = STRONG_CAVE_MARGIN_JA
         if only is not None:
-            min_score, min_margin = RESCUE_SCORE, RESCUE_MARGIN
+            min_score, min_margin = RESCUE_SCORE, only_margin
             if cal is not None and cal.cave.cavegen != only:
                 cal = None
         if cal is None or cal.score < min_score or margin < min_margin:
@@ -211,8 +252,10 @@ def _analyze_entry(video, feed, event, frames, start, cal, a, b, k, search_kw=No
     r.cave, r.cave_id, r.cave_score, r.runner_up = cal.cave.label, cal.cave.cavegen, cal.score, cal.runner_up
     r.lang = cal.cave.lang
     r.num_chars = cal.cave.num_chars
-    r.digit_crop = digit_crop(frames[k], r.lang)
-    r.digit_value, r.digit_votes = _read_sublevel(frames, a, b, lang=r.lang)
+    # a fading (Wii) title: read "Sublevel N" at full brightness
+    settled = [normalize(f) for f in frames[a: b + 1]] if is_wide(feed) else frames[a: b + 1]
+    r.digit_crop = digit_crop(settled[k - a], r.lang)
+    r.digit_value, r.digit_votes = _read_sublevel(settled, 0, b - a, lang=r.lang)
 
     # the fall ends shortly after the run starts (bounces settle inside it)
     if a < FALL_LEAD:
@@ -448,20 +491,34 @@ def _confidence(cands: list[Candidate]) -> str:
 POD_CAVES = ("EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK")
 
 
-def rescue_caves(rejected: list[EventResult], found: list[EventResult]) -> list[tuple[EventResult, str]]:
-    """Unrecognized screens worth a second look: the best match is a Pay Off Debt cave the run
-    has not found all sublevels of yet, at RESCUE_SCORE / RESCUE_MARGIN. On blurry captures every
-    cave name matches weakly and a whole cave can fall just under the normal threshold."""
+def rescue_caves(rejected: list[EventResult], found: list[EventResult], wide: bool = False
+                 ) -> list[tuple[EventResult, str, float]]:
+    """Unrecognized screens worth a second look, with the margin to accept: the best match is a Pay
+    Off Debt cave the run has not found all sublevels of yet, at RESCUE_SCORE / RESCUE_MARGIN. On
+    blurry captures every cave name matches weakly and a whole cave can fall just under the normal
+    threshold. On `wide` (Wii) captures a cut-short title of the same cave as the entry just before
+    or after it is accepted at RESCUE_SCORE_NEAR / RESCUE_MARGIN_NEAR."""
     from .caves import CAVES_EN
     total = {c.cavegen: c.sublevels for c in CAVES_EN}
     have: dict[str, int] = {}
     for r in found:
         have[r.cave_id] = have.get(r.cave_id, 0) + 1
+    seen = sorted((r.settled_frame, r.cave_id) for r in found if r.settled_frame is not None and r.cave_id)
     out = []
     for r in rejected:
+        f = r.event.first
+        before = [c for fr, c in seen if fr < f][-1:]
+        after = [c for fr, c in seen if fr > r.event.last][:1]
+        neighbours = set(before + after) if wide else set()
         # any screen in the window may be the one: the best rejected match can be a menu or a
         # memory-card warning that happens to score higher than the blurry title
-        caves = {c for c, sc, m in (r.near or [(r.best_cave, r.cave_score, r.best_margin)])
-                 if c in POD_CAVES and have.get(c, 0) < total.get(c, 0) and sc >= RESCUE_SCORE and m >= RESCUE_MARGIN}
-        out += [(r, c) for c in sorted(caves)]
+        caves: dict[str, float] = {}
+        for c, sc, m in (r.near or [(r.best_cave, r.cave_score, r.best_margin)]):
+            if c not in POD_CAVES or have.get(c, 0) >= total.get(c, 0):
+                continue
+            if sc >= RESCUE_SCORE and m >= RESCUE_MARGIN:
+                caves[c] = min(caves.get(c, 1.0), RESCUE_MARGIN)
+            elif c in neighbours and sc >= RESCUE_SCORE_NEAR and m >= RESCUE_MARGIN_NEAR:
+                caves[c] = RESCUE_MARGIN_NEAR
+        out += [(r, c, caves[c]) for c in sorted(caves)]
     return out
