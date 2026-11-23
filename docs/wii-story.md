@@ -181,16 +181,53 @@ neighbours, which a wrong seed does with a chance of about 1 in 1000.
 
 Tool (not committed): `data/wii_story/comedown_sheets.py RUN_DIR OUT_DIR`.
 
+## Titles cut short, rescued from the route
+
+On Wii U the title often goes black while the cave name's letters are still
+falling. This happens on short loads, so final floors are hit hardest. No frame
+shows a settled name, so the detector never sees an entry.
+`p2seeds/src/p2seeds/route_rescue.py` finds these titles from what is still on
+screen:
+
+- **"Sublevel N" is there before the name falls and doesn't move.** The rescue
+  matches the "Sublevel" word, taken from another entry of the same video, over
+  every gap the route leaves between two seeded entries.
+- **The route says which cave it is.** Between two seeded entries, the missing
+  sublevels belong to the cave before (after its last one read) or to the cave
+  after (before its first one read). The digit picks between them.
+  - A title must show a clear digit (5 of 9 reads) that the route still needs.
+    Without that rule, bright gameplay half-matched the word.
+  - Example: kobachi's escape after SCx 8 left the route asking for SCx 9.
+- **The letter boxes come from another entry of the same cave.** In one video a
+  cave's name always lands in the same place at the same size. The letters are
+  visible for 25–35 frames before the cut, and the free-fall fit doesn't need
+  them to land.
+- **A rescued seed is kept only when it chains with a neighbour.** It must sit
+  within the RNG step limit of the seeded entry before or after it, and rescued
+  entries count as neighbours too.
+
+It runs in `p2seeds run` for wide feeds. On finished runs it runs as part of
+`p2seeds redo`, which also adds the rescued reads to `fits.json`.
+
+| Run | Rescued | Sublevels |
+|---|---|---|
+| JHawk4 | 6 of 6 | EC 1, HoB 5, WFG 5, BK 7, CoS 5, GK 6 |
+| Sbudiver | 14 | EC 1, HoB 1, 3, 5, WFG 5, BK 2, CoS 2–5, GK 6, SH 6–7, FC 5 |
+| kobachi | none needed | its seedless "SCx 2" is a second detection of the high SCx 2 148 frames later |
+
+All 20 rescued sublevels are high confidence except Sbudiver's SH 6 (medium),
+and every one chains with the entries on both sides of it (EC 1 has only one).
+
 ## Still open
 
 - Japanese Wii titles: 神 and 所 are not tracked, and only 3 of 5 letters
   fit. This needs a look with letter boxes from `p2seeds debug`.
-- Fitting letters still falling when the title cuts out (Wii U VC). This needs
-  calibration from the route plus geometry from another entry in the same video.
+- Sbudiver's Hole of Beasts 2 (a low read from the route rescue) and Glutton's
+  Kitchen 5 (a medium read that chains with neither neighbour).
 
 ## Files
 
-- Code: `p2seeds/src/p2seeds/{events,analyze,calibrate,debug}.py`
+- Code: `p2seeds/src/p2seeds/{events,analyze,calibrate,debug,route_rescue,redo}.py`
 - Tests: `p2seeds/tests/test_wii.py`
 - Data (not committed): `data/wii_story/`
   - `videos/` with its `manifest.json`;
