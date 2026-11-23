@@ -5,7 +5,8 @@ cameras. Keeps each seed's best count over the cameras.
     python docs/layout_matcher/pointscan.py SUB END K_LO K_HI NAMES "u,v;u,v;..." OUT_PREFIX
         [--zooms lo,hi,step] [--turns lo,hi,step] [--tol T] [--shift "dx,dy;dx,dy"]
 
-Points are pixels of a 1280x720 frame; NAMES a comma list (CaveGen3 internal names).
+Points are pixels of a 1280x720 frame; NAMES a comma list (CaveGen3 internal names). A point may
+carry its own names as a third field, "u,v,name|name", overriding NAMES.
 Writes OUT_PREFIX.npz (best count and camera index per seed) and prints the top seeds.
 """
 import argparse
@@ -33,7 +34,9 @@ def main():
     ap.add_argument("--tol", type=float, default=100), ap.add_argument("--shift", default="0,0", help="shifts dx,dy;dx,dy;... of the pod from the centre")
     a = ap.parse_args()
     names = a.names.split(",")
-    px = np.array([[float(v) for v in p.split(",")] for p in a.points.split(";")], np.float32)
+    pts = [p.split(",") for p in a.points.split(";")]
+    px = np.array([[float(p[0]), float(p[1])] for p in pts], np.float32)
+    pnames = [p[2].split("|") if len(p) > 2 else names for p in pts]   # optional per-point names
     SHIFTS = [tuple(float(v) for v in sh.split(",")) for sh in a.shift.split(";")]
     end = int(a.end, 16)
     start = lm.seed_at(end, a.lo)
@@ -48,7 +51,7 @@ def main():
         for z, t, sx, sy in group:
             Hinv = np.linalg.inv(cd.homography(1280, 720, 16 / 9, z, t))
             pod = cv2.perspectiveTransform((px - [sx, sy])[None].astype(np.float32), Hinv)[0]   # (side, ahead)
-            obs += [dict(names=names, ahead=float(p[1]), side=float(p[0]), tol=a.tol) for p in pod]
+            obs += [dict(names=pn, ahead=float(p[1]), side=float(p[0]), tol=a.tol) for p, pn in zip(pod, pnames)]
         bits = lm.scan(a.sub, start, n, obs, a.out + "_tmp.bin")
         for gi in range(len(group)):
             c = np.zeros(n, np.uint8)

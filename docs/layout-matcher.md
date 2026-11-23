@@ -339,6 +339,7 @@ New tooling:
 | CH14 Dweevil Nest (1 floor, Wii) | `246C1C78`, k = 136,736 (42.5 draws/frame, CMAL 39.5–63.3) | strong: the only seed fitting all 9 readings in k 0–600k |
 | CH8 Red Chasm (1 floor, Wii) | `6A0AB9F5`, k = 57,424 (17.1 draws/frame, CMAL 18.6–28.5) | strong: 9/9 Glowcaps, 1 seed in 250k; floor outline matches |
 | CH24 Abduction Den (1 floor, Wii) | `5B21CDB6`, k = 92,529 (28.5 draws/frame, CMAL 24.4–35.3) | strong: 6/6 Glowcaps and all 3 visible treasures, 1 seed in 300k |
+| CH12 Concrete Maze (3 floors, Wii) | `674C7FD3`, k = 39,107 (6.1 draws/frame over all 3 floors; no CMAL rate) | strong: 10 plants and the Key within 8 px on average; runner-up 4x worse |
 | CH17 Three Color Training | family `25835E4D` / `1C8189E4` (identical layouts), k = 119,870 | weak: suggestive only |
 | CH4 Creator's Garden | none | calibration failed |
 | CH22 Subterranean Lair | none | too few readable features |
@@ -408,14 +409,32 @@ New tooling:
   - `seed_overlay.py` draws its outline, teki and treasures on the frame: the rooms cover the lit
     floor and the treasures sit on the visible ones.
   - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH24-1&seed=5B21CDB6
+- **CH12** (plants, gates and the Key; comedown frame 316, 100 frames after the dive):
+  - Plants (clover, daisy, the small orange and yellow sprouts) are drawn in the comedown, unlike
+    enemies. Ten are readable on frame 316 (`obs/ch12_points316.txt`).
+  - The pod's room is fixed (room_4x4d_4_conc) but has two pod starts, with the pod turned −45°
+    or −70° against the walls. The record's walls run at the −45° start's angle; a first scan
+    with the camera fitted to both starts' spots mixed (turn −16…−20) found nothing clean.
+  - With the −45° start's spots the camera is about zoom 1.4, turn 0. `pointscan.py` (now with
+    names per point: the clover as `clover`, the red daisy as any large plant) at zoom
+    1.35–1.45, turn −4…2, three shifts, over k 0–1M: 4 seeds at 9/10, 81 at 8.
+  - `ch12_residual.py` refits the camera per candidate and sums each marked object's pixel
+    distance to the nearest object of its kind, adding the Key (the small yellow object below the
+    pod). `674C7FD3` totals 84 px over 11 marks (zoom 1.375, turn −4, shift −40,0); the next
+    best is 341. Its floor IoU (0.51) is also the top one.
+  - `seed_overlay.py` shows its rooms on the lit floor and a plant circle on every visible plant
+    (`data/lm/ch12/check_674C7FD3.jpg`, not committed).
+  - Not checked: gameplay, floors 2–3. The rate (6.1 draws/frame over the three floors) is lower
+    than the single-floor stages, as expected for a stage with plants and no enemies.
+  - Viewer: https://jhawk4.github.io/CaveGen3/?sublevel=pikmin2:CH12-1&seed=674C7FD3
 - **Tried and set aside this round:**
   - CH25: only the pod's room is lit; its Glowstems don't show.
   - CH19: only the pod's room is lit; the orange flecks there look like flame effects (hidden
     teki), and there are two dark pits where one hole is expected.
   - CH5: Key, two treasures and the hole in 9 arm spots carry ~12 bits against a ~18-bit window.
   - CH16: 12 cookies in one room, but the comedown is too dark to read them.
-  - CH12: the floor-shape matcher over k 0–1M at zoom 1.15–1.6 is flat (best z 2.9, at the grid's
-    zoom edge); the maze's gates and Key could be added as point observations next.
+  - CH12 floor shape: the floor-shape matcher over k 0–1M at zoom 1.15–1.6 is flat (best z 2.9);
+    solved instead from plants (above).
   - The "READY?" landing frame (`landing.py`, CaveGen3's landing camera) doesn't fit as modelled
     in Challenge Mode: the captain doesn't start beside the pod, and neither heading 110° nor 0°
     puts CH9's spots on its floor, even with the view moved so the pod lands on its pixel.
