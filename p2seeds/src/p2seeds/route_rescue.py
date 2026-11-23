@@ -31,6 +31,7 @@ SCAN_STEP = 3           # titles show "Sublevel N" for 15+ frames
 WORD_MIN = 0.6          # the "Sublevel" word clearly there
 WORD_KEEP = 0.3         # still there, over a bright picture or fading
 DIGIT_VOTES = 5         # of the 9 digit reads on a title
+WORD_FRAC = {"en": 0.75, "ja": 0.5}   # of the sub line's width, from its left end
 NEAR = 90               # frames: a title this close to a recognized entry is that entry
 
 
@@ -54,7 +55,7 @@ def _sibling_cal(video, feed, r: EventResult) -> tuple[Calibration, int] | None:
 class _Word:
     """The 'Sublevel' word of the sub line, matched where it sits in this video."""
 
-    def __init__(self, gray: np.ndarray):
+    def __init__(self, gray: np.ndarray, frac: float = 0.75):
         H = gray.shape[0]
         self.y0, self.y1 = int(SUB_BAND[0] * H), int(SUB_BAND[1] * H)
         p = templates.prep(gray[self.y0: self.y1])
@@ -64,7 +65,7 @@ class _Word:
         if not self.ok:
             return
         self.r0, self.r1, self.c0 = rows[0], rows[-1] + 1, cols[0]
-        self.t = p[self.r0: self.r1, self.c0: self.c0 + int(0.75 * (cols[-1] + 1 - self.c0))]
+        self.t = p[self.r0: self.r1, self.c0: self.c0 + int(frac * (cols[-1] + 1 - self.c0))]
 
     def score(self, gray: np.ndarray) -> float:
         q = templates.prep(normalize(gray)[self.y0: self.y1])
@@ -108,12 +109,14 @@ def _missing(prev: EventResult | None, nxt: EventResult | None) -> list[tuple[st
 
 
 def rescue(video, feed, results: list[EventResult], log=print) -> list[EventResult]:
-    """New results for cut-short titles in the gaps the route leaves (wide feeds, English)."""
+    """New results for cut-short titles in the gaps the route leaves (wide feeds)."""
     # only entries with a seed anchor the route: a seedless one's cave may be a guess
-    found = sorted((r for r in results if r.cave_id and r.sublevel and r.settled_frame and (r.lang or "en") == "en"
-                    and r.confidence in ("high", "medium")), key=lambda r: r.settled_frame)
-    if not found:
+    seeded = [r for r in results if r.cave_id and r.sublevel and r.settled_frame and r.confidence in ("high", "medium")]
+    if not seeded:
         return []
+    langs = [r.lang or "en" for r in seeded]
+    lang = max(set(langs), key=langs.count)          # the run's language
+    found = sorted((r for r in seeded if (r.lang or "en") == lang), key=lambda r: r.settled_frame)
     cals: dict[str, tuple[Calibration, int] | None] = {}
 
     def cal_for(cave_id: str, near: int):
@@ -125,7 +128,8 @@ def rescue(video, feed, results: list[EventResult], log=print) -> list[EventResu
     first = cal_for(found[0].cave_id, found[0].settled_frame)
     if first is None:
         return []
-    word = _Word(normalize(feed.crop(video.frame_at(first[1]))))
+    # "Sublevel N" / "地下 N 階": the template stops before the digit
+    word = _Word(normalize(feed.crop(video.frame_at(first[1]))), frac=WORD_FRAC[lang])
     if not word.ok:
         return []
 
@@ -147,7 +151,7 @@ def rescue(video, feed, results: list[EventResult], log=print) -> list[EventResu
             start = max(0, t1 - 150)
             frames = [feed.crop(g) for g in video.frames(start, min(video.frame_count, t1 + 30))]
             a = t1 - start
-            digit, votes = _read_sublevel([normalize(f) for f in frames], max(0, t0 - start), a, n=9)
+            digit, votes = _read_sublevel([normalize(f) for f in frames], max(0, t0 - start), a, n=9, lang=lang)
             # a real title shows its digit clearly, and it is one the route still needs; bright
             # gameplay can half-match the "Sublevel" word but not that
             if digit is None or votes.get(digit, 0) < DIGIT_VOTES:
