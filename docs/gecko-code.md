@@ -55,7 +55,7 @@ plus the `bl`, the end marker and the return slot.
 | USA demo 18 (GPVE01) | 8024C118 | 805158A8 | 804B1190 | 801530F8 | 80155F34 | 805146E0 | no |
 | PAL GPVP01 | 8024C11C | 80516768 | 804B1EE0 | 80153284 | 801560C0 | 805155A0 | no |
 | JPN GPVJ01 | 8024C79C | 80517568 | 804B2DB0 | 8015310C | 80156388 | 805163A8 | no |
-| Wii USA R92E01 | 802D0F00 (`li r27, 0`) | 8066C9F0 | 80590E00 | 801E63AC | 801E92A4 | 8066AAA0 | RAM dump |
+| Wii USA R92E01 | 802D0F00 (`li r27, 0`) | 8066C9F0 | 80590E00 | 801E63AC | 801E92A4 | 8066AAA0 | yes (RAM dump + clean DOL) |
 
 GameCube addresses are from the decomp's `config/<version>/symbols.txt`. Not supported: the Wii
 New Play Control! Europe and Japan versions (R92P01, R92J01: no copy to search) and romhacks. No
@@ -84,9 +84,11 @@ There is no Wii decomp. The addresses were found in a Dolphin RAM dump of the US
   and a constructor that first calls the base section constructor stores it at offset 0.
 - After the hook, nothing reads r3–r12 before setting it.
 
-Because the dump is of a practice build, the code at the hook in a clean copy is inferred from
-what the practice routine runs; everything else is the base game's code, which the practice build
-doesn't move. Seeds read from Wii runs replay on the Wii version; GameCube runs' seeds on the Wii give the layout
+Checked afterwards on a clean Wii `main.dol` (SHA-1 d69f9083b7c47665a4f701099ec029176f2e3aeb, the
+user's `Hack/ckit_wii_base/ckit/pikmin.dol`): 802D0F00 is `li r27, 0` (`3B600000`), `rand`, both
+getters and the vtable slot are as above, and the user's Wii symbol map
+(`symbolmap/symbol_map_wii1.MAP`) names 802D0ED0 `createMapPartsList`. The Wii practice build patches
+both getters with branches into its own code; the Gecko code still calls them. Seeds read from Wii runs replay on the Wii version; GameCube runs' seeds on the Wii give the layout
 the Wii's cave files make from that seed (the same where the files match).
 
 ## What is verified

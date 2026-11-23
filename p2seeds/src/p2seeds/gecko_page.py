@@ -160,7 +160,7 @@ usual.</p>
 <p>The versions marked untested use addresses from the <a href="https://github.com/projectPiki/pikmin2">Pikmin 2
 decompilation</a>'s symbol maps; the USA release and the USA demo 1 build were also checked against real copies of
 the game. The Wii version (New Play Control!) has no decompilation; its addresses were found in a memory dump of the
-USA game. If an untested one doesn't work for you, please say so in the suggestion box. Not supported:</p>
+USA game and checked against an unmodified copy. If an untested one doesn't work for you, please say so in the suggestion box. Not supported:</p>
 <ul>{unsupported}</ul>
 
 <details><summary>How it works</summary>
