@@ -2,7 +2,8 @@
 //!
 //! With a seeds.json (instead of a video) the run's video and feed are used, and the seeds found
 //! are compared with the offline ones. `--speed 1` paces frames to the wall clock with worker
-//! threads (the honest latency test); `--speed 0` analyzes on the capture thread as fast as it
+//! threads (the honest latency test; `--jitter P` makes the capture stutter like a virtual
+//! camera, repeating the previous frame in place of the current one with probability P); `--speed 0` analyzes on the capture thread as fast as it
 //! can and reports simulated latency (frames waited / fps + analysis time). `--double` repeats
 //! every frame, like a 60 fps capture of the 30 fps game.
 
@@ -125,10 +126,27 @@ pub fn replay(args: &[String]) {
     let mut stream = Stream::open(&video, &info, feed, start_f).expect("ffmpeg");
     let t_start = Instant::now();
     let (mut idx, mut n_in, mut max_lag) = (0usize, 0usize, 0.0f64);
+    // --jitter P: a stuttering virtual camera; each capture slot shows the previous frame again
+    // (and the current one is lost) with probability P
+    let jitter: f64 = arg(args, "--jitter").and_then(|x| x.parse().ok()).unwrap_or(0.0);
+    let mut rng = 0x9E37_79B9_7F4A_7C15u64;
+    let mut prev: Option<p2live::img::Gray> = None;
+    let mut stutters = 0usize;
     while stop_n.is_none_or(|n| n_in < n) {
         let Some(g) = stream.next() else { break };
         n_in += 1;
         for _ in 0..mult {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            let stutter = jitter > 0.0 && prev.is_some() && (rng >> 11) as f64 / (1u64 << 53) as f64 <= jitter;
+            let g = if stutter {
+                stutters += 1;
+                prev.clone().unwrap()
+            } else {
+                prev = Some(g.clone());
+                g.clone()
+            };
             if speed > 0.0 {
                 let due = t_start + Duration::from_secs_f64(idx as f64 / cfg.fps / speed);
                 let now = Instant::now();
@@ -149,7 +167,7 @@ pub fn replay(args: &[String]) {
     live.close();
     let (rows, refined, first) = printer.join().unwrap();
     println!(
-        "{n_in} frames ({:.0} s of video) in {:.0} s; entry-screen check {check_ms:.2} ms/frame; capture fell behind by at most {max_lag:.2} s; scale {hint:?}",
+        "{n_in} frames ({:.0} s of video) in {:.0} s; {stutters} stuttered capture slots; entry-screen check {check_ms:.2} ms/frame; capture fell behind by at most {max_lag:.2} s; scale {hint:?}",
         n_in as f64 / info.fps,
         t_start.elapsed().as_secs_f64()
     );

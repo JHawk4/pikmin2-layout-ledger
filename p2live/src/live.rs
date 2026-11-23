@@ -464,8 +464,11 @@ fn name_job(sh: &Shared, job: Job) {
         let t1 = Instant::now();
         let cache = job.state.lock().unwrap().cache.clone();
         let lo = a - lead;
-        let ids: Vec<usize> = (lo..=b).map(|j| job.first + j).collect();
-        prefill(&job.frames[lo..=b], &ids, c, &cache, false);
+        // only the frames the analysis keeps (a 60 fps capture repeats every game frame)
+        let keep = crate::analyze::game_times(&job.frames[lo..=b], false).0;
+        let frames: Vec<Gray> = keep.iter().map(|&i| job.frames[lo + i].clone()).collect();
+        let ids: Vec<usize> = keep.iter().map(|&i| job.first + lo + i).collect();
+        prefill(&frames, &ids, c, &cache, false);
         prefill_s = t1.elapsed().as_secs_f64();
     }
     let mut st = job.state.lock().unwrap();

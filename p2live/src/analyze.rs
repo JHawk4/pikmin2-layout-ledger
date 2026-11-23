@@ -124,10 +124,28 @@ pub fn game_times(frames: &[Gray], wall: bool) -> (Vec<usize>, Vec<f64>) {
         })
         .collect();
     let repeat: Vec<bool> = (0..n).map(|j| d[j] <= thr.max(rel * local[j])).collect();
+    // A capture that repeats most frames (60 fps of the 30 fps game) has a repeat between every
+    // two changes, so the median above is about half zeros and too low to tell a skipped game
+    // frame (a stuttering virtual camera) from motion. There, the motion level is the median of
+    // the neighbouring changes only. (Python has only the plain median; a capture with few
+    // repeats is unchanged.)
+    let dense = 5 * repeat.iter().filter(|&&r| r).count() > 2 * n;
+    let level: Vec<f64> = if !dense {
+        local.clone()
+    } else {
+        let moves: Vec<usize> = (0..n).filter(|&j| !repeat[j]).collect();
+        (0..n)
+            .map(|j| {
+                let p = moves.partition_point(|&m| m < j);
+                let around: Vec<f64> = moves[p.saturating_sub(3)..p].iter().chain(moves.iter().skip(p).filter(|&&m| m != j).take(3)).map(|&m| d[m]).collect();
+                if around.is_empty() { 0.0 } else { crate::img::median(&around) }
+            })
+            .collect()
+    };
     let mut inc: Vec<u32> = repeat.iter().map(|&r| if r { 0 } else { 1 }).collect();
     for j in 0..n {
         let near = (j > 0 && repeat[j - 1]) || (j + 1 < n && repeat[j + 1]);
-        if !repeat[j] && near && local[j] > 0.5 && d[j] >= jump * local[j] {
+        if !repeat[j] && near && level[j] > 0.5 && d[j] >= jump * level[j] {
             inc[j] = 2;
         }
     }
