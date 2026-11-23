@@ -955,7 +955,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
               final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0),
               f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6,
-              setup_only: bool = False, skip_if_clear: bool = False, prune_coarse=(2, 2), rank_mid: int = 0, hook=None):
+              setup_only: bool = False, skip_if_clear: bool = False, prune_coarse=(2, 2), rank_mid: int = 0, hook=None,
+              use_closing: bool = True):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
@@ -1026,11 +1027,16 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
 
         trials = []
         videos = {}
-        loc = burst_locality(path, closes, g, lead, lead_delay) if closes else {}
-        if loc:
-            top = max(loc.values())
-            closes = [b for b in closes if loc.get(b, 0) >= 0.8 * top]
-            log(f"  burst locality {[(b, round(v, 2)) for b, v in loc.items()]} -> {closes}")
+        ce = closing_end(path, max(0, int(f0_lo) - 30), min(n_frames - 1, int(f0_hi) + 12)) if use_closing else None
+        if ce is not None:
+            closes = [ce - CLOSING_LAG]
+            log(f"  \"Pick one!\" window closed at {ce}")
+        else:
+            loc = burst_locality(path, closes, g, lead, lead_delay) if closes else {}
+            if loc:
+                top = max(loc.values())
+                closes = [b for b in closes if loc.get(b, 0) >= 0.8 * top]
+                log(f"  burst locality {[(b, round(v, 2)) for b, v in loc.items()]} -> {closes}")
         for b in closes or [int(f0_guess + 2)]:
             bgb = background_for(b)
             dvb = DiveVideo(path, max(0, b - 6), min(n_frames - 1, b + span), bgb, region, scale=scale)
@@ -1670,6 +1676,44 @@ def burst_locality(path: str, bursts, g: Geometry, lead: str, lead_delay: float,
         if after is not None and before is not None:
             out[b] = after / (before + 0.5)
     return out
+
+
+def closing_end(path: str, first: int, last: int):
+    """Last frame of the "Pick one!" window closing: a run of whole-screen motion that drops to the
+    quiet of the dive itself, with the picture back at full, steady brightness. The dive starts
+    6-10 frames before it (median 8.7 over cmal04/08/13). Unlike a burst *start* this needs no quiet
+    stretch before the window closes, so it also works when the stage is picked the instant the menu
+    fades in. Returns the frame or None."""
+    cap = cv2.VideoCapture(path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, first - 1))
+    prev, fr_, d, br = None, [], [], []
+    for fr in range(max(0, first - 1), last + 1):
+        ok, f = cap.read()
+        if not ok:
+            break
+        g = cv2.resize(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY), (160, 90)).astype(np.float32)
+        if prev is not None:
+            fr_.append(fr)
+            d.append(float(np.abs(g - prev).mean()))
+            br.append(float(g.mean()))
+        prev = g
+    d, br = np.array(d), np.array(br)
+    if len(d) < 24:
+        return None
+    full = 0.85 * float(np.percentile(br, 90))
+    best = None
+    for i in range(6, len(d) - 14):
+        post, pre = d[i + 1:i + 11], d[i - 4:i + 1]
+        b = br[i + 1:i + 11]
+        if pre.mean() < 3 or b.std() > 2.5 or b.mean() < full or post.max() > max(2.5, 0.6 * pre.mean()):
+            continue
+        r = pre.mean() / (post.mean() + 0.3)
+        if best is None or r > best[0]:
+            best = (r, fr_[i])
+    return best[1] if best else None
+
+
+CLOSING_LAG = 6     # closing_end minus the burst-start frame the f0 trials are centred on
 
 
 def refine_registration(frame, reg, min_score: float = 0.85, search: int = 22):

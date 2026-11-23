@@ -47,20 +47,37 @@ def anchored_dives(video, span):
         yield vs[0], truth, end
 
 
-def grey_read(video, v, truth, end, span, log=lambda s: None, fast=True):
+NEAR = 110_000      # draws before the results roll that hold ~93% of dives (dive_distances.json)
+DET_CLEAR = 0.10    # with an unclear grey read, a detection margin at or above this wins
+CLEAR = 0.05        # a grey margin at or above this is taken without widening or cross-checking
+
+
+def _grey(video, v, truth, window, tag, log):
     name = os.path.basename(video)
-    cache = os.path.join(ROOT, "data", "challenge", "crosscheck", "dives",
-                         f"{name}_{v[0]}_{'f' if fast else 'a'}{span // 1000}k.json")
+    cache = os.path.join(ROOT, "data", "challenge", "crosscheck", "dives", f"{name}_{v[0]}_{tag}.json")
     if os.path.exists(cache):
         return json.load(open(cache))
     t = time.time()
-    r = cd.read_dive(video, v, window=(end, span), probe=[truth], log=log, skip_if_clear=True,
-                     **(dict(prune_coarse=(4, 4), rank_mid=500) if fast else {}))
+    r = cd.read_dive(video, v, window=window, probe=[truth], log=log, skip_if_clear=True,
+                     prune_coarse=(4, 4), rank_mid=500)
     r["seconds"] = time.time() - t
-    r["window"] = [end, span]
+    r["window"] = list(window)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
     json.dump(r, open(cache, "w"), default=float)
     return r
+
+
+def grey_read(video, v, truth, end, span, log=lambda s: None, near=NEAR, tag="g"):
+    """Grey reader over the window, nearest states first: the `near` draws before the roll, and the
+    rest only when that read has no clear leader. Returns the read with the larger margin."""
+    r = _grey(video, v, truth, (end, min(near, span), 0), f"{tag}n{near // 1000}k", log)
+    r["stages"] = 1
+    if span <= near or (r.get("margin") or 0) >= CLEAR or not r.get("candidates"):
+        return r
+    r2 = _grey(video, v, truth, (end, span - near, near), f"{tag}r{near // 1000}k_{span // 1000}k", log)
+    best = r2 if (r2.get("margin") or 0) > (r.get("margin") or 0) else r
+    best = dict(best, seconds=r.get("seconds", 0) + r2.get("seconds", 0), stages=2)
+    return best
 
 
 def setup_read(video, v, end, span, truth):
@@ -164,6 +181,8 @@ def main():
     ap.add_argument("--back", type=float, default=2.0)
     ap.add_argument("--colour-body", action="store_true")
     ap.add_argument("--family", type=int, default=3, help="refit the leader's +-4j shifts, j <= this")
+    ap.add_argument("--always-det", action="store_true", help="run the detection cross-check on clear grey reads too")
+    ap.add_argument("--tag", default="g", help="cache tag for the grey reads")
     ap.add_argument("--out")
     a = ap.parse_args()
     sp = dr.load_sprites()
@@ -176,7 +195,7 @@ def main():
                 continue
             t0 = time.time()
             try:
-                r = setup_read(video, v, end, a.span, truth) if a.det_only else grey_read(video, v, truth, end, a.span)
+                r = setup_read(video, v, end, a.span, truth) if a.det_only else grey_read(video, v, truth, end, a.span, tag=a.tag)
             except Exception as e:                      # noqa: BLE001
                 print(f"{name[:6]} {v} grey failed: {e!r}", flush=True)
                 continue
@@ -189,8 +208,16 @@ def main():
             grey_ok = bool(grey) and (grey[0] & M) == (truth & M)
             line = (f"{name[:6]} CH{r['ch']:<3} {str(r['counts']):<22} grey {'OK ' if grey_ok else 'bad'} "
                     f"off {offset(grey[0], truth, 16) if grey else None} m {r.get('margin') or 0:.3f} ({r.get('seconds', 0):.0f}s)")
-            if a.grey_only:
-                print(line + f" ({time.time() - t0:.0f}s)", flush=True)
+            clear = (r.get("margin") or 0) >= CLEAR
+            if a.grey_only or (clear and not a.always_det and not a.det_only):
+                rows.append(dict(video=name, visit=list(v), ch=r["ch"], counts=r["counts"], truth=truth,
+                                 grey_off=offset(grey[0], truth, 16) if grey else None, grey_seconds=r.get("seconds"),
+                                 grey_best=grey[0] if grey else None, grey_ok=grey_ok, grey_margin=r.get("margin"),
+                                 stages=r.get("stages"), f0=r.get("f0"), det=False, final=grey[0] if grey else None,
+                                 final_ok=grey_ok, clear=clear, seconds=time.time() - t0))
+                print(line + f" | final {'OK ' if grey_ok else 'bad'} {'clear' if clear else 'unclear'} ({time.time() - t0:.0f}s)", flush=True)
+                if a.out:
+                    json.dump(rows, open(a.out, "w"), indent=1, default=float)
                 continue
             ds, g = prepare(video, r, ["flower"], sp, a.colour_body)
             window = cd.window_states(end, a.span)
@@ -200,25 +227,29 @@ def main():
             ok = (d["best"] & M) == (truth & M)
             off = offset(d["best"], truth, 16)
             agree = bool(grey) and (d["best"] & M) == (grey[0] & M)
-            row = dict(video=name, visit=list(v), ch=r["ch"], counts=r["counts"], truth=truth,
+            # the pick: grey, unless its lead is unclear and detection's is clear
+            use_det = (not clear) and d["margin"] >= DET_CLEAR
+            final = d["best"] if use_det else (grey[0] if grey else d["best"])
+            final_ok = (final & M) == (truth & M)
+            row = dict(video=name, visit=list(v), ch=r["ch"], counts=r["counts"], truth=truth, det=True,
+                       stages=r.get("stages"), f0=r.get("f0"), final=final, final_ok=final_ok,
+                       clear=bool(clear or use_det or agree),
                        grey_off=offset(grey[0], truth, 16) if grey else None, grey_seconds=r.get("seconds"),
                        grey_best=grey[0] if grey else None, grey_ok=grey_ok, grey_margin=r.get("margin"),
                        truth_in_grey=any((s & M) == (truth & M) for s in grey[:a.grey_n]),
                        det_ok=ok, det_off=off, agree=agree, seconds=time.time() - t0, **d)
             rows.append(row)
             print(line + f" | det {'OK ' if ok else 'bad'} off {off} m {d['margin']:.3f} first-pass {d['truth_first_pass']}"
-                  f" rank {d['truth_rank']} agree {'Y' if agree else 'n'} ({time.time() - t0:.0f}s)", flush=True)
+                  f" rank {d['truth_rank']} agree {'Y' if agree else 'n'} | final {'OK ' if final_ok else 'bad'}"
+                  f" {'clear' if row['clear'] else 'unclear'} ({time.time() - t0:.0f}s)", flush=True)
             if a.out:
                 json.dump(rows, open(a.out, "w"), indent=1, default=float)
-    if rows and not a.grey_only:
+    if rows:
         n = len(rows)
-        g = sum(r["grey_ok"] for r in rows)
-        dk = sum(r["det_ok"] for r in rows)
-        fam = sum(1 for r in rows if r["det_off"] is not None and r["det_off"] % 4 == 0 and abs(r["det_off"]) <= 12)
-        ag = [r for r in rows if r["agree"]]
-        print(f"dives {n}: grey {g}, detection {dk}, detection within +-12 by 4s {fam}, either {sum(r['grey_ok'] or r['det_ok'] for r in rows)}; "
-              f"agree {len(ag)} of which correct {sum(r['det_ok'] for r in ag)}")
-
+        cl = [r for r in rows if r.get("clear")]
+        print(f"dives {n}: final correct {sum(r['final_ok'] for r in rows)}, grey correct {sum(r['grey_ok'] for r in rows)}; "
+              f"clear {len(cl)} of which correct {sum(r['final_ok'] for r in cl)}; detection run on {sum(bool(r.get('det')) for r in rows)}; "
+              f"mean {np.mean([r['seconds'] for r in rows]):.0f}s per dive")
 
 if __name__ == "__main__":
     main()
