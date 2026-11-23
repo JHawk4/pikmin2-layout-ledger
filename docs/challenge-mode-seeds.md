@@ -482,6 +482,56 @@ Not done:
 - scale and v100 per video (sy wanders 0.54–0.71 between stages of one video);
 - the body-colour evaluation.
 
+### Anchored reading: the seed after the stage is known (`docs/challenge_dive/anchored_eval.py`)
+
+This is the case that matters in practice: the results roll after a stage gives an anchor state,
+and the dive's first state lies 18.8k–184k draws before it (median 54k; stage length does not
+predict the distance). The reader searches that window only.
+
+What changed against the pipeline above:
+- **Dive start frame from the "Pick one!" window.** The start frame is taken from the last frame
+  of the window closing (`closing_end`); the true start is 6.5–9.5 frames before it on 64 dives.
+  The old search locked onto the menu fade-in when the runner picked the stage at once; that was
+  the whole failure on cmal08 and cmal11 (0 correct before).
+- **One menu registration per video** from the pink flower grid (`register_grid`,
+  `video_registration`), language independent. Per-dive registration gave wrong stage IDs.
+- **Speed.** Coarse prune at quarter resolution over 5 start offsets, half-resolution pre-rank of
+  500, nearest 110k draws first with early exit on a clear margin (≥ 5%).
+- **Detection only on unclear grey reads**; it wins only with its own margin ≥ 10%.
+- **Stages with ≤ 15 Pikmin** are read over the whole window at once.
+
+Results on all six downloaded videos, 159 dives. "Truth" is the previous results roll's last
+state + 5.
+
+| Video | Dives | Exact | 1–2 draws late | Off by whole Pikmin (±4, ±8, ±12) | Other miss | Mean s/dive |
+|---|---|---|---|---|---|---|
+| cmal02 (Wii U, JPN) | 28 | 22 | 3 | 1 | 2 | 308 |
+| cmal04 (Wii U, USA) | 26 | 17 | 2 | 2 | 5 | 342 |
+| cmal08 (GC, JPN) | 26 | 16 | 2 | 2 | 6 | 392 |
+| cmal11 (GC, JPN) | 26 | 13 | 5 | 3 | 5 | 461 |
+| cmal13 (GC, USA) | 27 | 13 | 5 | 4 | 5 | 499 |
+| cmal26 (GC, USA) | 26 | 13 | 3 | 1 | 9 | 819 |
+| **All** | **159** | **94** | **20** | **13** | **32** | |
+
+Times are with two videos running in parallel on 8 cores.
+
+- **1–2 draws late (20 dives).** These land exactly 1 or 2 draws after the expected state, mostly
+  with a clear margin. A wrong read cannot land that close by chance (states 1–3 draws apart are
+  unrelated dives), so these are almost certainly correct reads and the game made 6 or 7 draws
+  between the roll and the dive instead of 5. The cause is not identified. Counting them, 114 of
+  159 (72%).
+- **Whole-Pikmin shifts (13).** The same dive shifted by one to three Pikmin; mostly single- or
+  two-colour stages (CH1, CH3, CH13, CH15, CH19). No reliable tie-breaker yet; detection fixes
+  some and breaks others.
+- **Other misses (32).** CH6 (1/1/1) is missed on every video, CH26 (4) on four, CH28 (25
+  bulbmin) on four; the whole-window rule for small stages did not rescue them. cmal26 has the
+  most misses and the slowest reads (17 of its 26 grey reads were unclear); not yet looked into.
+- **The margin is not a usable confidence yet.** 127 reads were "clear"; 80 exact, 20 late, 27
+  wrong. A layout check of the top candidates against floor 1 is the likely fix, as for the
+  detection reader.
+- Detection changed the answer for the better on 4 dives (cmal11 +1, cmal26 +3) and for the worse
+  on 2 (cmal04).
+
 ### Running it
 
 ```bash
