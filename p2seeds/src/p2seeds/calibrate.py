@@ -108,21 +108,23 @@ def calibrate(
     # background swirls can inflate, so it is searched widely. A coarse pass ranks
     # every cave; only the two best get the fine grid.
     sy0 = 0.99 * H / 480.0
-    # A 16:9 picture (Wii) is the 4:3 picture stretched by 4/3, glyphs included.
+    # A 16:9 picture (Wii) spreads the characters by 4/3. Whether each Japanese glyph is stretched
+    # too depends on the capture (mercysnow's Wii U VC run: stretched), so both widths are tried.
     wide = (W / H) / (4 / 3) if W / H > 1.55 else 1.0
 
     def best_fit(cave: Cave, sys, sx_factors, extra_ratios) -> tuple | None:
         best = None
         if cave.lang == "ja":
-            # glyphs at their natural size (stretched with the picture on 16:9), character pitch free
+            # character pitch free; glyphs at their natural width or stretched with the picture
             for sy in sys:
-                for pitch in wide * np.linspace(0.95, 1.3, 2 * len(sx_factors) - 1):
-                    img, _ = compose(cave.name, sy * pitch, sy, gsx=sy * wide)
-                    if img.shape[0] >= region.shape[0] or img.shape[1] >= region.shape[1]:
-                        continue
-                    _, score, _, loc = cv2.minMaxLoc(templates.match(region, img))
-                    if best is None or score > best[0]:
-                        best = (score, sy * pitch, sy, loc)
+                for gw in sorted({1.0, wide}):
+                    for pitch in wide * np.linspace(0.95, 1.3, 2 * len(sx_factors) - 1):
+                        img, _ = compose(cave.name, sy * pitch, sy, gsx=sy * gw)
+                        if img.shape[0] >= region.shape[0] or img.shape[1] >= region.shape[1]:
+                            continue
+                        _, score, _, loc = cv2.minMaxLoc(templates.match(region, img))
+                        if best is None or score > best[0]:
+                            best = (score, sy * pitch, sy, loc, sy * gw)
             return best
         base_w = compose(cave.name, 1.0, 1.0)[0].shape[1]
         # a 16:9 capture stretches English names as a whole (glyphs and spacing) by `wide`
@@ -134,7 +136,7 @@ def calibrate(
                     continue
                 _, score, _, loc = cv2.minMaxLoc(templates.match(region, img))
                 if best is None or score > best[0]:
-                    best = (score, sx, sy, loc)
+                    best = (score, sx, sy, loc, None)
         return best
 
     coarse = []
@@ -152,8 +154,7 @@ def calibrate(
     if not results:
         return None
     results.sort(key=lambda r: -r[0][0])
-    (score, sx, sy, (lx, ly)), cave = results[0]
-    gsx = sy * wide if cave.lang == "ja" else None
+    (score, sx, sy, (lx, ly), gsx), cave = results[0]
     _, pieces = compose(cave.name, sx, sy, gsx=gsx)
     cal = Calibration(cave, float(score), float(sx), float(sy), lx, y0 + ly, gsx=gsx)
     cal.letters = [LetterBox(i, ch, lx + px, y0 + ly, g) for i, ch, px, g in pieces]
