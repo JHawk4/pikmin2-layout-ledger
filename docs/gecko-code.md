@@ -47,7 +47,7 @@ A run's table has one entry per sublevel with a trusted seed (`judge_report.trus
 confidence, or medium in order with its high neighbours), in the order first played. All Treasures
 runs make some sublevels more than once (BK purple farms, EC twice); the table takes the first
 visit's seed, or the first visit with a trusted seed. The layout is set every time the sublevel is
-made, so re-entering gives the same layout. 8 bytes per sublevel; the fixed part is 44 instructions
+made, so re-entering gives the same layout. 8 bytes per sublevel; the fixed part is 46 instructions
 plus the `bl`, the end marker and the return slot.
 
 ## Addresses per version
