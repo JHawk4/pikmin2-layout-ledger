@@ -7,15 +7,17 @@
 //! 1. **Name**, `CAL_AFTER` game frames after the screen settled: read the cave name. The
 //!    stream's first screen calibrates in full; after that the stream's learned scale
 //!    (`ScaleHint`) needs about a tenth of the matches. Then match every letter on the buffered
-//!    fall frames (`track::prefill`), so the seed attempts only match the frames that arrive
-//!    after. Running it early hides it behind the wait for the fall's last frames.
+//!    fall frames (`track::prefill`, single templates only: the doubled-letter ones are matched
+//!    only if an analysis gets that far), so the seed attempts mostly match the frames that
+//!    arrive after. Running it early hides it behind the wait for the fall's last frames.
 //! 2. **Seed**, at each of `tails` game frames after the settle (e.g. 20, then 40): the offline
 //!    analysis of the buffered fall (`analyze_entry_with`). If it is not high confidence, chain
 //!    from the previous sublevel's layout seed (a bounded number of RNG steps earlier), which
 //!    settles most weak fits. Attempts run the quick analysis (see `analyze_entry_with`). A high
 //!    or chained seed is reported at once; otherwise the next attempt has more of the fall, and
 //!    the last attempt reports whatever it has, then runs the full analysis (all variants and
-//!    timing-step refits, seconds on a hard fall) and sends an update if that does better.
+//!    timing-step refits, seconds on a hard fall) and sends an update if that does better: a
+//!    higher confidence for the same seed, or a different seed that is high or chained.
 //! 3. **Digits**, `DIGITS_AT` game frames after the settle (or when the screen ends): read the
 //!    sublevel number on the settled frames. Until then a seed reports the sublevel the order of
 //!    play implies (the previous one in the same cave + 1, else 1), and the digit read sends an

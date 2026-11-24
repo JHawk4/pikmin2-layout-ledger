@@ -91,6 +91,15 @@ exe) is a good fit: the Browser Source overlay is a web page anyway, so the two 
 2. **Live loop.** Frame input, a ring buffer and workers, with the section 2 speed-ups. Target: seed
    ready less than 1.5 s after the letters land. Tested by replaying VODs at real speed with
    virtual-camera-like pacing (repeats and drops).
+   **Done (`p2live/src/live.rs`, `p2live replay`):**
+   - **Speed:** in simulated replays of five whole runs, the first answer is ready a median of
+     0.9–1.1 s after the screen settles (p90 1.2–4.1 s; the slow tail is hard, blurry falls).
+   - **Accuracy:** no wrong high-confidence seed.
+   - **Real time at 30 fps with 3% stutter (wr17, 20 min):** 12/12 seeds; median 1.3 s, max 1.9 s.
+   - **Real time at 60 fps with 3% stutter (wr29, 10 min):** 8/8 seeds. It was 3.6 s median, but
+     the CPU was at 100% from other jobs and the capture thread fell behind. Time it again on an
+     idle machine.
+   - Details are in `p2live/README.md`.
 3. **GUI and Browser Source,** settings saved next to the exe.
 4. **Packaging.** A Windows exe first, then macOS. One test with real OBS and its virtual camera
    (needs OBS installed on the dev machine).
