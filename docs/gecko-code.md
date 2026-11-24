@@ -33,9 +33,8 @@ insert there:
 4. Key = cave ID (`'f_03'` etc.) with its second byte replaced by the 0-based floor. Walk the table of
    (key, seed) words; on a match store the seed into `rand()`'s state (MSL `rand.c` `next`), then,
    if `PSSystem::spSysIF` is set, call `spSysIF->playSystemSe(0x183C, 0)`: the sound
-   `PSSE_SY_2PSLOT_GO` (the 2-player card slot's "GO"), which Meeo's set-seed code also plays. A
-   moderator asked for it, so a recording shows when the code set a layout. No sound when nothing is
-   set.
+   `PSSE_SY_2PSLOT_GO` (the 2-player card slot's "GO"), which Meeo's set-seed code also plays. No
+   sound when nothing is set.
 5. `li r26, 0` (the replaced instruction; `li r27, 0` on the Wii); the code handler adds the branch back.
 
 Only volatile registers are used (r3, r9–r12, ctr, cr0); the prologue has already saved the link

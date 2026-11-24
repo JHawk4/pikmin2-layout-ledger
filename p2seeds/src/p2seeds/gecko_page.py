@@ -130,8 +130,7 @@ li {{ margin:3px 0; }}
 trusted seed for come out with the run's layout, so you can practise the same caves the runner had. Sublevels the
 run doesn't have (or whose seed wasn't read with confidence) stay random. Story mode only; challenge mode and 2-player
 battle are left alone. Each time it sets a sublevel's layout it plays a short
-sound (the "GO" from 2-player battle's card slot, as Meeo's set-seed code does), so anyone watching or recording can
-tell the code is on.</p>
+sound (the "GO" from 2-player battle's card slot, as Meeo's set-seed code does).</p>
 <div class="card">
 <div class="pick">
 <label class="field"><span>Game version</span><select id="version"></select></label>

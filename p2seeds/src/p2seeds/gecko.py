@@ -10,7 +10,7 @@ setseed code", which hooks the same instruction on the USA demo build).
 There the code reads Game::gameSystem->mSection; if it is the story mode section (its vtable is
 SingleGameSection's), it calls SingleGameSection::getCaveID and ::getCurrFloor and looks up
 (cave, floor) in a table placed inside the code; on a hit it stores the seed into rand()'s state
-and plays a sound (PSSE_SY_2PSLOT_GO, as Meeo's set-seed code does), so a recording shows the code was on.
+and plays a sound (PSSE_SY_2PSLOT_GO, as Meeo's set-seed code does).
 Then it runs the instruction it replaced (li r26, 0; li r27, 0 on the Wii) and returns.
 
 Table entry: key, seed. key = the cave's ID32 (e.g. 'f_03') with its second byte replaced by
@@ -146,7 +146,7 @@ def body(v: Version) -> list[int]:
         ("b", "loop"),
         ("hit:", lwz(12, 4, 11)),
         ("", lis(11, _ha(v.rand_next))), ("", stw(12, _lo(v.rand_next), 11)),   # rand state = seed
-        ("", lis(12, _ha(v.sys_if))), ("", lwz(3, _lo(v.sys_if), 12)),         # a sound, so a recording shows it
+        ("", lis(12, _ha(v.sys_if))), ("", lwz(3, _lo(v.sys_if), 12)),         # the sound
         ("", cmpwi(3, 0)), ("beq", "done"),
         ("", li(4, SOUND)), ("", li(5, 0)),
         ("", lis(12, _ha(v.play_system_se))), ("", addi(12, 12, _lo(v.play_system_se))),
