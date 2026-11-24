@@ -64,3 +64,11 @@ def test_route_names_the_sublevels_between_two_entries():
     assert _missing(at("HoB", 5), at("WFG", 2)) == [("WFG", 1)]
     assert _missing(None, at("EC", 2)) == [("EC", 1)]                    # from the surface
     assert _missing(at("WFG", 3), at("WFG", 1)) == []                    # a reset: nothing between
+
+
+def test_a_seedless_second_detection_does_not_split_a_sublevels_treasures():
+    from p2seeds.treasures import sublevel_entries
+    e = lambda f, c, s, seed=None: {"frame": f, "cave": c, "sublevel": s, "layout_seed": seed}
+    entries = [e(1, "HoB", 4, "0x1"), e(2, "BK", 1), e(3, "HoB", 5, "0x2"),     # stray between 4 and 5
+               e(4, "HoB", 6), e(5, "HoB", 7, "0x3")]                          # a real seedless sublevel
+    assert [x["frame"] for x in sublevel_entries(entries)] == [1, 3, 4, 5]

@@ -96,18 +96,45 @@ def scan(video: Video, feed: Feed, progress=None) -> tuple[list[tuple[int, int]]
     return spans(p_hits), [(a, b) for a, b in exits]
 
 
-def count_run(out_dir: Path, progress=None) -> dict:
+def sublevel_entries(entries: list[dict]) -> list[dict]:
+    """The entries that start a sublevel's treasure window: those with a cave and sublevel, less
+    any seedless one lying between two seeded entries of the same cave one sublevel apart. That
+    is a second detection of a cut-short title (Wii U), not a sublevel; left in, it would end the
+    sublevel early and take its later treasure panels, while the sublevel's time (site.timed,
+    from the seeded entries) runs on to the next sublevel."""
+    es = [e for e in entries if e.get("cave") and e.get("sublevel")]
+    seeded = [k for k, e in enumerate(es) if e.get("layout_seed")]
+    drop = set()
+    for i, j in zip(seeded, seeded[1:]):
+        a, b = es[i], es[j]
+        if j > i + 1 and a["cave"] == b["cave"] and b["sublevel"] == a["sublevel"] + 1:
+            drop.update(range(i + 1, j))
+    return [e for k, e in enumerate(es) if k not in drop]
+
+
+def _scanned(have: dict) -> tuple[list, list] | None:
+    """The panels and exits of an earlier whole-video scan saved in treasures.json, or None."""
+    if not have or any("window" not in v and v.get("cave") != "surface" for v in have.values()):
+        return None
+    panels = sorted({tuple(p) for v in have.values() for p in v.get("panels", [])})
+    exits = sorted({tuple(v["exit"]) for v in have.values() if v.get("exit")})
+    return panels, exits
+
+
+def count_run(out_dir: Path, progress=None, reuse: bool = False) -> dict:
     """Find every treasure panel and assign it to a sublevel or to the surface; saves treasures.json.
 
     A sublevel runs from its entry screen to the next sublevel's; a cave's last sublevel runs
     to the cave-complete screen (its "exit"), and from there to the next cave is surface.
     Surface panels are kept under "surface:<frame>" keys (cave "surface"): their pokos count
-    in the run's total but belong to no sublevel."""
+    in the run's total but belong to no sublevel. With `reuse`, the panels an earlier scan
+    found are reassigned without scanning the video again."""
     data = json.loads((out_dir / "seeds.json").read_text(encoding="utf-8"))
-    meta, entries = data.get("meta", {}), [e for e in data["entries"] if e.get("cave") and e.get("sublevel")]
+    meta, entries = data.get("meta", {}), sublevel_entries(data["entries"])
     video = Video(meta["video"])
     feed = Feed(*meta["feed"])
-    panels, exits = scan(video, feed, progress)
+    found = _scanned(load(out_dir)) if reuse else None
+    panels, exits = found or scan(video, feed, progress)
     windows = []                                   # (start, end, key, entry or None, exit span)
     for k, e in enumerate(entries):
         nxt = entries[k + 1] if k + 1 < len(entries) else None
@@ -251,9 +278,28 @@ def panel_alignment(out_dir: Path, video: Video, feed: Feed, panels: list) -> np
             sc += float((vmat @ _norm(_slot(h, 0))).max())
         return sc / max(1, len(gs)) / 4
 
-    def mat(scale, dx, dy):                       # scale about the digit area, then shift
+    def mat(scale, dx, dy, sy=None):              # scale about the digit area, then shift
         cx, cy = 300.0, 285.0
-        return np.float32([[scale, 0, cx - scale * cx + dx], [0, scale, cy - scale * cy + dy]])
+        sy = scale if sy is None else sy
+        return np.float32([[scale, 0, cx - scale * cx + dx], [0, sy, cy - sy * cy + dy]])
+    if feed.width / feed.height > 1.55:
+        # 16:9 (Wii, Wii U VC): the panel is laid out for the wide picture, its digits further right
+        # and spaced wider than the 4:3 slots (about 29 px apart against 24-25 once squeezed to
+        # 480x360), so the horizontal scale and shift are searched widely and apart from the vertical
+        best = max((score(mat(sx, dx, 0, 1.0)), sx, dx, 0, 1.0)
+                   for sx in np.arange(0.70, 1.36, 0.03) for dx in range(-90, 91, 4))
+        _, sx0, dx0, _, _ = best
+        best = max([best] + [(score(mat(sx0, dx0, dy, sy)), sx0, dx0, dy, sy)
+                             for sy in np.arange(0.94, 1.16, 0.03) for dy in range(-16, 17, 2)])
+        _, sx0, dx0, dy0, sy0 = best
+        best = max([best] + [(score(mat(sx, dx, dy, sy0)), sx, dx, dy, sy0)
+                             for sx in np.arange(sx0 - 0.02, sx0 + 0.025, 0.01)
+                             for dx in range(dx0 - 3, dx0 + 4) for dy in range(dy0 - 2, dy0 + 3)])
+        sc, sx, dx, dy, sy = best
+        M = mat(sx, dx, dy, sy)
+        path.write_text(json.dumps({"matrix": M.tolist(), "score": sc, "scale": float(sx), "scale_y": float(sy),
+                                    "dx": int(dx), "dy": int(dy)}))
+        return M
     best = (score(mat(1, 0, 0)), 1.0, 0, 0)
     for dx in range(-6, 7, 2):
         for dy in range(-6, 7, 2):

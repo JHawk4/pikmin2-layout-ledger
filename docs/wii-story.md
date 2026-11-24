@@ -219,6 +219,28 @@ It runs in `p2seeds run` for wide feeds. On finished runs it runs as part of
 All 20 rescued sublevels are high confidence except Sbudiver's SH 6 (medium),
 and every one chains with the entries on both sides of it (EC 1 has only one).
 
+## Treasure panels (pokos)
+
+Two faults made the Wii pokos wrong, and with them the "runner beyond the layouts"
+numbers (Sbudiver showed +189 s; it is +3 s once fixed):
+
+- **Panel alignment.** On a 16:9 picture the treasure panel's digits sit about
+  38 px further right (at 480x360) and slightly wider apart than the 4:3 slots.
+  The alignment search allowed only ±8 px and one uniform scale, so it stopped at
+  its edge (score 0.41–0.45, against 0.68–0.77 on GameCube). Values were then
+  misread, and the totals drifted by hundreds of pokos. The fitting then explained
+  the gaps as creature pokos (20–40 too many per sublevel) or as wrong treasures
+  (for example, a 300 bottle cap read as 100). Wide feeds now search the
+  horizontal scale and shift widely, separately from the vertical. All four runs
+  now align at dx −37 to −38 and score 0.62–0.66. Against the GameCube median, 47
+  Wii sublevels were off by 20 or more pokos; now 5 are, and those are route
+  choices (for example, JHawk4 skips SH 6's treasure).
+- **Duplicate entries.** A seedless second detection of a cut-short title (for
+  example, Sbudiver's at 25:22 between HoB 4 and HoB 5) ended the sublevel's
+  treasure window early. Its later panels then went to nobody. Treasure windows
+  now skip a seedless entry that sits between two seeded entries one sublevel
+  apart, as the timing already did (`treasures.sublevel_entries`).
+
 ## Still open
 
 - mercysnow: the early game (EC 1, HoB, WFG, CoS 2) is mostly missing,
