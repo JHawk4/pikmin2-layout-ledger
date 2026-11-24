@@ -16,8 +16,9 @@ GameCube runs?
   the letters land, or skipped. Two later fixes recover many of these
   (see "Second pass" below). JHawk4's run now gives 49 high seeds,
   CurtisDN_'s 43, HeartPiece's (PAL) 39 and Sbudiver's 37.
-- **Japanese Wii: not yet.** mercysnow's run gives wrong seeds, so it is held
-  back from the site.
+- **Japanese Wii U VC: yes, after a fix.** On mercysnow's capture the Japanese
+  glyphs are stretched 4/3 with the picture; the fit assumed natural width.
+  With both widths tried, the run gives 28 high seeds (was 0).
 
 Two layouts checked by eye against the video, by rendering the seed with
 CaveGen3:
@@ -42,7 +43,7 @@ with a YouTube video (ranks 1-8; ranks 9 and below have no usable video). The
 | CurtisDN_ | Wii U VC, USA | **43** | 0 | 0 | 42 / 42 |
 | HeartPiece | Wii U VC, EUR (PAL) | **39** | 2 | 0 | all but SH 2 (medium, wrong) |
 | Sbudiver (WNylfiIY_AQ) | Wii U VC, USA | **37** (was 33) | 3 | 0 | all but GK 5 (medium, wrong) |
-| mercysnow (7NzYrkLascs) | Wii U VC, JPN | 0 | 3 | 14 | 2 / 16: wrong, held back from the site |
+| mercysnow (7NzYrkLascs) | Wii U VC, JPN | **28** (was 0) | 0 | 6 | 27 / 34 (the 6 low ones chain with neither neighbour) |
 
 - **Chaining**: from each seed to the next, the RNG must step forward by fewer
   than 2^22 draws. Real chains step forward 2.6k–580k draws: about 7 per frame
@@ -94,12 +95,12 @@ with a YouTube video (ranks 1-8; ranks 9 and below have no usable video). The
    A partial fall could still be fitted in principle: the letters are visible
    for about 20–40 frames, and the name could be inferred from the route. But
    the pipeline calibrates on a settled frame, so that is a larger project.
-2. **(mercysnow, Japanese) Few titles, and the Japanese ones that do appear
-   give wrong seeds.** The 14 low seeds do not chain, so they are wrong. Only
-   two medium SCx seeds agree with each other. The Japanese fit (glyph pitch
-   free, glyphs at their natural size) does not track the stretched Japanese
-   letters well. This needs its own look, with letter boxes from `p2seeds debug`
-   on a Japanese Wii entry.
+2. **(mercysnow, Japanese) Fixed: the glyphs are stretched.** On this Wii U VC
+   capture each Japanese glyph is 4/3 wider than its natural shape, not just
+   spaced wider. Per-letter match scores on GK 3 were 0.46–0.64 at natural width
+   and 0.73–0.85 stretched. `calibrate` now tries both glyph widths and keeps the
+   better fit. Japanese names have only 4–8 letters, so on their own the seeds
+   reach low or medium; chaining with neighbours makes them high.
 3. **Slow runs.** Calibration on several fading frames costs about 10 s per
    entry on a busy machine. A full run takes roughly 1–2 hours. That is
    acceptable for a batch job.
@@ -145,9 +146,9 @@ p2seeds publish --root data/output --at-root data/output_at --wii-root data/outp
 they belong to.
 
 The tab shows only runs within 10 minutes of the Wii world record (1:38:29):
-Sbudiver, kobachi and JHawk4. CurtisDN_, HeartPiece, s0rcius and kiiltomaeki
-were analysed (numbers above) but are held back in `data/wii_story/held/`.
-mercysnow's Japanese run is left out until the Japanese fit is fixed.
+Sbudiver, kobachi, mercysnow and JHawk4. CurtisDN_, HeartPiece, s0rcius and
+kiiltomaeki were analysed (numbers above) but are held back in
+`data/wii_story/held/`.
 
 ## Layouts checked against the comedown
 
@@ -220,8 +221,12 @@ and every one chains with the entries on both sides of it (EC 1 has only one).
 
 ## Still open
 
-- Japanese Wii titles: 神 and 所 are not tracked, and only 3 of 5 letters
-  fit. This needs a look with letter boxes from `p2seeds debug`.
+- mercysnow: the early game (EC 1, HoB, WFG, CoS 2) is mostly missing,
+  because those titles go from black straight into the sublevel and the caves
+  have no seeded sibling for the route rescue to borrow a calibration from.
+  WFG 1/2/4, GK 2, SCx 1 and SCx 7 are low and chain with neither neighbour.
+  The BK entry at frame 108790 was given sublevel 1, but it chains straight
+  into BK 7, so it is probably BK 6. `p2seeds redo` has not been run on it.
 - Sbudiver's Hole of Beasts 2 (a low read from the route rescue) and Glutton's
   Kitchen 5 (a medium read that chains with neither neighbour).
 
