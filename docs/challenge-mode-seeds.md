@@ -532,6 +532,50 @@ Times are with two videos running in parallel on 8 cores.
 - Detection changed the answer for the better on 4 dives (cmal11 +1, cmal26 +3) and for the worse
   on 2 (cmal04).
 
+### Floor-1 layout check (`docs/challenge_dive/floor_check.py`)
+
+Tested whether the floor-1 picture can confirm or correct a dive read. After
+the dive the game shows the first floor from overhead for about 25 frames
+under the floor title. The script takes the three stillest frames of that
+shot, subtracts the title-only frame before it, and scores candidate layout
+seeds (dive first state + 999 draws) by how much of the lit area lands on
+floor cells of the generated layout. Scoring uses `layoutmatch.exe floor2`
+from the layout-matcher branch (`claude/layout-matcher-f38181`, see
+`docs/layout-matcher.md`); the binary is not built on this branch
+(`P2SEEDS_LAYOUTMATCH` points at it).
+
+Each dive was scored at offsets −40…+40 draws around the true seed and against
+20,000 unrelated seeds. All 159 dives of the six videos:
+
+| outcome | dives |
+| --- | --- |
+| every seed scores the same (only the fixed start room is lit, or the floor fills the frame) | 73 |
+| overhead shot not found (too short) | 12 |
+| scores differ but do not pick out the true seed | 57 |
+| one seed stands out (first of the 81 neighbours and in the top 200 of 20,000) | 17 |
+
+The 17 are all on three stages: CH8 (5 of 6 videos), CH20 (6 of 6) and CH21
+(3 of 6, plus 3 near misses where the true seed is 2nd or 10th of 81). On the
+other 27 stages the floor shape carries no usable information.
+
+What the three stages show:
+
+- The layout is at the expected seed in 14 of the 17, and one draw later in 3
+  (cmal02 CH8, cmal04 CH20, cmal08 CH21). In cmal08 CH21 the dive was also
+  read one draw late, so that "late" read is the real state: an extra draw
+  happened before the dive. In the other two the dive was read exactly and the
+  extra draw came after it. So "one or two draws late" reads are at least
+  sometimes correct, and a layout seed can sit one draw past what the dive
+  implies.
+- cmal26 CH21, where the dive read is 4 draws off (a whole-Pikmin shift): the
+  floor scores the true seed 2nd of 81 and the dive's pick near the bottom, so
+  that shift is a real misread.
+
+As a tie-breaker for the reader it is not worth wiring in: of the 45 wrong
+reads only one (cmal26 CH21) is on a stage where the check works. A general
+check would have to match objects (treasures, plants) in the overhead shot,
+which the layout matcher currently does only with per-stage readings.
+
 ### Running it
 
 ```bash
