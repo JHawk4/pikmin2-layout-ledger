@@ -551,25 +551,27 @@ Each dive was scored at offsets −40…+40 draws around the true seed and again
 | --- | --- |
 | every seed scores the same (only the fixed start room is lit, or the floor fills the frame) | 73 |
 | overhead shot not found (too short) | 12 |
-| scores differ but do not pick out the true seed | 57 |
-| one seed stands out (first of the 81 neighbours and in the top 200 of 20,000) | 17 |
+| scores differ but do not pick out the true seed | 60 |
+| one seed stands out (first of the 81 neighbours and in the top 200 of 20,000) | 14 |
 
-The 17 are all on three stages: CH8 (5 of 6 videos), CH20 (6 of 6) and CH21
-(3 of 6, plus 3 near misses where the true seed is 2nd or 10th of 81). On the
+The 14 are all on three stages: CH8 (5 of 6 videos), CH20 (6 of 6) and CH21
+(3 of 6; the other 3 are near misses, described below). On the
 other 27 stages the floor shape carries no usable information.
 
 What the three stages show:
 
-- The layout is at the expected seed in 14 of the 17, and one draw later in 3
-  (cmal02 CH8, cmal04 CH20, cmal08 CH21). In cmal08 CH21 the dive was also
-  read one draw late, so that "late" read is the real state: an extra draw
-  happened before the dive. In the other two the dive was read exactly and the
-  extra draw came after it. So "one or two draws late" reads are at least
-  sometimes correct, and a layout seed can sit one draw past what the dive
-  implies.
+- The layout is at the expected seed in 12 of the 14, and one draw later in 2
+  (cmal02 CH8, cmal04 CH20). Both of those dives were read exactly, so the
+  extra draw came after the dive: a layout seed can sit one draw past what the
+  dive implies.
+- cmal08 CH21, where the dive was read one draw late: the seed one draw late
+  ties for first of the 81 (with an unrelated offset, −28) and is 297th of
+  20,000; the expected seed is 10th of 81. That favours the late read being
+  the real state (an extra draw before the dive), but it is weak evidence
+  from one dive.
 - cmal26 CH21, where the dive read is 4 draws off (a whole-Pikmin shift): the
-  floor scores the true seed 2nd of 81 and the dive's pick near the bottom, so
-  that shift is a real misread.
+  floor scores the true seed 2nd of 81 (297th of 20,000) and the dive's pick
+  well below it, so that shift is a real misread.
 
 As a tie-breaker for the reader it is not worth wiring in: of the 45 wrong
 reads only one (cmal26 CH21) is on a stage where the check works. A general
