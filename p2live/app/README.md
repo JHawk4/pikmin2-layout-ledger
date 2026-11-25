@@ -36,6 +36,66 @@ folder is not writable). Later starts go straight to the main view.
 - **Setup…** changes the current profile.
 - **New run** clears the run, so the next seed is not chained to the last one.
 
+## Challenge Mode (attk, key, cmat, 700k)
+
+Pick a Challenge Mode category in setup; step 4 then waits for a results screen instead of a cave.
+These modes are CaveGen's real-time manip (`Manip.java`, `Seed.java`), ported:
+
+1. **The score roll.** On each results screen the score digits roll from the global RNG
+   (`randInt(9) + 1` per unlocked digit per frame). `p2live::challenge` reads the roll to its end.
+   - It is a port of `p2seeds/challenge_results.py` from the challenge-mode-seeds branch.
+   - The panel is registered by template, so GC 4:3, Wii and Wii U 16:9 and any crop work.
+   - Decoding starts as soon as the digits stop changing, and takes about 1.2 s once the panel's
+     position is known. The position is found at the start of the first screen.
+2. **The plan.** Floor 1 of every level is generated and judged with CaveGen3 for the next seeds
+   the level select can give. The first one is the roll's last draw + 1004: four menu draws, then
+   1000 for the Pikmin dive. This checks out on cmal04, where Cryptic Cavern 1 = `0F129F12`.
+   - Ranks come from CaveGen's rank file.
+   - **attk** (score attack): levels marked P are preferred, and levels marked I are left out.
+     Only layouts in the best `rank threshold` % are shown.
+   - **key, cmat, 700k** (all levels): the wait and the scrolling are counted, along with the
+     layout against the level's average and the volatility of the floors after it. CaveGen's
+     times table adds the expected cost of the levels still to play.
+     - Those tables are 4 GiB each and take about 2 days to build.
+     - Give the path in Manip settings. One is at
+       `C:\Users\Jordan\Desktop\Hack\CaveGen\files\times_table_key.txt`.
+     - Without a table, levels are ranked greedily and the app says so.
+     - 700k is scored with the attk judge, since CaveGen's own 700k judge was never finished.
+3. **When to press A.** Each option shows the level, the menu moves from the cursor (U/D/L/R) and a
+   countdown to its window.
+   - Frame 0 is the "Don't Save" press. It is placed `seconds of delay` (CaveGen's 2.0 s) before
+     the last black frame of the fade to the level select.
+   - That fade is found in the captured frames, so the countdown is synced to the video, not to
+     the PC clock as CaveGen's was.
+   - Getting the seed before the target means the delay is too high; after it, too low.
+4. **Played levels.** When the next results screen comes, the option that was picked in the list
+   (the top one unless you clicked another) is marked played, and the cursor moves to it. Click
+   the level grid to fix it: a level the runner played without a plan (the run's first) is marked
+   by a click.
+
+**What it does not do:**
+- **Levels:** no detection of the level-enter card (the played level comes from the picked
+  option) and no plan before a run's first level (no roll precedes it).
+- **CaveGen extras:** no special targets (`@CH…`), no title-loop tracking, no splits and delta.
+- **Timing:** the frame tables are CaveGen's, for GameCube at 30 fps. Its per-level "frames from A
+  to the level" are its own rough estimates. Pikmin 2 HD (Switch) uses another RNG and is not
+  supported.
+
+```bash
+p2live challenge video.mp4 --out rolls.json                     # every results screen's roll
+p2live-app.exe --headless clip.mp4 --find 7 --run 25 --category key   # the plan, without the window
+```
+
+**Checked on CMAL videos:**
+- **Roll ends:** the same as the Python reader on all 183 screens of six runs: cmal02 (Wii U,
+  Japan), cmal04 (Wii U, USA), cmal08 (GC, Japan), cmal09 (Wii, Japan), cmal13 and cmal26 (GC,
+  USA). On cmal09, 16 of the 30 screens are unreadable for both readers.
+- **Timing, cmal04 at 3:00 (headless, real speed):**
+  - The roll end is `0x2DECAB0E`.
+  - Frame 0 falls at frame 387 of the clip.
+  - The runner's real A press (frame about 466, 2.6 s after frame 0) lies inside the plan's window
+    for the seed they got (`0F129F12`: 0–6.2 s).
+
 ## Parts
 
 | file | what |
@@ -45,7 +105,9 @@ folder is not writable). Later starts go straight to the main view.
 | `feed.rs` | finding the game picture (p2seeds' `feed.py`, plus growing out to the darkened edges) |
 | `engine.rs` | source → live detector → CaveGen3 drawing, on threads of their own |
 | `server.rs`, `overlay.html` | the Browser Source |
-| `gui.rs` | the wizard and the main view (egui) |
+| `gui.rs` | the wizard and the main view (egui), and the Challenge Mode view |
+| `chengine.rs` | Challenge Mode in the engine: results screens, decoding, the fade, the plan |
+| `manip.rs` | CaveGen's manip: menu timing, ranks, option costs, times tables |
 | `settings.rs` | profiles |
 
 **Why DirectShow:** the OBS Virtual Camera is a DirectShow filter. Apps that read cameras through

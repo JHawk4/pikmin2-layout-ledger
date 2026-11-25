@@ -112,9 +112,12 @@ exe) is a good fit: the Browser Source overlay is a web page anyway, so the two 
      plain page the app serves.
    - **Headless test on a wr17 clip:** HoB 2–4 equal to offline, ready 0.6–1.0 s after the screen
      settled.
-   - **Still to do:**
-     - frames from a running OBS Virtual Camera;
-     - the challenge-mode modes (attk, key, cmat, 700k).
+   - **Challenge Mode modes (attk, key, cmat, 700k):** added (`p2live/src/challenge.rs`,
+     `p2live/app/src/manip.rs`).
+     - **Roll reader:** a Rust port of the score-roll reader. It equals the Python reader on all
+       60 screens of two CMAL runs.
+     - **Planning:** CaveGen's manip planning and A-press timing, synced to the captured frames.
+   - **Still to do:** frames from a running OBS Virtual Camera.
 4. **Packaging.** A Windows exe first, then macOS. One test with real OBS and its virtual camera
    (needs OBS installed on the dev machine).
 
