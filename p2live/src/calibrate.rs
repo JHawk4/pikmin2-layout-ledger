@@ -209,7 +209,7 @@ fn best_fit(region: &FftImage, cave: &Cave, sys: &[f64], sx_factors: &[f64], ext
 /// A stream's name scale, learned from a screen that calibrated in full: the height scale and
 /// the width/height ratio of the capture (a 4:3 game shown 16:9 has ~1.33). Long English names
 /// are drawn narrower by the game, so their width also comes from the measured text width.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScaleHint {
     pub sy: f64,
     pub ratio: f64,

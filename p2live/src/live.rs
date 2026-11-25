@@ -255,6 +255,11 @@ impl Live {
         *self.shared.hint.lock().unwrap()
     }
 
+    /// Whether the last frame pushed was part of an entry screen (the cave name on black).
+    pub fn on_entry_screen(&self) -> bool {
+        self.run_start.is_some()
+    }
+
     /// One received frame (already cropped to the game picture), with its capture index.
     pub fn push(&mut self, index: usize, gray: Gray) {
         self.push_at(index, gray, Instant::now());
