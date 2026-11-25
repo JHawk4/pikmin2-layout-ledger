@@ -26,7 +26,7 @@ import json
 import shutil
 from pathlib import Path
 
-from . import analyze, chain, rng
+from . import analyze, caves, chain, rng
 from .events import Event, is_wide
 from .feed import Feed
 from .video import Video
@@ -131,6 +131,7 @@ def _rescued(out: Path, data: dict, video, feed, progress) -> list[int]:
         rows = [r for r in json.loads(fpath.read_text(encoding="utf-8")) if r["frame"] in keep or r["frame"] not in before]
         rows = sorted(rows + fit_rows, key=lambda r: r["frame"])
         fpath.write_text(json.dumps(rows), encoding="utf-8")
+        chain.relink_dir(out, data)          # window searches for the weak reads; writes seeds.json
     return added
 
 
@@ -180,11 +181,14 @@ def _rescue(video, feed, data: dict, limit: int, progress=None) -> tuple[list[in
     from .analyze import EventResult
     es = data["entries"]
     stand = [EventResult(Event(e["frame"], e["frame"], 1), settled_frame=e["frame"], cave_id=e["cave"],
-                         sublevel=e.get("sublevel"), confidence=e["confidence"], lang=e.get("lang") or "en",
+                         sublevel=e.get("sublevel"), sublevel_source=e.get("sublevel_source") or "",
+                         confidence=e["confidence"], lang=e.get("lang") or "en",
                          layout_seed=int(e["layout_seed"], 16) if e.get("layout_seed") else None)
              for e in es if e.get("cave") and e.get("frame")]
-    extra = [r for r in route_rescue.rescue(video, feed, stand, log=lambda m: progress and progress(None, m, False))
-             if r.letter_seed is not None and r.confidence in ("high", "medium")]
+    found = route_rescue.rescue(video, feed, stand, log=lambda m: progress and progress(None, m, False))
+    extra = [r for r in found if r.letter_seed is not None and r.confidence in ("high", "medium")]
+    # weak reads (a fit, but no seed of their own that chains) go to the relink's window search
+    weak = [r for r in found if r not in extra and r.fit is not None]
     anchors = {e["frame"]: int(e["letter_seed"], 16) for e in es if e["confidence"] == "high" and e.get("letter_seed")}
     kept: list = []
     grew = True
@@ -201,21 +205,39 @@ def _rescue(video, feed, data: dict, limit: int, progress=None) -> tuple[list[in
                 kept.append(r)
                 anchors[r.settled_frame] = r.letter_seed
                 grew = True
-    for r in extra:
+    for r in extra + weak:
         if progress:
-            progress({"cave": r.cave_id, "sublevel": r.sublevel, "confidence": "missing"}, r, r in kept)
-    if not kept:
+            progress({"cave": r.cave_id, "sublevel": r.sublevel, "confidence": "missing"}, r, r in kept or r in weak)
+    if not kept and not weak:
         return [], []
     link = next((e["link"] for e in es if e.get("link")), None)
     url = re.sub(r"[?&]t=\d+s?$", "", link) if link else None
-    fit_rows = [chain.row(r) for r in kept]          # their own read, before the neighbour confirms it
+    for r in weak:
+        if r.sublevel is None:
+            r.sublevel, r.sublevel_source = r.digit_value, "digit"
+    fit_rows = [chain.row(r) for r in kept + weak]   # their own read, before the neighbour confirms it
     for r in kept:
         r.confidence = "high"
         if r.sublevel is None:
             r.sublevel, r.sublevel_source = r.digit_value, "digit"
         r.note = ", ".join(x for x in (r.note, "seed confirmed by its neighbour") if x)
+    kept = kept + weak
     rows = report.rows(kept, data["meta"].get("fps") or video.fps, url)
     near = route_rescue.NEAR
     data["entries"] = sorted([e for e in es if e.get("layout_seed") or not any(abs(e["frame"] - r.settled_frame) < near for r in kept)]
                              + rows, key=lambda e: e["frame"])
+    resequence(data["entries"])
     return [r.settled_frame for r in kept], fit_rows
+
+
+def resequence(es: list[dict]) -> None:
+    """Entries numbered only by the sequence (no digit read) follow the entry before them again,
+    now that rescued sublevels sit before them (mercysnow's BK entry, called 1, came after BK 5)."""
+    from .sublevels import REENTRY_GAP_FRAMES
+    prev = None
+    for e in es:
+        if not e.get("cave"):
+            continue
+        if e.get("sublevel_source") == "sequence" and prev is not None and prev["cave"] == e["cave"]                 and prev.get("sublevel") and e["frame"] - prev["frame"] < REENTRY_GAP_FRAMES:
+            e["sublevel"] = min(prev["sublevel"] + 1, caves.get(e["cave"]).sublevels)
+        prev = e

@@ -9,10 +9,14 @@ things still hold:
   matching the "Sublevel" word taken from another entry of the same video.
 - The route says which cave it is. Between two recognized entries, the missing sublevels
   belong to the cave before (after its last one read) or to the cave after (before its
-  first one read). The sublevel digit picks between them.
+  first one read). The sublevel digit picks between them. A Pay Off Debt cave the run has
+  no seed in at all (mercysnow's Hole of Beasts) may sit in any gap. A sublevel number that
+  came only from the sequence (no digit read) is not trusted to bound a gap.
 
 Within one video a cave's name always lands in the same place at the same scale, so the
-calibration (letter boxes) of another entry of the same cave can be used as it is. The
+calibration (letter boxes) of another entry of the same cave can be used as it is. A cave
+with no such entry is calibrated, on that cave alone, on the title's own last frames, where
+the letters have (nearly) landed while the picture fades. The
 fit only needs each letter's free fall, and the letters are visible for 25-35 frames
 before the cut, so the seed can be read without a settled frame. Wrong seeds still have
 to chain with their neighbours (chain.link).
@@ -33,6 +37,8 @@ WORD_KEEP = 0.3         # still there, over a bright picture or fading
 DIGIT_VOTES = 5         # of the 9 digit reads on a title
 WORD_FRAC = {"en": 0.75, "ja": 0.5}   # of the sub line's width, from its left end
 NEAR = 90               # frames: a title this close to a recognized entry is that entry
+SELF_MIN = 0.30         # a title calibrated on itself (no sibling entry): its own cave's score
+SELF_FRAMES = 14        # its last frames tried for that
 
 
 def _cave(r: EventResult) -> caves.Cave:
@@ -95,17 +101,47 @@ def _titles(video, feed, word: _Word, lo: int, hi: int) -> list[tuple[int, int]]
     return out
 
 
-def _missing(prev: EventResult | None, nxt: EventResult | None) -> list[tuple[str, int]]:
-    """(cave, sublevel) the route goes through between two recognized entries."""
+def _sub(r: EventResult) -> int | None:
+    """The entry's sublevel when its digit was read (or it came from elsewhere), not a sequence guess."""
+    return None if r.sublevel_source == "sequence" else r.sublevel
+
+
+def _missing(prev: EventResult | None, nxt: EventResult | None, unseen: tuple[str, ...] = ()
+             ) -> list[tuple[str, int]]:
+    """(cave, sublevel) the route goes through between two recognized entries; `unseen` caves (no
+    entry anywhere in the run) may be anywhere."""
     out = []
     if prev is not None and prev.sublevel:
-        out += [(prev.cave_id, s) for s in range(prev.sublevel + 1, caves.get(prev.cave_id).sublevels + 1)]
+        lo = _sub(prev) or 0
+        out += [(prev.cave_id, s) for s in range(lo + 1, caves.get(prev.cave_id).sublevels + 1)]
     if nxt is not None and nxt.sublevel:
+        hi = _sub(nxt) or caves.get(nxt.cave_id).sublevels + 1
         if prev is not None and prev.cave_id == nxt.cave_id:
-            out = [(c, s) for c, s in out if s < nxt.sublevel]
+            out = [(c, s) for c, s in out if s < hi]
         else:
-            out += [(nxt.cave_id, s) for s in range(1, nxt.sublevel)]
+            out += [(nxt.cave_id, s) for s in range(1, hi)]
+    for c in unseen:
+        out += [(c, s) for s in range(1, caves.get(c).sublevels + 1) if (c, s) not in out]
     return out
+
+
+def _unseen(found: list[EventResult]) -> tuple[str, ...]:
+    """Pay Off Debt caves with no entry in a run that looks like Pay Off Debt (all its caves are)."""
+    from .analyze import POD_CAVES
+    have = {r.cave_id for r in found}
+    if not have or not have <= set(POD_CAVES):
+        return ()
+    return tuple(c for c in POD_CAVES if c not in have)
+
+
+def _self_cal(frames: list[np.ndarray], a: int, cave: caves.Cave) -> tuple[Calibration, int] | None:
+    """Calibrate a title on its own last frames, on one cave only (no sibling entry to borrow from)."""
+    best = None
+    for k in range(max(0, a - SELF_FRAMES), a + 1):
+        c = calibrate(normalize(frames[k]), caves=[cave])
+        if c is not None and c.score >= SELF_MIN and (best is None or c.score > best[0].score):
+            best = (c, k)
+    return best
 
 
 def rescue(video, feed, results: list[EventResult], log=print) -> list[EventResult]:
@@ -133,10 +169,12 @@ def rescue(video, feed, results: list[EventResult], log=print) -> list[EventResu
     if not word.ok:
         return []
 
+    unseen = _unseen(found)
+    by_id = {c.cavegen: c for c in caves.CAVES if c.lang == lang}
     out = []
     gaps = [(None, found[0])] + list(zip(found, found[1:])) + [(found[-1], None)]
     for prev, nxt in gaps:
-        want = _missing(prev, nxt)
+        want = _missing(prev, nxt, unseen)
         if not want:
             continue
         lo = prev.settled_frame + NEAR if prev else 0
@@ -162,19 +200,26 @@ def rescue(video, feed, results: list[EventResult], log=print) -> list[EventResu
             best = None
             for cave_id in dict.fromkeys(c for c, _ in options):
                 cs = cal_for(cave_id, t1)
-                if cs is None:
-                    continue
-                r = _analyze_entry(video, feed, Event(t0, t1, 1), frames, start, cs[0], a, a, a)
+                if cs is not None:
+                    cal, k = cs[0], a
+                else:
+                    own = _self_cal(frames, a, by_id[cave_id]) if cave_id in by_id else None
+                    if own is None:
+                        continue
+                    cal, k = own
+                r = _analyze_entry(video, feed, Event(t0, t1, 1), frames, start, cal, k, k, k)
                 r.digit_value = digit
                 subs = [s for c, s in options if c == cave_id]
                 if len(subs) == 1:
                     r.sublevel, r.sublevel_source = subs[0], "digit" if digit is not None else "route"
                 if best is None or _rank(r) > _rank(best):
                     best = r
-            if best is None or best.layout_seed is None:
+            if best is None or (best.layout_seed is None and best.fit is None):
                 log(f"    {t1:>6} {'/'.join(c for c, _ in options) or '-'} cut-short title: "
                     f"{best.note if best else 'no cave from the route'}")
                 continue
+            # a fit without a seed of its own (a short Japanese name) is still worth keeping: the
+            # chain's window search next to a neighbour's seed can find it (chain.link)
             best.note = ", ".join(x for x in (best.note, "title cut short: cave from the route, letters fitted as they fell") if x)
             out.append(best)
     return out

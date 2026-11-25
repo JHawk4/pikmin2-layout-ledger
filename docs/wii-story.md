@@ -18,7 +18,8 @@ GameCube runs?
   CurtisDN_'s 43, HeartPiece's (PAL) 39 and Sbudiver's 37.
 - **Japanese Wii U VC: yes, after a fix.** On mercysnow's capture the Japanese
   glyphs are stretched 4/3 with the picture; the fit assumed natural width.
-  With both widths tried, the run gives 28 high seeds (was 0).
+  With both widths tried, the run gives 28 high seeds (was 0), and 38 after
+  the route rescue learned to handle caves the run never read (below).
 
 Two layouts checked by eye against the video, by rendering the seed with
 CaveGen3:
@@ -43,7 +44,7 @@ with a YouTube video (ranks 1-8; ranks 9 and below have no usable video). The
 | CurtisDN_ | Wii U VC, USA | **43** | 0 | 0 | 42 / 42 |
 | HeartPiece | Wii U VC, EUR (PAL) | **39** | 2 | 0 | all but SH 2 (medium, wrong) |
 | Sbudiver (WNylfiIY_AQ) | Wii U VC, USA | **37** (was 33) | 3 | 0 | all but GK 5 (medium, wrong) |
-| mercysnow (7NzYrkLascs) | Wii U VC, JPN | **28** (was 0) | 0 | 6 | 27 / 34 (the 6 low ones chain with neither neighbour) |
+| mercysnow (7NzYrkLascs) | Wii U VC, JPN | **38** (was 0, then 28) | 1 | 6 | 38 of 45 seeded (the 6 low ones chain with neither neighbour) |
 
 - **Chaining**: from each seed to the next, the RNG must step forward by fewer
   than 2^22 draws. Real chains step forward 2.6k–580k draws: about 7 per frame
@@ -81,8 +82,9 @@ with a YouTube video (ranks 1-8; ranks 9 and below have no usable video). The
    - Sbudiver's EC 1, entered from the surface, has no title at all.
    - In JHawk4's run, HoB 1 shows the name for about 40 frames and cuts to
      black while the letters are still in the air (frame 38918).
-   - mercysnow's HoB/WFG entries go from black straight into
-     the sublevel.
+   - mercysnow's titles are dim and cut short: HoB 4's name lands at frame
+     41408 and is black by 41412. (First thought to be missing entirely; the
+     "go down?" dialog over a dark frame was what the scan picked up nearby.)
 
    No reading can recover a seed that isn't on screen. Kobachi's real Wii
    loads slowly enough that every title lands. (JHawk4's BK 3, first thought
@@ -241,14 +243,38 @@ numbers (Sbudiver showed +189 s; it is +3 s once fixed):
   now skip a seedless entry that sits between two seeded entries one sublevel
   apart, as the timing already did (`treasures.sublevel_entries`).
 
+## mercysnow: caves the run never read
+
+mercysnow's run first came out with 38 entries (28 high): no EC 1, no Hole of
+Beasts at all, BK 1-5, CoS 5, GK 6 and FC 5 missing, and the one early BK
+entry called BK 1. The titles are there, only short and dim: the name lands
+and fades within about 8 frames, and on those frames けだものの穴 scores 0.415
+against 夢の穴's 0.455. The route rescue could not help, for three reasons:
+
+1. It borrows letter boxes from another entry of the same cave, and HoB had
+   none. A Pay Off Debt cave with no seed anywhere in the run may now sit in
+   any gap, and such a title is calibrated on that cave alone on its own last
+   14 frames (`route_rescue._self_cal`, score at least 0.30).
+2. A short Japanese name's own fit rarely gives a seed that chains (HoB 1's
+   own read was 0x28874C25, unrelated to EC 2). Such weak reads used to be
+   dropped; `redo` now adds them to fits.json and relinks the run, so the
+   chain's window search next to a neighbour's seed finds them (HoB 1 at
+   148k steps after EC 2, chance 0.4%).
+3. The BK entry at frame 108790 had no digit read, so its "1" was a sequence
+   guess, and the rescue took it as a real bound: nothing before BK 1. A
+   sequence-only number no longer bounds a gap (`route_rescue._sub`), and after
+   the rescue such an entry is renumbered after the entry before it
+   (`redo.resequence`): it is BK 6.
+
+With these, `p2seeds redo` on the run added EC 1, HoB 1 and 4, WFG 3, CoS 5,
+GK 6, BK 1, 2, 4 and 5, and FC 5, all chaining: 48 entries, 38 high.
+
 ## Still open
 
-- mercysnow: the early game (EC 1, HoB, WFG, CoS 2) is mostly missing,
-  because those titles go from black straight into the sublevel and the caves
-  have no seeded sibling for the route rescue to borrow a calibration from.
-  WFG 1/2/4, GK 2, SCx 1 and SCx 7 are low and chain with neither neighbour.
-  The BK entry at frame 108790 was given sublevel 1, but it chains straight
-  into BK 7, so it is probably BK 6. `p2seeds redo` has not been run on it.
+- mercysnow: HoB 2, 3 and 5, CoS 2, BK 3 and the second WFG visit's 1 and 5
+  are still missing (titles too short to fit, or the digit read on fewer than
+  5 of 9 frames). WFG 1/2/4, GK 2, SCx 1 and SCx 7 are low and chain with
+  neither neighbour; FC 3 has no seed.
 - Sbudiver's Hole of Beasts 2 (a low read from the route rescue) and Glutton's
   Kitchen 5 (a medium read that chains with neither neighbour).
 

@@ -64,6 +64,22 @@ def test_route_names_the_sublevels_between_two_entries():
     assert _missing(at("HoB", 5), at("WFG", 2)) == [("WFG", 1)]
     assert _missing(None, at("EC", 2)) == [("EC", 1)]                    # from the surface
     assert _missing(at("WFG", 3), at("WFG", 1)) == []                    # a reset: nothing between
+    # a cave with no entry in the run (mercysnow's HoB) may be in any gap
+    assert _missing(at("EC", 2), at("WFG", 1), unseen=("HoB",)) == [("HoB", s) for s in range(1, 6)]
+    # a sublevel number that is only a sequence guess does not bound the gap
+    guess = at("BK", 1)
+    guess.sublevel_source = "sequence"
+    assert _missing(at("GK", 6), guess) == [("BK", s) for s in range(1, 8)]
+    assert _missing(guess, at("BK", 7)) == [("BK", s) for s in range(1, 7)]
+
+
+def test_rescued_sublevels_renumber_an_entry_whose_number_was_a_guess():
+    from p2seeds.redo import resequence
+    es = [{"frame": 100, "cave": "BK", "sublevel": 5, "sublevel_source": "digit"},
+          {"frame": 900, "cave": "BK", "sublevel": 1, "sublevel_source": "sequence"},
+          {"frame": 1500, "cave": "BK", "sublevel": 7, "sublevel_source": "digit (sequence said 2)"}]
+    resequence(es)
+    assert [e["sublevel"] for e in es] == [5, 6, 7]
 
 
 def test_a_seedless_second_detection_does_not_split_a_sublevels_treasures():
