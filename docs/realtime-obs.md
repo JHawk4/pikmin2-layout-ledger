@@ -101,6 +101,20 @@ exe) is a good fit: the Browser Source overlay is a web page anyway, so the two 
      idle machine.
    - Details are in `p2live/README.md`.
 3. **GUI and Browser Source,** settings saved next to the exe.
+   **Built (`p2live/app/`), not yet tried by a person:**
+   - **Camera input:** a DirectShow reader, so the OBS Virtual Camera is listed.
+   - **Setup:** a four-step wizard. The game picture is found automatically, within a few pixels
+     on 9 runs' stream layouts.
+   - **Settings:** profiles saved next to the exe.
+   - **Layouts:** drawn by CaveGen3 in under 0.5 s.
+   - **Browser Source:** an overlay page on 127.0.0.1.
+   - **The GUI is egui, not Tauri.** One binary with no Node or WebView build. The overlay is a
+     plain page the app serves.
+   - **Headless test on a wr17 clip:** HoB 2–4 equal to offline, ready 0.6–1.0 s after the screen
+     settled.
+   - **Still to do:**
+     - frames from a running OBS Virtual Camera;
+     - the challenge-mode modes (attk, key, cmat, 700k).
 4. **Packaging.** A Windows exe first, then macOS. One test with real OBS and its virtual camera
    (needs OBS installed on the dev machine).
 
