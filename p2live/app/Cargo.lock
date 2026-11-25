@@ -2317,10 +2317,12 @@ dependencies = [
 name = "p2live-app"
 version = "0.1.0"
 dependencies = [
+ "cavegen3",
  "cavegen3-cli",
  "eframe",
  "p2live",
  "png 0.17.16",
+ "rayon",
  "serde",
  "serde_json",
  "tiny_http",

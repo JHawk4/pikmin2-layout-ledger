@@ -19,6 +19,8 @@ serde_json = "1"
 png = "0.17"
 # CaveGen3 draws the layouts; pinned so the app does not change under it
 cavegen3-cli = { git = "https://github.com/JHawk4/CaveGen3", rev = "803830375accdcbf6e96ba9bd2beb0e45bb26e4b" }
+cavegen3 = { git = "https://github.com/JHawk4/CaveGen3", rev = "803830375accdcbf6e96ba9bd2beb0e45bb26e4b" }
+rayon = "1"
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "clipboard", "accesskit", "links"] }
 tiny_http = "0.12"
 

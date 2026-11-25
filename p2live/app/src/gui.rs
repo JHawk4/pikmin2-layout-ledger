@@ -61,7 +61,7 @@ enum Handle {
 }
 
 fn detect_cfg(p: &Profile) -> DetectCfg {
-    DetectCfg { category: p.category, language: p.language, hint: p.hint, view: p.view.clone() }
+    DetectCfg { category: p.category, language: p.language, hint: p.hint, view: p.view.clone(), manip: p.manip.clone() }
 }
 
 impl App {
@@ -304,7 +304,7 @@ impl App {
                             2 => {
                                 self.engine.send(Cmd::Crop(w.crop));
                                 self.engine.send(Cmd::NewRun);
-                                self.engine.send(Cmd::Detect(Some(DetectCfg { category: w.category, language: w.language, hint: None, view: LayoutView::default() })));
+                                self.engine.send(Cmd::Detect(Some(DetectCfg { category: w.category, language: w.language, hint: None, view: LayoutView::default(), manip: self.settings.profiles.get(w.editing.unwrap_or(usize::MAX)).map(|p| p.manip.clone()).unwrap_or_default() })));
                                 w.seen_screens = 0;
                                 w.step = 3;
                             }
@@ -513,6 +513,37 @@ impl App {
     }
 
     fn step_check(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, w: &mut Wizard, status: &crate::engine::Status) {
+        if w.category.challenge().is_some() {
+            ui.label(RichText::new("Finish any challenge level").size(18.0));
+            ui.label("When the results screen's score digits stop rolling, the RNG state read from them shows here. You can also finish now and check later.");
+            ui.add_space(8.0);
+            let ch = self.engine.shared.ch.lock().unwrap().clone();
+            if ch.on_results {
+                ui.colored_label(ACCENT, RichText::new("● results screen, reading the roll…").size(16.0));
+            } else if let Some(b) = &ch.busy {
+                ui.colored_label(ACCENT, RichText::new(b).size(16.0));
+            } else if let Some(r) = &ch.roll {
+                match r.end_state {
+                    Some(e) => ui.colored_label(GOOD, RichText::new(format!("✔ roll read: RNG 0x{e:08X} ({})", r.note)).size(16.0)),
+                    None => ui.colored_label(WARN, RichText::new(format!("results screen seen, roll not read: {}", r.note)).size(16.0)),
+                };
+            } else {
+                ui.colored_label(Color32::GRAY, RichText::new("waiting for a results screen…").size(16.0));
+            }
+            if let Some(e) = &ch.error {
+                ui.colored_label(WARN, e);
+            }
+            if let (Some((tex, size)), Some(c)) = (self.preview_texture(ctx), w.crop) {
+                let avail = Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width().min(520.0), ui.available_width().min(520.0) * 0.75));
+                ui.allocate_rect(avail, Sense::hover());
+                let uv = Rect::from_min_max(
+                    Pos2::new(c.x0 as f32 / size[0] as f32, c.y0 as f32 / size[1] as f32),
+                    Pos2::new(c.x1 as f32 / size[0] as f32, c.y1 as f32 / size[1] as f32),
+                );
+                ui.painter().image(tex.id(), fit(avail, [c.w(), c.h()]), uv, Color32::WHITE);
+            }
+            return;
+        }
         ui.label(RichText::new("Enter any cave").size(18.0));
         ui.label("Go into a cave (or load a save in front of one). When the cave's name falls in, the seed and layout show here. You can also finish now and check later.");
         ui.add_space(8.0);
@@ -567,6 +598,7 @@ impl App {
             // a new crop or input changes the scale of the name
             hint: hint.or(old.filter(|o| o.crop == crop && o.frame_size == w.frame_size).and_then(|o| o.hint)),
             view: old.map(|o| o.view.clone()).unwrap_or_default(),
+            manip: old.map(|o| o.manip.clone()).unwrap_or_default(),
         };
         let i = match w.editing {
             Some(i) if i < self.settings.profiles.len() => {
@@ -674,6 +706,12 @@ impl App {
             ui.add_space(4.0);
         });
 
+        if let Some(p) = &profile {
+            if p.category.challenge().is_some() {
+                self.challenge_ui(ui, ctx, &status);
+                return;
+            }
+        }
         let entries = self.engine.shared.entries.lock().unwrap().clone();
         egui::Panel::right("run").resizable(true).default_size(270.0).show(ui, |ui| {
             ui.add_space(4.0);
@@ -762,13 +800,261 @@ impl App {
     }
 }
 
+impl App {
+    /// Challenge Mode: the level grid, the plan (levels, seeds, when to press A) and the layout.
+    fn challenge_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, status: &crate::engine::Status) {
+        let shared = self.engine.shared.clone();
+        let ch = shared.ch.lock().unwrap().clone();
+        let Some(pi) = self.settings.active else { return };
+        let realtime = ch.mode.realtime();
+
+        egui::Panel::right("levels").resizable(true).default_size(300.0).show(ui, |ui| {
+            ui.add_space(4.0);
+            ui.label(RichText::new(format!("Levels ({} played)", ch.run.played.len())).strong());
+            ui.label(
+                RichText::new(if realtime { "Click a level to mark it played or not." } else { "Click: play (P) › ignore (I) › either (·). Played levels are X." })
+                    .weak()
+                    .size(12.0),
+            );
+            let mut manip = self.settings.profiles[pi].manip.clone();
+            let mut run = ch.run.clone();
+            egui::Grid::new("chgrid").spacing([4.0, 4.0]).show(ui, |ui| {
+                for row in 0..6 {
+                    for col in 0..5 {
+                        let l = row * 5 + col + 1;
+                        let played = run.played.contains(&l);
+                        let (mark, color) = if played {
+                            ("X", Color32::DARK_GRAY)
+                        } else if !realtime && manip.levels_to_play.contains(&l) {
+                            ("P", GOOD)
+                        } else if !realtime && manip.levels_to_ignore.contains(&l) {
+                            ("I", Color32::from_rgb(150, 90, 90))
+                        } else {
+                            ("·", Color32::LIGHT_GRAY)
+                        };
+                        let b = egui::Button::new(RichText::new(format!("{l:>2} {mark}")).monospace().color(color)).min_size(Vec2::new(50.0, 22.0));
+                        let r = ui.add(b).on_hover_text(format!("CH{l} {}", crate::chengine::level_name(l)));
+                        if r.clicked() {
+                            if realtime || played {
+                                if played {
+                                    run.played.retain(|x| *x != l);
+                                } else {
+                                    run.played.push(l);
+                                }
+                            } else if manip.levels_to_play.contains(&l) {
+                                manip.levels_to_play.retain(|x| *x != l);
+                                manip.levels_to_ignore.push(l);
+                            } else if manip.levels_to_ignore.contains(&l) {
+                                manip.levels_to_ignore.retain(|x| *x != l);
+                            } else {
+                                manip.levels_to_play.push(l);
+                            }
+                        }
+                        if r.secondary_clicked() && !played {
+                            run.played.push(l);
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+            if run.played != ch.run.played {
+                shared.ch.lock().unwrap().run.played = run.played.clone();
+            }
+            ui.separator();
+            egui::CollapsingHeader::new("Manip settings").default_open(false).show(ui, |ui| {
+                if !realtime {
+                    ui.add(egui::Slider::new(&mut manip.rank_threshold, 0.1..=20.0).text("best % of layouts"));
+                    ui.add(egui::Slider::new(&mut manip.max_wait_s, 10.0..=600.0).text("seconds ahead"));
+                } else {
+                    ui.add(egui::Slider::new(&mut manip.first_level_wait_s, 10.0..=600.0).text("first level: seconds ahead"));
+                    let kind = ch.mode.kind().to_string();
+                    let mut path = manip.times_tables.get(&kind).cloned().unwrap_or_default();
+                    ui.label(format!("CaveGen times table ({kind}), optional:"));
+                    if ui.add(egui::TextEdit::singleline(&mut path).hint_text("…\\files\\times_table_key.txt")).changed() {
+                        if path.trim().is_empty() {
+                            manip.times_tables.remove(&kind);
+                        } else {
+                            manip.times_tables.insert(kind.clone(), path.trim().trim_matches('"').to_string());
+                        }
+                    }
+                }
+                ui.add(egui::Slider::new(&mut manip.seconds_of_delay, 0.0..=5.0).text("seconds of delay"))
+                    .on_hover_text("Frame 0 (\"Don't Save\") is this long before the last black frame after the results.\nGetting the seed before the target: lower it; after: raise it.");
+                ui.add(egui::Slider::new(&mut manip.frames_to_scroll_level, 5..=60).text("frames per menu move"));
+            });
+            if manip != self.settings.profiles[pi].manip {
+                self.settings.profiles[pi].manip = manip.clone();
+                shared.ch.lock().unwrap().settings = manip;
+                self.save();
+            }
+            ui.separator();
+            if let (Some((tex, size)), Some(p)) = (self.preview_texture(ctx), self.settings.profile()) {
+                let c = p.crop;
+                let wdt = ui.available_width();
+                let avail = Rect::from_min_size(ui.cursor().min, Vec2::new(wdt, wdt * c.h() as f32 / c.w().max(1) as f32));
+                ui.allocate_rect(avail, Sense::hover());
+                let uv = Rect::from_min_max(
+                    Pos2::new(c.x0 as f32 / size[0] as f32, c.y0 as f32 / size[1] as f32),
+                    Pos2::new(c.x1 as f32 / size[0] as f32, c.y1 as f32 / size[1] as f32),
+                );
+                ui.painter().image(tex.id(), avail, uv, Color32::WHITE);
+            }
+            ui.checkbox(&mut self.show_log, "Show the log");
+        });
+
+        egui::CentralPanel::default().show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(ch.mode.label()).strong());
+                if let Some(r) = &ch.roll {
+                    match r.end_state {
+                        Some(e) => ui.label(RichText::new(format!("roll ended on 0x{e:08X}")).monospace()),
+                        None => ui.colored_label(WARN, "roll not read"),
+                    };
+                    if r.note != "ok" {
+                        ui.colored_label(WARN, &r.note);
+                    }
+                }
+                if ch.on_results {
+                    ui.colored_label(ACCENT, "● results screen");
+                }
+                if let Some(b) = &ch.busy {
+                    ui.colored_label(ACCENT, b);
+                }
+                if let Some(e) = &ch.error {
+                    ui.colored_label(WARN, e);
+                }
+            });
+            let Some(plan) = ch.plan.clone() else {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(ui.available_height() * 0.3);
+                    ui.label(RichText::new("Finish a challenge level: the plan for the next one shows here when its results screen's score stops rolling.").size(18.0).weak());
+                });
+                return;
+            };
+            if plan.greedy {
+                ui.colored_label(WARN, "No times table for this category: levels are ranked by this layout alone (set CaveGen's table in Manip settings).");
+            }
+            if plan.options.is_empty() {
+                ui.colored_label(WARN, "No level and seed passes the settings (rank, levels, timing).");
+                return;
+            }
+            let sel = ch.selected.min(plan.options.len() - 1);
+            let fps = status.fps.max(1.0);
+            // game frames since frame 0 ("Don't Save"); None until the fade to the level select
+            let elapsed = ch.frame0.map(|f0| (status.idx.saturating_sub(f0)) as f64 / fps * 30.0);
+            let countdown = |o: &crate::manip::Option_| -> (Option<f64>, Option<f64>) {
+                match elapsed {
+                    None => (None, None),
+                    Some(e) => {
+                        let start = (o.target_frame - o.window / 2) as f64;
+                        let t = (start - e) / 30.0;
+                        (Some(t), Some((o.window as f64 + (start - e)) / 30.0))
+                    }
+                }
+            };
+            {
+                let o = &plan.options[sel];
+                let (t, w) = countdown(o);
+                let big = match (t, w) {
+                    (None, _) => format!("CH{} {}: scroll {}  ·  waiting for the level select", o.level, crate::chengine::level_name(o.level), if o.scroll.is_empty() { "none" } else { &o.scroll }),
+                    (Some(t), _) if t > 0.0 => format!("CH{} {}: scroll {}, press A in {t:.1} s", o.level, crate::chengine::level_name(o.level), if o.scroll.is_empty() { "none" } else { &o.scroll }),
+                    (Some(_), Some(w)) if w > 0.0 => format!("CH{}: PRESS A NOW  ({w:.1} s left)", o.level),
+                    _ => format!("CH{}: window passed", o.level),
+                };
+                let col = match (t, w) {
+                    (Some(t), Some(w)) if t <= 0.0 && w > 0.0 => GOOD,
+                    (Some(t), _) if t <= 3.0 && t > 0.0 => ACCENT,
+                    _ => Color32::LIGHT_GRAY,
+                };
+                ui.label(RichText::new(big).size(24.0).strong().color(col));
+                if t.is_some_and(|t| t > -10.0) {
+                    ctx.request_repaint_after(Duration::from_millis(50));
+                }
+            }
+            ui.add_space(4.0);
+            let mut pick = None;
+            ui.columns(2, |cols| {
+                egui::ScrollArea::vertical().id_salt("opts").show(&mut cols[0], |ui| {
+                    egui::Grid::new("options").striped(true).spacing([10.0, 3.0]).show(ui, |ui| {
+                        for h in ["#", "level", "moves", "A in", "window", "seed", "adv", "rank", "Δ"] {
+                            ui.label(RichText::new(h).weak());
+                        }
+                        ui.end_row();
+                        for (i, o) in plan.options.iter().enumerate() {
+                            let (t, w) = countdown(o);
+                            let txt = |s: String| RichText::new(s).monospace();
+                            if ui.selectable_label(i == sel, txt(format!("{}", i + 1))).clicked() {
+                                pick = Some(i);
+                            }
+                            if ui.selectable_label(i == sel, txt(format!("CH{}", o.level))).on_hover_text(crate::chengine::level_name(o.level)).clicked() {
+                                pick = Some(i);
+                            }
+                            ui.label(txt(o.scroll.clone()));
+                            ui.label(txt(match t {
+                                Some(t) => format!("{:.1}", t.max(0.0)),
+                                None => format!("{:.1}", (o.target_frame - o.window / 2) as f64 / 30.0),
+                            }));
+                            ui.label(txt(match (t, w) {
+                                (Some(t), Some(w)) if t <= 0.0 => format!("{:.1}", w.max(0.0)),
+                                _ => format!("{:.1}", o.window as f64 / 30.0),
+                            }));
+                            ui.label(txt(format!("{:08X}", o.seed)));
+                            ui.label(txt(format!("{}", o.advances)));
+                            ui.label(txt(format!("{:.1}%", o.rank)));
+                            ui.label(txt(format!("{:.0}", o.delta)));
+                            ui.end_row();
+                        }
+                    });
+                });
+                let o = &plan.options[sel];
+                let entries = shared.entries.lock().unwrap().clone();
+                match entries.first().filter(|e| e.key == usize::MAX - o.level && e.layout_seed == Some(o.seed)) {
+                    Some(e) => {
+                        let e = e.clone();
+                        if let Some((tex, size)) = self.layout_texture(ctx, &e) {
+                            let avail = Rect::from_min_size(cols[1].cursor().min, cols[1].available_size());
+                            cols[1].allocate_rect(avail, Sense::hover());
+                            cols[1].painter().image(tex.id(), fit(avail, size), Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)), Color32::WHITE);
+                        } else {
+                            cols[1].label("drawing…");
+                        }
+                    }
+                    None => {
+                        self.engine.send(Cmd::ChShow(o.level, o.seed));
+                    }
+                }
+            });
+            if let Some(i) = pick {
+                shared.ch.lock().unwrap().selected = i;
+            }
+            if !ch.run.played.is_empty() || ch.run.last.is_some() {
+                ui.label(RichText::new(format!("menu cursor on CH{}", ch.run.last.unwrap_or(8))).weak());
+            }
+        });
+        if self.show_log {
+            egui::Panel::bottom("chlog").resizable(true).default_size(120.0).show(ui, |ui| {
+                egui::ScrollArea::vertical().stick_to_bottom(true).show(ui, |ui| {
+                    for l in self.engine.shared.log.lock().unwrap().iter() {
+                        ui.label(RichText::new(l).monospace().size(12.0));
+                    }
+                });
+            });
+        }
+    }
+}
+
 fn step_category(ui: &mut egui::Ui, w: &mut Wizard) {
     ui.label(RichText::new("What are you running?").size(18.0));
     ui.add_space(6.0);
     for c in Category::ALL {
         ui.radio_value(&mut w.category, c, RichText::new(c.label()).size(16.0));
     }
-    ui.label(RichText::new("Challenge mode (attk, key, cmat, 700k) is not in this version yet.").weak());
+    if w.category.challenge().is_some() {
+        ui.label(
+            RichText::new("Challenge Mode reads the score roll on each results screen and lists the levels and seeds to aim for, with when to press A. Menu timing is CaveGen's (GameCube, 30 fps).")
+                .weak(),
+        );
+    }
     ui.add_space(12.0);
     ui.label(RichText::new("Game language").size(16.0));
     for l in Language::ALL {

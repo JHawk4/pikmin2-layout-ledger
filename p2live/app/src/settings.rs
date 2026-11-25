@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::capture::{Crop, SourceSpec};
+use crate::manip::{ChMode, ManipSettings};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -15,20 +16,44 @@ pub enum Category {
     Pod,
     /// All Treasures: every story cave, AT judge.
     At,
+    /// Challenge Mode, score attack (single levels).
+    Attk,
+    /// Challenge Mode, all levels to the key.
+    Key,
+    /// Challenge Mode, all levels, all treasures.
+    Cmat,
+    /// Challenge Mode, 700k.
+    #[serde(rename = "700k")]
+    K700,
 }
 
 impl Category {
-    pub const ALL: [Category; 2] = [Category::Pod, Category::At];
+    pub const ALL: [Category; 6] = [Category::Pod, Category::At, Category::Attk, Category::Key, Category::Cmat, Category::K700];
     pub fn label(self) -> &'static str {
         match self {
             Category::Pod => "Pay Off Debt",
             Category::At => "All Treasures",
+            Category::Attk => "Challenge Mode: score attack (attk)",
+            Category::Key => "Challenge Mode: all levels, key (key)",
+            Category::Cmat => "Challenge Mode: all levels, treasures (cmat)",
+            Category::K700 => "Challenge Mode: 700k",
         }
     }
     pub fn judge(self) -> &'static str {
         match self {
             Category::Pod => "pod",
             Category::At => "at",
+            other => other.challenge().map(|m| m.kind()).unwrap_or("attk"),
+        }
+    }
+    /// The challenge manip mode, for Challenge Mode categories.
+    pub fn challenge(self) -> Option<ChMode> {
+        match self {
+            Category::Pod | Category::At => None,
+            Category::Attk => Some(ChMode::Attk),
+            Category::Key => Some(ChMode::Key),
+            Category::Cmat => Some(ChMode::Cmat),
+            Category::K700 => Some(ChMode::K700),
         }
     }
 }
@@ -81,6 +106,9 @@ pub struct Profile {
     pub hint: Option<(f64, f64)>,
     #[serde(default)]
     pub view: LayoutView,
+    /// Challenge Mode manip settings (CaveGen's config.txt)
+    #[serde(default)]
+    pub manip: ManipSettings,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

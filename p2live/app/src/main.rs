@@ -12,12 +12,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod capture;
+mod chengine;
 #[cfg(windows)]
 #[allow(non_snake_case)]
 mod dshow;
 mod engine;
 mod feed;
 mod gui;
+mod manip;
 mod server;
 mod settings;
 
@@ -137,7 +139,14 @@ fn headless(args: &[String]) {
     let find: f64 = opt(args, "--find", 20.0);
     let run: f64 = opt(args, "--run", 60.0);
     let port: u16 = opt(args, "--port", 8787);
-    let category = if opt(args, "--category", String::from("pod")) == "at" { Category::At } else { Category::Pod };
+    let category = match opt(args, "--category", String::from("pod")).as_str() {
+        "at" => Category::At,
+        "attk" => Category::Attk,
+        "key" => Category::Key,
+        "cmat" => Category::Cmat,
+        "700k" => Category::K700,
+        _ => Category::Pod,
+    };
     let engine = Engine::start(Box::new(|| {}));
     let overlay = server::start(engine.shared.clone(), port);
     println!("Browser Source: {} {}", overlay.url(), overlay.error.clone().unwrap_or_default());
@@ -162,7 +171,7 @@ fn headless(args: &[String]) {
     let crop = crop.unwrap_or(capture::Crop::full(st.w, st.h));
     engine.send(Cmd::FindFeed(false));
     engine.send(Cmd::Crop(Some(crop)));
-    engine.send(Cmd::Detect(Some(DetectCfg { category, language: Language::Auto, hint: None, view: LayoutView::default() })));
+    engine.send(Cmd::Detect(Some(DetectCfg { category, language: Language::Auto, hint: None, view: LayoutView::default(), manip: Default::default() })));
     let t1 = Instant::now();
     while t1.elapsed().as_secs_f64() < run {
         std::thread::sleep(Duration::from_millis(500));
@@ -181,4 +190,27 @@ fn headless(args: &[String]) {
         );
     }
     println!("hint {:?}", engine.shared.hint.lock().unwrap());
+    let ch = engine.shared.ch.lock().unwrap().clone();
+    if category.challenge().is_some() {
+        println!("results screens {}, frame0 {:?}, played {:?}, busy {:?}, error {:?}", ch.screens, ch.frame0, ch.run.played, ch.busy, ch.error);
+        if let Some(r) = &ch.roll {
+            println!("last roll: {} end {:?} at {:?} ({})", r.final_display, r.end_state.map(|e| format!("0x{e:08X}")), r.end_frame, r.note);
+        }
+        if let Some(p) = &ch.plan {
+            for o in p.options.iter().take(8) {
+                println!(
+                    "  CH{:<2} {:<22} {:>6} A at {:>5.1} s ±{:.1}  seed {:08X} +{}  rank {:>4.1}%  delta {:>8.1}",
+                    o.level,
+                    chengine::level_name(o.level),
+                    o.scroll,
+                    o.target_frame as f64 / 30.0,
+                    o.window as f64 / 60.0,
+                    o.seed,
+                    o.advances,
+                    o.rank,
+                    o.delta
+                );
+            }
+        }
+    }
 }

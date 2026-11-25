@@ -15,6 +15,8 @@ use p2live::templates::{caves, Cave, POD_CAVES};
 
 use crate::capture::{Crop, Frame, Source, SourceSpec};
 use crate::feed::FeedFinder;
+use crate::chengine::{level_name, ChPipe, ChState};
+use crate::manip::{ChMode, ManipSettings};
 use crate::settings::{Category, Language, LayoutView};
 
 /// What the detector needs from a profile.
@@ -24,6 +26,7 @@ pub struct DetectCfg {
     pub language: Language,
     pub hint: Option<(f64, f64)>,
     pub view: LayoutView,
+    pub manip: ManipSettings,
 }
 
 pub enum Cmd {
@@ -38,6 +41,8 @@ pub enum Cmd {
     FindFeed(bool),
     /// Draw the current run's layouts again (the layout options changed).
     View(LayoutView),
+    /// Challenge Mode: show this level's floor 1 with this seed (the picked option).
+    ChShow(usize, u64),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -53,6 +58,8 @@ pub struct Status {
     pub on_entry_screen: bool,
     /// entry screens seen (whether or not they gave a seed)
     pub screens: usize,
+    /// capture index of the last frame
+    pub idx: usize,
 }
 
 /// One sublevel of the run.
@@ -102,6 +109,8 @@ pub struct Shared {
     pub hint: Mutex<Option<(f64, f64)>>,
     pub log: Mutex<VecDeque<String>>,
     pub cavegen: Mutex<Result<(), String>>,
+    /// Challenge Mode state (the plan, the run's levels)
+    pub ch: Arc<Mutex<ChState>>,
 }
 
 impl Shared {
@@ -137,6 +146,7 @@ impl Engine {
             hint: Mutex::new(None),
             log: Mutex::new(VecDeque::new()),
             cavegen: Mutex::new(Ok(())),
+            ch: Arc::new(Mutex::new(ChState::new(ChMode::Attk, ManipSettings::default()))),
         });
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
@@ -181,7 +191,7 @@ struct RenderJob {
     view: LayoutView,
 }
 
-fn cavegen_data() -> std::path::PathBuf {
+pub fn cavegen_data() -> std::path::PathBuf {
     if let Some(d) = std::env::var_os("CAVEGEN3_DATA") {
         return d.into();
     }
@@ -247,6 +257,7 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
     let mut detect: Option<DetectCfg> = None;
     let mut live: Option<(Live, Receiver<LiveResult>)> = None;
     let mut finder: Option<FeedFinder> = None;
+    let mut chpipe: Option<ChPipe> = None;
     let mut idx = 0usize;
     let mut fps_window: VecDeque<Instant> = VecDeque::new();
     let mut last_preview = Instant::now() - Duration::from_secs(1);
@@ -289,14 +300,31 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
                 Ok(Cmd::Crop(c)) => crop = c,
                 Ok(Cmd::Detect(d)) => {
                     live = None;
+                    chpipe = None;
                     if let Some(d) = &d {
                         *shared.hint.lock().unwrap() = d.hint;
+                        if let Some(m) = d.category.challenge() {
+                            let mut ch = shared.ch.lock().unwrap();
+                            if ch.mode != m {
+                                *ch = ChState::new(m, d.manip.clone());
+                            }
+                            ch.settings = d.manip.clone();
+                            chpipe = Some(ChPipe::new());
+                        }
                     }
                     detect = d;
                     shared.status.lock().unwrap().detecting = detect.is_some();
                 }
                 Ok(Cmd::NewRun) => {
                     live = None; // a fresh detector: no previous seed to chain from
+                    {
+                        let mut ch = shared.ch.lock().unwrap();
+                        let (m, s) = (ch.mode, ch.settings.clone());
+                        *ch = ChState::new(m, s);
+                    }
+                    if chpipe.is_some() {
+                        chpipe = Some(ChPipe::new());
+                    }
                     shared.entries.lock().unwrap().clear();
                     shared.version.fetch_add(1, Ordering::SeqCst);
                     shared.status.lock().unwrap().screens = 0;
@@ -315,6 +343,34 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
                         if let (Some(sub), Some(seed), Some(d)) = (e.sublevel_id(), e.layout_seed, detect.as_ref()) {
                             let _ = rtx.send(RenderJob { key: e.key, sublevel: sub, seed, judge: d.category.judge(), view: v.clone() });
                         }
+                    }
+                }
+                Ok(Cmd::ChShow(level, seed)) => {
+                    let mut entries = shared.entries.lock().unwrap();
+                    let key = usize::MAX - level;
+                    let same = entries.first().is_some_and(|e| e.key == key && e.layout_seed == Some(seed));
+                    if !same {
+                        entries.clear();
+                        entries.push(Entry {
+                            key,
+                            cave: format!("CH{level}"),
+                            cave_name: level_name(level).to_string(),
+                            sublevel: Some(1),
+                            sublevel_guess: false,
+                            layout_seed: Some(seed),
+                            confidence: "high".into(),
+                            chained: false,
+                            ready_s: 0.0,
+                            png: None,
+                            score: None,
+                            render_error: None,
+                            version: 0,
+                        });
+                        let judge = detect.as_ref().map(|d| d.category.judge()).unwrap_or("attk");
+                        let view = detect.as_ref().map(|d| d.view.clone()).unwrap_or_default();
+                        let _ = rtx.send(RenderJob { key, sublevel: format!("CH{level}-1"), seed, judge, view });
+                        drop(entries);
+                        shared.version.fetch_add(1, Ordering::SeqCst);
                     }
                 }
                 Err(TryRecvError::Empty) => break,
@@ -356,7 +412,10 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
             }
         }
 
-        if let (Some(d), Some(c)) = (detect.as_ref(), crop) {
+        shared.status.lock().unwrap().idx = idx;
+        if let (Some(pipe), Some(c)) = (chpipe.as_mut(), crop) {
+            pipe.push(idx, &frame, c, src.fps, &shared.ch, &repaint);
+        } else if let (Some(d), Some(c)) = (detect.as_ref(), crop) {
             let (lv, _) = live.get_or_insert_with(|| new_live(&shared, d, src.fps));
             lv.push(idx, frame.gray(c));
             let on = lv.on_entry_screen();

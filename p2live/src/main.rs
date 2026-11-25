@@ -32,6 +32,7 @@ fn main() {
     match args.get(1).map(|s| s.as_str()) {
         Some("entries") => entries(&args[2..]),
         Some("replay") => replay::replay(&args[2..]),
+        Some("challenge") => challenge_cmd(&args[2..]),
         _ => {
             eprintln!("usage: p2live entries SEEDS.json [--jobs N] [--limit N] [--frames F1,F2] [--out FILE.jsonl]");
             eprintln!("       p2live replay VIDEO|SEEDS.json [--feed x0,y0,x1,y1] [--start S] [--duration S] [--speed 1|0] [--double]");
@@ -148,4 +149,93 @@ pub fn stage_report() -> String {
         .map(|(n, t)| format!("{n} {:.1}s", t.load(Ordering::Relaxed) as f64 / 1e9))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+/// p2live challenge VIDEO [--out FILE.json]: every results screen's score roll.
+fn challenge_cmd(args: &[String]) {
+    use p2live::challenge::{blue_fraction, decode_screen, Screens};
+    use std::io::Read;
+    let path = &args[0];
+    let info = probe(path).expect("ffprobe");
+    let (w, h) = (info.w, info.h);
+    let mut child = std::process::Command::new(std::env::var("P2LIVE_FFMPEG").unwrap_or_else(|_| "ffmpeg".into()))
+        .args(["-v", "error", "-nostdin", "-i", path, "-an", "-vf", "scale=in_color_matrix=bt601", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("ffmpeg");
+    let mut out = child.stdout.take().unwrap();
+    let mut buf = vec![0u8; w * h * 3];
+    let mut screens = Screens::new();
+    let mut hint = None;
+    let mut results = Vec::new();
+    let t0 = Instant::now();
+    let mut idx = 0usize;
+    let handle = |frames: Vec<(usize, p2live::img::Gray)>, hint: &mut Option<p2live::challenge::Placement>, results: &mut Vec<Value>| {
+        let t = Instant::now();
+        if let Some(r) = decode_screen(&frames, hint.as_ref()) {
+            *hint = Some(r.placement);
+            eprintln!(
+                "  screen {}-{}: {} end {} at {:?} ({}, {:.2} s)",
+                r.first_frame,
+                r.last_frame,
+                r.final_display,
+                r.end_state.map(|s| format!("0x{s:08X}")).unwrap_or("-".into()),
+                r.end_frame,
+                r.note,
+                t.elapsed().as_secs_f64()
+            );
+            results.push(serde_json::to_value(&r).unwrap());
+        }
+    };
+    while out.read_exact(&mut buf).is_ok() {
+        // blue share on a 160x90 grid of block means (cv2.resize INTER_AREA to 160x90)
+        let idle = !screens.active();
+        let blue = if idle && idx % 3 != 0 {
+            0.0
+        } else {
+            let (sw, sh) = (160usize, 90usize);
+            let mut small = vec![0u8; sw * sh * 3];
+            for sy in 0..sh {
+                let (y0, y1) = (sy * h / sh, ((sy + 1) * h / sh).max(sy * h / sh + 1));
+                for sx in 0..sw {
+                    let (x0, x1) = (sx * w / sw, ((sx + 1) * w / sw).max(sx * w / sw + 1));
+                    let mut acc = [0u32; 3];
+                    for y in y0..y1 {
+                        for x in x0..x1 {
+                            let i = (y * w + x) * 3;
+                            acc[0] += buf[i] as u32;
+                            acc[1] += buf[i + 1] as u32;
+                            acc[2] += buf[i + 2] as u32;
+                        }
+                    }
+                    let n = ((y1 - y0) * (x1 - x0)) as u32;
+                    for c in 0..3 {
+                        small[(sy * sw + sx) * 3 + c] = (acc[c] / n) as u8;
+                    }
+                }
+            }
+            blue_fraction(&small, sw, sh)
+        };
+        let gray = || {
+            let mut g = vec![0u8; w * h];
+            for i in 0..w * h {
+                let (r, gg, b) = (buf[i * 3] as u32, buf[i * 3 + 1] as u32, buf[i * 3 + 2] as u32);
+                g[i] = ((b * 1868 + gg * 9617 + r * 4899 + 8192) >> 14) as u8;
+            }
+            p2live::img::Gray::new(w, h, g)
+        };
+        if let Some(frames) = screens.push(idx, blue, gray) {
+            handle(frames, &mut hint, &mut results);
+        }
+        idx += 1;
+    }
+    if let Some(frames) = screens.finish() {
+        handle(frames, &mut hint, &mut results);
+    }
+    let _ = child.wait();
+    eprintln!("{} frames, {} screens in {:.0} s", idx, results.len(), t0.elapsed().as_secs_f64());
+    if let Some(p) = arg(args, "--out") {
+        std::fs::write(p, serde_json::to_string_pretty(&results).unwrap()).unwrap();
+    }
 }

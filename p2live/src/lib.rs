@@ -4,6 +4,7 @@
 
 pub mod analyze;
 pub mod calibrate;
+pub mod challenge;
 pub mod digits;
 pub mod fit;
 pub mod img;
