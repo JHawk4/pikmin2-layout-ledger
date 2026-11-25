@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pikmin 2 Layout Ledger · layout luck in Pikmin 2 Pay Off Debt runs</title>
+<style>
+:root { --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8; --good:#1f7a3a; --bad:#b42318; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161614; --fg:#ececea; --muted:#9a9a94;
+  --card:#20201e; --line:#33332f; --good:#5cc27a; --bad:#f0786d; } }
+.good-text { color:var(--good); } .bad-text { color:var(--bad); } .mid-text { color:var(--muted); }
+:root[data-theme="dark"] { --bg:#161614; --fg:#ececea; --muted:#9a9a94; --card:#20201e; --line:#33332f;
+  --good:#5cc27a; --bad:#f0786d; }
+* { box-sizing:border-box; }
+body { background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,sans-serif; margin:0; padding:24px 16px 48px; }
+main { max-width:1080px; margin:0 auto; }
+h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:19px; margin:36px 0 8px; }
+a { color:inherit; } .muted { color:var(--muted); } p { max-width:780px; }
+.tablewrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+.heatgrid { font-size:12px; } .heatgrid th, .heatgrid td { padding:4px 7px; white-space:nowrap; }
+.heatgrid th:first-child, .heatgrid td:first-child { position:sticky; left:0; background:var(--card); z-index:1; }
+.heatgrid td.heat a { color:var(--fg); text-decoration:none; font-weight:600; }
+.heatgrid td.heat { outline:none; } .heatgrid td.heat:hover, .heatgrid td.heat:focus { box-shadow:inset 0 0 0 2px var(--fg); }
+table { border-collapse:collapse; width:100%; font-size:14px; }
+th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+th { color:var(--muted); font-weight:500; } tr:last-child td { border-bottom:none; }
+.num { text-align:right; font-variant-numeric:tabular-nums; }
+.curves { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:12px; }
+@media (max-width:480px) { .curves { grid-template-columns:1fr; } }
+h3 { font-size:16px; margin:28px 0 6px; } .findings { font-size:14px; }
+details { margin:10px 0 0; } summary { cursor:pointer; color:var(--muted); font-size:14px; }
+details .tablewrap { max-height:360px; overflow:auto; margin-top:8px; }
+code { font:13px ui-monospace,Consolas,monospace; }
+.lead { font-size:16px; } .intro { max-width:820px; } .legend-list { margin:6px 0 14px; padding-left:18px; max-width:820px; }
+.badge { font-size:11px; font-weight:700; color:var(--sun); border:1px solid var(--sun); border-radius:999px; padding:0 6px; margin-left:4px; }
+th[data-sort] { cursor:pointer; user-select:none; } th[data-sort]:hover { color:var(--fg); }
+th[aria-sort="ascending"]::after { content:" ▲"; } th[aria-sort="descending"]::after { content:" ▼"; }
+td.weak { color:var(--bad); }
+.ts-pick { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:8px 12px; margin:0 0 12px;
+  display:flex; flex-direction:column; gap:4px; max-width:820px; }
+.ts-pick label { cursor:pointer; } .small { font-size:13px; }
+@media (max-width:640px) { td.sticky, th.sticky { position:sticky; left:0; background:var(--card); z-index:1; } }
+
+.sc-keys[hidden] { display:none !important; }
+.scatter-controls { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; font-size:13px; margin:0 0 6px; }
+.scatter-controls select { font:inherit; color:inherit; background:var(--surface-1); border:1px solid var(--grid); border-radius:6px; padding:2px 6px; max-width:60vw; }
+.cumul .brush-area { cursor:crosshair; touch-action:none; }
+.cumul .sortval { font-size:10px; }
+.cumul .brush-read { font-size:12px; font-weight:600; }
+.cumul .hover-read { font-size:11px; fill:var(--ink-1); }
+.viz-root { --surface-1:#fcfcfb; --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#8a8984; --grid:#e6e5e0;
+  --range:#d4d3cd; --good-mark:#0ca30c; --bad-mark:#d03b3b; --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
+  --series-5:#e87ba4; --series-6:#008300; --series-7:#6250d6; --series-8:#e34948; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .viz-root {
+  --surface-1:#1a1a19; --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8f8e88; --grid:#2f2f2c; --range:#45443f;
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500; --series-5:#d55181;
+  --series-6:#0ca30c; --series-7:#9085e9; --series-8:#e66767; } }
+:root[data-theme="dark"] .viz-root { --surface-1:#1a1a19; --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8f8e88;
+  --grid:#2f2f2c; --range:#45443f; --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+  --series-4:#c98500; --series-5:#d55181; --series-6:#0ca30c; --series-7:#9085e9; --series-8:#e66767; }
+.chart { background:var(--surface-1); border:1px solid var(--grid); border-radius:10px; padding:12px 12px 6px; }
+.chart svg { display:block; width:100%; height:auto; overflow:visible; }
+.chart text { fill:var(--ink-2); font:11px system-ui,sans-serif; }
+.chart .ttl { fill:var(--ink-1); font-weight:600; font-size:12px; }
+.chart .grid { stroke:var(--grid); stroke-width:1; }
+.chart .zero { stroke:var(--ink-3); stroke-width:1; }
+.chart .range { stroke:var(--range); stroke-width:6; stroke-linecap:round; }
+.chart .hit { fill:transparent; cursor:default; outline:none; }
+.chart svg text, .chart .dot { pointer-events:none; }
+.chart .hit:hover + .dot, .chart .hit:focus + .dot { stroke:var(--ink-1); stroke-width:2; }
+.chart .runline { opacity:.35; } .chart .runline:hover, .chart .runline:focus-within { opacity:1; }
+.chart .runline:hover path { stroke-width:2.5; }
+.legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin:8px 2px 2px; font-size:12px; color:var(--ink-2); }
+.legend i { display:inline-block; width:16px; height:2px; vertical-align:middle; margin-right:6px; border-radius:1px; }
+.legend i.dotkey { width:8px; height:8px; border-radius:50%; }
+#viz-tip { position:fixed; pointer-events:none; z-index:10; background:var(--surface-1); color:var(--ink-2);
+  border:1px solid var(--grid); border-radius:8px; padding:6px 9px; font:12px/1.4 system-ui,sans-serif;
+  box-shadow:0 4px 14px rgba(0,0,0,.25); display:none; box-sizing:border-box; max-width:min(260px, calc(100vw - 16px)); }
+#viz-tip b { color:var(--ink-1); display:block; font-size:13px; }
+#viz-tip img { display:block; width:240px; height:min(200px, 45vh); object-fit:contain; max-width:100%; margin-top:6px;
+  border-radius:4px; background:#000; }
+
+
+:root, :root[data-theme="light"] {
+  --bg:#e4eed2; --bg-2:#d3e4b8; --fg:#1d2418; --muted:#5f6b58; --card:#ffffff; --line:#d5dccb; --field:#f7faf1;
+  --leaf:#4b9a3c; --leaf-2:#3c8531; --leaf-dark:#2c6a24; --accent:#3c8531; --sun:#f2a01c;
+  --good:#2c6a24; --mid:#8a6a1f; --bad:#b3261e; --goodbg:#e3f1dc; --midbg:#f6ecd6; --badbg:#f8e1df; --bar:#c9d3bd;
+  --radius:14px; --shadow:0 1px 2px rgba(44,106,36,.12), 0 2px 10px rgba(44,106,36,.08); color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#141c10; --bg-2:#0d130a; --fg:#e6ece0; --muted:#a3ae98; --card:#1d2619; --line:#34442c; --field:#161e12;
+  --leaf-dark:#a6dc8f; --accent:#8fd37a; --good:#8fd37a; --mid:#e0b45a; --bad:#f2b8b5;
+  --goodbg:#1e3319; --midbg:#352d19; --badbg:#3b2120; --bar:#3a4a32;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.25); color-scheme:dark; } }
+html { background:var(--bg); }
+body { background:linear-gradient(180deg, var(--bg) 0, var(--bg) 340px, var(--bg-2) 100%) fixed; color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+a { color:var(--accent); } a:hover { color:var(--leaf-dark); }
+.site-header { max-width:1240px; margin:0 auto 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.site-logo { display:flex; align-items:center; gap:6px; color:var(--leaf-dark); text-decoration:none; font-weight:800;
+  letter-spacing:-.5px; font-size:1.25rem; text-shadow:1px 1px 0 rgba(255,255,255,.8); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .site-logo { text-shadow:none; } }
+.site-nav { display:flex; flex-wrap:wrap; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  background:linear-gradient(135deg, var(--leaf), var(--leaf-2)); box-shadow:inset 4px 0 0 var(--sun); }
+.site-nav a { text-decoration:none; color:#fff; padding:3px 12px; border-radius:999px; }
+.site-nav a:hover { color:#fff; background:rgba(0,0,0,.15); }
+.site-nav a[aria-current="page"] { background:#fff; color:var(--leaf-2); }
+.site-cats { display:flex; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  border:2px solid var(--accent); background:var(--card); }
+.site-cats a { text-decoration:none; color:var(--accent); padding:1px 12px; border-radius:999px; }
+.site-cats a:hover { background:var(--goodbg); }
+.site-cats a[aria-current="page"] { background:var(--leaf-2); color:#fff; }
+.site-footer { max-width:1240px; margin:28px auto 0; color:var(--muted); font-size:.85rem; }
+h1, h2 { color:var(--leaf-dark); }
+h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-block; }
+.tablewrap, .card, .help, .tile, .stat { border-radius:var(--radius) !important; box-shadow:var(--shadow); }
+</style></head><body><header class="site-header"><a class="site-logo" href="index.html"><svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true"><path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 25 C8.5 25.5 5 23.5 3.6 20.6 C7.4 19.6 10.6 21.5 12 25 Z" fill="#5fb447" stroke="#3c8531" stroke-width="1"/><ellipse cx="12.0" cy="4.4" rx="3.1" ry="4.3" transform="rotate(0 12.0 4.4)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="16.37" cy="7.58" rx="3.1" ry="4.3" transform="rotate(72 16.37 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="14.7" cy="12.72" rx="3.1" ry="4.3" transform="rotate(144 14.7 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="9.3" cy="12.72" rx="3.1" ry="4.3" transform="rotate(216 9.3 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="7.63" cy="7.58" rx="3.1" ry="4.3" transform="rotate(288 7.63 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><circle cx="12" cy="9" r="3.1" fill="#f2c230" stroke="#d39a12" stroke-width="0.9"/></svg>Pikmin 2 Layout Ledger</a><nav class="site-cats" aria-label="Category"><a href="index.html" aria-current=page>Pay Off Debt</a><a href="wii/index.html">Pay Off Debt (Wii)</a><a href="at/index.html">All Treasures</a></nav><nav class="site-nav"><a href="index.html" aria-current=page>All runs</a><a href="layouts.html">Layouts</a><a href="detection.html">Detection</a><a href="timesave.html">Time saved</a><a href="pokos.html">Pokos</a><a href="how-judge.html">The judge</a><a href="accuracy.html">Judge accuracy</a><a href="seeds.html">Seed check</a><a href="gecko.html">Gecko code</a><a href="suggest.html" class=nav-suggest>Suggestion box</a></nav><button type="button" id="lang-toggle" class="lang-toggle" lang="ja" title="日本語で表示">日本語</button><style>html.i18n-wait body{visibility:hidden}.lang-toggle{margin-left:auto;font:inherit;font-size:.88rem;font-weight:700;color:var(--accent,#3c8531);background:var(--card,#fff);border:2px solid var(--accent,#3c8531);border-radius:999px;padding:1px 12px;min-height:30px;cursor:pointer}.lang-toggle:hover{background:var(--goodbg,#e3f1dc)}</style><script>(function(){var l=null;try{var q=new URLSearchParams(location.search).get("lang");l=q==="ja"||q==="en"?q:localStorage.getItem("ledger-lang")||localStorage.getItem("cavegen3-lang");}catch(e){}if(l!=="ja"&&l!=="en")l=(navigator.language||"").toLowerCase().indexOf("ja")===0?"ja":"en";if(l==="ja"){var h=document.documentElement;h.classList.add("i18n-wait");h.lang="ja";setTimeout(function(){h.classList.remove("i18n-wait")},3000);}})();</script><script src="i18n.js" defer></script></header><main>
+<h1>How lucky were the layouts?</h1>
+<p class="intro">Every cave sublevel's layout is set by the game's random number generator. This site reads that seed from
+the falling title letters in each Pay Off Debt run's video, rebuilds the exact layout, and asks how lucky the layouts were
+and how much time the runner saved beyond what the layouts gave.</p>
+<ul class="legend-list muted">
+<li><b>Layout luck</b>: seconds the run's layouts should save against the median layout of the same sublevels, by
+CaveGen's layout judge re-tuned on these runs' real times. <b>Luck percentile</b>: how many random runs it beats.</li>
+<li><b>Runner beyond the layouts</b>: seconds the runner saved against the median run on the same sublevels, after
+allowing for the layouts (so a bad layout is not counted against the runner), with pokos counted: 2 pokos = 1 second.</li>
+<li>Negative is faster, as on splits. <b>Seeds read</b> is how many sublevels' seeds were read with confidence; only those count.
+Click a column to sort; open a runner for their layouts.</li>
+</ul>
+
+<div class="tablewrap"><table id="runs">
+<thead><tr><th class="num" data-sort>Rank</th><th class="sticky" data-sort>Runner</th><th data-sort>Time</th>
+<th class="num" data-sort title="Seconds the layouts should save vs median layouts">Layout luck</th>
+<th class="num" data-sort title="Share of random runs over the same sublevels this run's layouts beat">Luck percentile</th>
+<th class="num" data-sort title="Seconds saved vs the median run beyond what the layouts gave, pokos counted (2 = 1 s)">Runner beyond layouts</th>
+<th class="num" data-sort title="Sublevels whose seed was read with confidence">Seeds read</th>
+<th data-sort>Date</th><th>Pages</th></tr></thead>
+<tbody><tr><td class="num" data-v="1">1</td><td class="sticky"><a href="01_JackDraz_mewq470m/judge.html">JackDraz</a></td><td data-v="5425.0">1:30:25</td><td class="num" data-v="-91.340"><span class="good-text">-91.3 s</span></td><td class="num" data-v="96.280">96%</td><td class="num" data-v="-180.610"><span class="good-text">-180.6 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2024-06-25</td><td><a href="01_JackDraz_mewq470m/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/mewq470m" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="2">2</td><td class="sticky"><a href="02_iid01_y46k3x3z/judge.html">iid01</a></td><td data-v="5461.0">1:31:01</td><td class="num" data-v="-128.557"><span class="good-text">-128.6 s</span></td><td class="num" data-v="99.490">99%</td><td class="num" data-v="-117.346"><span class="good-text">-117.3 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2024-05-07</td><td><a href="02_iid01_y46k3x3z/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y46k3x3z" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr35_JackDraz_zq8wx0xz/judge.html">JackDraz</a> <span class=badge>former WR</span></td><td data-v="5488.0">1:31:28</td><td class="num" data-v="-62.742"><span class="good-text">-62.7 s</span></td><td class="num" data-v="88.055">88%</td><td class="num" data-v="-142.378"><span class="good-text">-142.4 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2024-03-11</td><td><a href="wr35_JackDraz_zq8wx0xz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/zq8wx0xz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="3">3</td><td class="sticky"><a href="03_kobachi_zxrdv88z/judge.html">kobachi</a></td><td data-v="5503.0">1:31:43</td><td class="num" data-v="-80.670"><span class="good-text">-80.7 s</span></td><td class="num" data-v="94.000">94%</td><td class="num" data-v="-163.284"><span class="good-text">-163.3 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2026-07-22</td><td><a href="03_kobachi_zxrdv88z/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/zxrdv88z" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr34_JackDraz_yvl322xz/judge.html">JackDraz</a> <span class=badge>former WR</span></td><td data-v="5507.0">1:31:47</td><td class="num" data-v="-70.399"><span class="good-text">-70.4 s</span></td><td class="num" data-v="90.800">91%</td><td class="num" data-v="-143.039"><span class="good-text">-143.0 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2024-03-01</td><td><a href="wr34_JackDraz_yvl322xz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/yvl322xz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr33_iid01_y9k490ez/judge.html">iid01</a> <span class=badge>former WR</span></td><td data-v="5510.0">1:31:50</td><td class="num" data-v="-32.318"><span class="good-text">-32.3 s</span></td><td class="num" data-v="71.470">71%</td><td class="num" data-v="-147.503"><span class="good-text">-147.5 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2024-02-07</td><td><a href="wr33_iid01_y9k490ez/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y9k490ez" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr32_JackDraz_y2j0d4jz/judge.html">JackDraz</a> <span class=badge>former WR</span></td><td data-v="5519.0">1:31:59</td><td class="num" data-v="-84.589"><span class="good-text">-84.6 s</span></td><td class="num" data-v="94.985">95%</td><td class="num" data-v="-114.644"><span class="good-text">-114.6 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2023-01-24</td><td><a href="wr32_JackDraz_y2j0d4jz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y2j0d4jz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="4">4</td><td class="sticky"><a href="04_Kap_mrp21o2z/judge.html">Kap</a></td><td data-v="5569.0">1:32:49</td><td class="num" data-v="-80.268"><span class="good-text">-80.3 s</span></td><td class="num" data-v="93.885">94%</td><td class="num" data-v="-89.304"><span class="good-text">-89.3 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2026-09-01</td><td><a href="04_Kap_mrp21o2z/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/mrp21o2z" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="5">5</td><td class="sticky"><a href="05_chemical_y22ed67y/judge.html">chemical</a></td><td data-v="5582.0">1:33:02</td><td class="num" data-v="-146.754"><span class="good-text">-146.8 s</span></td><td class="num" data-v="99.890">100%</td><td class="num" data-v="33.075"><span class="bad-text">+33.1 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2024-04-20</td><td><a href="05_chemical_y22ed67y/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y22ed67y" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr31_JackDraz_mr16w02z/judge.html">JackDraz</a> <span class=badge>former WR</span></td><td data-v="5594.0">1:33:14</td><td class="num" data-v="-137.489"><span class="good-text">-137.5 s</span></td><td class="num" data-v="99.730">100%</td><td class="num" data-v="-19.512"><span class="good-text">-19.5 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2021-05-23</td><td><a href="wr31_JackDraz_mr16w02z/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/mr16w02z" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="6">6</td><td class="sticky"><a href="06_Sergeant_Guy_m74de8em/judge.html">Sergeant_Guy</a></td><td data-v="5603.0">1:33:23</td><td class="num" data-v="-32.219"><span class="good-text">-32.2 s</span></td><td class="num" data-v="71.395">71%</td><td class="num" data-v="-82.550"><span class="good-text">-82.6 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2026-08-05</td><td><a href="06_Sergeant_Guy_m74de8em/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/m74de8em" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr30_iid01_y2v8lljz/judge.html">iid01</a> <span class=badge>former WR</span></td><td data-v="5623.0">1:33:43</td><td class="num" data-v="-103.564"><span class="good-text">-103.6 s</span></td><td class="num" data-v="97.930">98%</td><td class="num" data-v="12.992"><span class="bad-text">+13.0 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2021-03-21</td><td><a href="wr30_iid01_y2v8lljz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y2v8lljz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="7">7</td><td class="sticky"><a href="07_max25_zn5k527z/judge.html">max25</a></td><td data-v="5638.0">1:33:58</td><td class="num" data-v="-84.280"><span class="good-text">-84.3 s</span></td><td class="num" data-v="94.915">95%</td><td class="num" data-v="-28.575"><span class="good-text">-28.6 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2025-10-23</td><td><a href="07_max25_zn5k527z/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/zn5k527z" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr29_JackDraz_mr95qp8m/judge.html">JackDraz</a> <span class=badge>former WR</span></td><td data-v="5653.0">1:34:13</td><td class="num" data-v="-107.010"><span class="good-text">-107.0 s</span></td><td class="num" data-v="98.315">98%</td><td class="num" data-v="-24.423"><span class="good-text">-24.4 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2020-12-24</td><td><a href="wr29_JackDraz_mr95qp8m/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/mr95qp8m" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="8">8</td><td class="sticky"><a href="08_CurtisDN__y6eo640z/judge.html">CurtisDN_</a></td><td data-v="5659.0">1:34:19</td><td class="num" data-v="-86.719"><span class="good-text">-86.7 s</span></td><td class="num" data-v="98.415">98%</td><td class="num" data-v="-11.579"><span class="good-text">-11.6 s</span></td><td class="num" data-v="0.907">49 of 54</td><td>2024-09-09</td><td><a href="08_CurtisDN__y6eo640z/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y6eo640z" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="10">10</td><td class="sticky"><a href="10_theurbandear_z52nqvgz/judge.html">theurbandear</a></td><td data-v="5697.0">1:34:57</td><td class="num" data-v="-90.664"><span class="good-text">-90.7 s</span></td><td class="num" data-v="96.145">96%</td><td class="num" data-v="70.705"><span class="bad-text">+70.7 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2022-07-17</td><td><a href="10_theurbandear_z52nqvgz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/z52nqvgz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr28_iid01_ywdde9pz/judge.html">iid01</a> <span class=badge>former WR</span></td><td data-v="5712.0">1:35:12</td><td class="num" data-v="-3.637"><span class="good-text">-3.6 s</span></td><td class="num" data-v="50.055">50%</td><td class="num" data-v="-48.317"><span class="good-text">-48.3 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2020-10-11</td><td><a href="wr28_iid01_ywdde9pz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/ywdde9pz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr27_IceCube_y823r5wy/judge.html">IceCube</a> <span class=badge>former WR</span></td><td data-v="5767.0">1:36:07</td><td class="num" data-v="-81.038"><span class="good-text">-81.0 s</span></td><td class="num" data-v="94.075">94%</td><td class="num" data-v="41.600"><span class="bad-text">+41.6 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2020-03-24</td><td><a href="wr27_IceCube_y823r5wy/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y823r5wy" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="12">12</td><td class="sticky"><a href="12_tcbtrio_y64e4x0m/judge.html">tcbtrio</a></td><td data-v="5779.0">1:36:19</td><td class="num" data-v="11.220"><span class="bad-text">+11.2 s</span></td><td class="num" data-v="38.045">38%</td><td class="num" data-v="25.146"><span class="bad-text">+25.1 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2026-09-26</td><td><a href="12_tcbtrio_y64e4x0m/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y64e4x0m" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr26_Kap_mrep65dy/judge.html">Kap</a> <span class=badge>former WR</span></td><td data-v="5862.0">1:37:42</td><td class="num" data-v="-46.478"><span class="good-text">-46.5 s</span></td><td class="num" data-v="80.890">81%</td><td class="num" data-v="78.759"><span class="bad-text">+78.8 s</span></td><td class="num" data-v="0.980">50 of 51</td><td>2020-02-25</td><td><a href="wr26_Kap_mrep65dy/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/mrep65dy" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr25_IceCube_znrlp63y/judge.html">IceCube</a> <span class=badge>former WR</span></td><td data-v="5875.0">1:37:55</td><td class="num" data-v="-50.263"><span class="good-text">-50.3 s</span></td><td class="num" data-v="82.150">82%</td><td class="num" data-v="113.394"><span class="bad-text">+113.4 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2020-02-24</td><td><a href="wr25_IceCube_znrlp63y/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/znrlp63y" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr23_theurbandear_zp4erjvz/judge.html">theurbandear</a> <span class=badge>former WR</span></td><td data-v="5881.0">1:38:01</td><td class="num" data-v="-107.214"><span class="good-text">-107.2 s</span></td><td class="num" data-v="98.330">98%</td><td class="num" data-v="153.915"><span class="bad-text">+153.9 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2020-02-22</td><td><a href="wr23_theurbandear_zp4erjvz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/zp4erjvz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="13">13</td><td class="sticky"><a href="13_JKira__y46elg2z/judge.html">JKira_</a></td><td data-v="5893.0">1:38:13</td><td class="num" data-v="-38.773"><span class="good-text">-38.8 s</span></td><td class="num" data-v="75.975">76%</td><td class="num" data-v="160.334"><span class="bad-text">+160.3 s</span></td><td class="num" data-v="0.981">51 of 52</td><td>2024-03-17</td><td><a href="13_JKira__y46elg2z/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y46elg2z" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="14">14</td><td class="sticky"><a href="14_ShadowLugia_zglog60m/judge.html">ShadowLugia</a></td><td data-v="5897.0">1:38:17</td><td class="num" data-v="-4.701"><span class="good-text">-4.7 s</span></td><td class="num" data-v="50.845">51%</td><td class="num" data-v="154.775"><span class="bad-text">+154.8 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2021-12-02</td><td><a href="14_ShadowLugia_zglog60m/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/zglog60m" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr22_IceCube_y415njny/judge.html">IceCube</a> <span class=badge>former WR</span></td><td data-v="5906.0">1:38:26</td><td class="num" data-v="-54.036"><span class="good-text">-54.0 s</span></td><td class="num" data-v="84.190">84%</td><td class="num" data-v="125.174"><span class="bad-text">+125.2 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2019-06-08</td><td><a href="wr22_IceCube_y415njny/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/y415njny" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="15">15</td><td class="sticky"><a href="15_randomRyze_m76vqjey/judge.html">randomRyze</a></td><td data-v="5935.0">1:38:55</td><td class="num" data-v="-89.937"><span class="good-text">-89.9 s</span></td><td class="num" data-v="95.990">96%</td><td class="num" data-v="196.072"><span class="bad-text">+196.1 s</span></td><td class="num" data-v="1.000">52 of 52</td><td>2022-07-09</td><td><a href="15_randomRyze_m76vqjey/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/m76vqjey" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr21_IceCube_z11q6nwz/judge.html">IceCube</a> <span class=badge>former WR</span></td><td data-v="5961.0">1:39:21</td><td class="num" data-v="-71.352"><span class="good-text">-71.4 s</span></td><td class="num" data-v="91.500">92%</td><td class="num" data-v="111.438"><span class="bad-text">+111.4 s</span></td><td class="num" data-v="1.000">53 of 53</td><td>2018-12-01</td><td><a href="wr21_IceCube_z11q6nwz/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/z11q6nwz" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr20_Kap_zq3g19ry/judge.html">Kap</a> <span class=badge>former WR</span></td><td data-v="6095.0">1:41:35</td><td class="num" data-v="-80.370"><span class="good-text">-80.4 s</span></td><td class="num" data-v="94.035">94%</td><td class="num" data-v="253.630"><span class="bad-text">+253.6 s</span></td><td class="num" data-v="1.000">51 of 51</td><td>2018-08-23</td><td><a href="wr20_Kap_zq3g19ry/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/zq3g19ry" target=_blank rel=noopener>speedrun.com</a></td></tr><tr><td class="num" data-v="99"></td><td class="sticky"><a href="wr17_theurbandear_mk4r711y/judge.html">theurbandear</a> <span class=badge>former WR</span></td><td data-v="6190.0">1:43:10</td><td class="num" data-v="-78.066"><span class="good-text">-78.1 s</span></td><td class="num" data-v="93.505">94%</td><td class="num" data-v="342.845"><span class="bad-text">+342.8 s</span></td><td class="num" data-v="1.000">53 of 53</td><td>2018-03-08</td><td><a href="wr17_theurbandear_mk4r711y/report.html">detection</a> · <a href="https://www.speedrun.com/pikmin2/runs/mk4r711y" target=_blank rel=noopener>speedrun.com</a></td></tr></tbody></table></div>
+<p class="muted small"><span>Not here: their videos could not be downloaded (deleted, private, or not available).</span> <span><bdi translate="no">jpep 1:34:48</bdi> (rank 9)</span><span>, </span><span><bdi translate="no">theurbandear 1:45:02</bdi> (former WR)</span><span>, </span><span><bdi translate="no">Kap 1:42:59</bdi> (former WR)</span><span>, </span><span><bdi translate="no">Kap 1:42:37</bdi> (former WR)</span><span>, </span><span><bdi translate="no">Kap 1:38:00</bdi> (former WR)</span></p>
+<p class="muted">Missing a run, or want one added? Share its video or speedrun.com link in the <a href="suggest.html">suggestion box</a>.</p>
+<script>
+(() => {
+  const t = document.getElementById('runs'), body = t.tBodies[0];
+  t.querySelectorAll('th[data-sort]').forEach(th => { th.tabIndex = 0; th.setAttribute('role', 'button');
+    th.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); th.click(); } }); });
+  t.querySelectorAll('th[data-sort]').forEach((th, i) => th.addEventListener('click', () => {
+    const col = [...th.parentNode.children].indexOf(th), up = th.getAttribute('aria-sort') !== 'ascending';
+    t.querySelectorAll('th').forEach(x => x.removeAttribute('aria-sort'));
+    th.setAttribute('aria-sort', up ? 'ascending' : 'descending');
+    const key = r => { const c = r.children[col]; const v = c.dataset.v ?? c.textContent.trim();
+      return v === '' ? NaN : (isNaN(+v) ? v : +v); };
+    [...body.rows].sort((a, b) => { const x = key(a), y = key(b);
+      if (typeof x === 'number' && typeof y === 'number') return (isNaN(x) - isNaN(y)) || (up ? x - y : y - x);
+      return up ? String(x).localeCompare(String(y)) : String(y).localeCompare(String(x)); })
+      .forEach(r => body.appendChild(r));
+  }));
+})();
+</script>
+<h2 id="luck">The runs' luck</h2>
+<p>Each dot is a run's layout luck; the grey curve is how luck falls for random runs, so a dot far left of the curve's
+middle was a lucky run. Hover a dot for the run; click it for its layouts.</p>
+<div class="chart viz-root dist"><svg viewBox="0 0 760 228" role="img" aria-label="How lucky was each run? Every run against 20,000 random runs"><text class="ttl" x="40" y="14">How lucky was each run? Every run against 20,000 random runs</text><text x="40" y="30">grey: random runs, one random layout of each of the 45 sublevels with layout luck · dots: the runs on this site (hollow = some sublevels not read, or another route)</text><line class="grid" x1="40.0" x2="40.0" y1="60" y2="164"/><text x="40.0" y="200" text-anchor="middle">-150</text><line class="grid" x1="157.3" x2="157.3" y1="60" y2="164"/><text x="157.3" y="200" text-anchor="middle">-100</text><line class="grid" x1="274.7" x2="274.7" y1="60" y2="164"/><text x="274.7" y="200" text-anchor="middle">-50</text><line class="zero" x1="392.0" x2="392.0" y1="60" y2="164"/><text x="392.0" y="200" text-anchor="middle">+0</text><line class="grid" x1="509.3" x2="509.3" y1="60" y2="164"/><text x="509.3" y="200" text-anchor="middle">+50</text><line class="grid" x1="626.7" x2="626.7" y1="60" y2="164"/><text x="626.7" y="200" text-anchor="middle">+100</text><line class="grid" x1="744.0" x2="744.0" y1="60" y2="164"/><text x="744.0" y="200" text-anchor="middle">+150</text><polygon points="40.0,164 40.0,162.8 47.0,162.5 54.1,162.1 61.1,161.7 68.2,161.3 75.2,160.8 82.2,160.3 89.3,159.7 96.3,159.0 103.4,158.3 110.4,157.4 117.4,156.4 124.5,155.2 131.5,153.9 138.6,152.5 145.6,150.9 152.6,149.2 159.7,147.3 166.7,145.2 173.8,142.9 180.8,140.5 187.8,137.8 194.9,135.0 201.9,132.2 209.0,129.2 216.0,126.2 223.0,123.2 230.1,120.2 237.1,117.0 244.2,113.7 251.2,110.3 258.2,106.8 265.3,103.4 272.3,100.1 279.4,97.1 286.4,94.2 293.4,91.5 300.5,88.9 307.5,86.4 314.6,83.8 321.6,81.3 328.6,78.8 335.7,76.4 342.7,74.1 349.8,72.0 356.8,70.1 363.8,68.6 370.9,67.4 377.9,66.6 385.0,66.1 392.0,66.0 399.0,66.3 406.1,66.9 413.1,67.9 420.2,69.2 427.2,70.9 434.2,73.0 441.3,75.4 448.3,78.3 455.4,81.4 462.4,84.9 469.4,88.5 476.5,92.3 483.5,96.1 490.6,99.9 497.6,103.6 504.6,107.2 511.7,110.7 518.7,114.0 525.8,117.2 532.8,120.4 539.8,123.5 546.9,126.5 553.9,129.6 561.0,132.5 568.0,135.4 575.0,138.2 582.1,140.8 589.1,143.3 596.2,145.5 603.2,147.5 610.2,149.4 617.3,151.0 624.3,152.5 631.4,153.8 638.4,155.0 645.4,156.1 652.5,157.1 659.5,158.0 666.6,158.8 673.6,159.6 680.6,160.2 687.7,160.8 694.7,161.4 701.8,161.8 708.8,162.2 715.8,162.6 722.9,162.8 729.9,163.0 737.0,163.2 744.0,163.3 744.0,164" fill="var(--range)" fill-opacity=".8"/><line x1="193.2" x2="193.2" y1="58" y2="164" stroke="var(--ink-3)" stroke-dasharray="2 3"/><text x="193.2" y="54" text-anchor="middle" style="fill:var(--ink-3)">5th pct</text><line x1="383.7" x2="383.7" y1="58" y2="164" stroke="var(--ink-3)" stroke-dasharray="2 3"/><text x="383.7" y="54" text-anchor="middle" style="fill:var(--ink-3)">median</text><line x1="569.8" x2="569.8" y1="58" y2="164" stroke="var(--ink-3)" stroke-dasharray="2 3"/><text x="569.8" y="54" text-anchor="middle" style="fill:var(--ink-3)">95th pct</text><line class="zero" x1="40" x2="744" y1="164" y2="164"/><a href="01_JackDraz_mewq470m/judge.html"><circle class="hit" tabindex="-1" cx="177.7" cy="173.0" r="8.6" data-tip="JackDraz 1:30:25
+layouts -91.3 s over 45 sublevels
+luckier than 96% of random runs"/><circle class="dot" cx="177.7" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="02_iid01_y46k3x3z/judge.html"><circle class="hit" tabindex="-1" cx="90.3" cy="173.0" r="8.6" data-tip="iid01 1:31:01
+layouts -128.6 s over 45 sublevels
+luckier than 99% of random runs"/><circle class="dot" cx="90.3" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr35_JackDraz_zq8wx0xz/judge.html"><circle class="hit" tabindex="-1" cx="244.8" cy="173.0" r="8.6" data-tip="JackDraz 1:31:28
+layouts -62.7 s over 45 sublevels
+luckier than 88% of random runs"/><circle class="dot" cx="244.8" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="03_kobachi_zxrdv88z/judge.html"><circle class="hit" tabindex="-1" cx="202.7" cy="173.0" r="8.6" data-tip="kobachi 1:31:43
+layouts -80.7 s over 45 sublevels
+luckier than 94% of random runs"/><circle class="dot" cx="202.7" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr34_JackDraz_yvl322xz/judge.html"><circle class="hit" tabindex="-1" cx="226.8" cy="173.0" r="8.6" data-tip="JackDraz 1:31:47
+layouts -70.4 s over 45 sublevels
+luckier than 91% of random runs"/><circle class="dot" cx="226.8" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr33_iid01_y9k490ez/judge.html"><circle class="hit" tabindex="-1" cx="316.2" cy="173.0" r="8.6" data-tip="iid01 1:31:50
+layouts -32.3 s over 45 sublevels
+luckier than 71% of random runs"/><circle class="dot" cx="316.2" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr32_JackDraz_y2j0d4jz/judge.html"><circle class="hit" tabindex="-1" cx="193.5" cy="173.0" r="8.6" data-tip="JackDraz 1:31:59
+layouts -84.6 s over 45 sublevels
+luckier than 95% of random runs"/><circle class="dot" cx="193.5" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="04_Kap_mrp21o2z/judge.html"><circle class="hit" tabindex="-1" cx="203.6" cy="181.0" r="8.6" data-tip="Kap 1:32:49
+layouts -80.3 s over 45 sublevels
+luckier than 94% of random runs"/><circle class="dot" cx="203.6" cy="181.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="05_chemical_y22ed67y/judge.html"><circle class="hit" tabindex="-1" cx="47.6" cy="173.0" r="8.6" data-tip="chemical 1:33:02
+layouts -146.8 s over 45 sublevels
+luckier than 99.5% of random runs"/><circle class="dot" cx="47.6" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr31_JackDraz_mr16w02z/judge.html"><circle class="hit" tabindex="-1" cx="69.4" cy="173.0" r="8.6" data-tip="JackDraz 1:33:14
+layouts -137.5 s over 45 sublevels
+luckier than 99.5% of random runs"/><circle class="dot" cx="69.4" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="06_Sergeant_Guy_m74de8em/judge.html"><circle class="hit" tabindex="-1" cx="316.4" cy="181.0" r="8.6" data-tip="Sergeant_Guy 1:33:23
+layouts -32.2 s over 45 sublevels
+luckier than 71% of random runs"/><circle class="dot" cx="316.4" cy="181.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr30_iid01_y2v8lljz/judge.html"><circle class="hit" tabindex="-1" cx="149.0" cy="173.0" r="8.6" data-tip="iid01 1:33:43
+layouts -103.6 s over 45 sublevels
+luckier than 98% of random runs"/><circle class="dot" cx="149.0" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="07_max25_zn5k527z/judge.html"><circle class="hit" tabindex="-1" cx="194.2" cy="181.0" r="8.6" data-tip="max25 1:33:58
+layouts -84.3 s over 45 sublevels
+luckier than 95% of random runs"/><circle class="dot" cx="194.2" cy="181.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr29_JackDraz_mr95qp8m/judge.html"><circle class="hit" tabindex="-1" cx="140.9" cy="173.0" r="8.6" data-tip="JackDraz 1:34:13
+layouts -107.0 s over 45 sublevels
+luckier than 98% of random runs"/><circle class="dot" cx="140.9" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="08_CurtisDN__y6eo640z/judge.html"><circle class="hit" tabindex="-1" cx="188.5" cy="189.0" r="8.6" data-tip="CurtisDN_ 1:34:19
+layouts -86.7 s over 42 sublevels
+luckier than 98% of random runs
+(hollow: not the usual 45 sublevels, so its percentile compares it with random runs over its own 42)"/><circle class="dot" cx="188.5" cy="189.0" r="3.6" fill="var(--surface-1)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="10_theurbandear_z52nqvgz/judge.html"><circle class="hit" tabindex="-1" cx="179.2" cy="181.0" r="8.6" data-tip="theurbandear 1:34:57
+layouts -90.7 s over 45 sublevels
+luckier than 96% of random runs"/><circle class="dot" cx="179.2" cy="181.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr28_iid01_ywdde9pz/judge.html"><circle class="hit" tabindex="-1" cx="383.5" cy="173.0" r="8.6" data-tip="iid01 1:35:12
+layouts -3.6 s over 45 sublevels
+luckier than 50% of random runs"/><circle class="dot" cx="383.5" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr27_IceCube_y823r5wy/judge.html"><circle class="hit" tabindex="-1" cx="201.8" cy="189.0" r="8.6" data-tip="IceCube 1:36:07
+layouts -81.0 s over 45 sublevels
+luckier than 94% of random runs"/><circle class="dot" cx="201.8" cy="189.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="12_tcbtrio_y64e4x0m/judge.html"><circle class="hit" tabindex="-1" cx="418.3" cy="173.0" r="8.6" data-tip="tcbtrio 1:36:19
+layouts +11.2 s over 45 sublevels
+luckier than 38% of random runs"/><circle class="dot" cx="418.3" cy="173.0" r="3.6" fill="var(--bad-mark)" stroke="var(--bad-mark)" stroke-width="1.6"/></a><a href="wr26_Kap_mrep65dy/judge.html"><circle class="hit" tabindex="-1" cx="282.9" cy="173.0" r="8.6" data-tip="Kap 1:37:42
+layouts -46.5 s over 43 sublevels
+luckier than 81% of random runs
+(hollow: not the usual 45 sublevels, so its percentile compares it with random runs over its own 43)"/><circle class="dot" cx="282.9" cy="173.0" r="3.6" fill="var(--surface-1)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr25_IceCube_znrlp63y/judge.html"><circle class="hit" tabindex="-1" cx="274.0" cy="173.0" r="8.6" data-tip="IceCube 1:37:55
+layouts -50.3 s over 45 sublevels
+luckier than 82% of random runs"/><circle class="dot" cx="274.0" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr23_theurbandear_zp4erjvz/judge.html"><circle class="hit" tabindex="-1" cx="140.4" cy="181.0" r="8.6" data-tip="theurbandear 1:38:01
+layouts -107.2 s over 45 sublevels
+luckier than 98% of random runs"/><circle class="dot" cx="140.4" cy="181.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="13_JKira__y46elg2z/judge.html"><circle class="hit" tabindex="-1" cx="301.0" cy="173.0" r="8.6" data-tip="JKira_ 1:38:13
+layouts -38.8 s over 44 sublevels
+luckier than 76% of random runs
+(hollow: not the usual 45 sublevels, so its percentile compares it with random runs over its own 44)"/><circle class="dot" cx="301.0" cy="173.0" r="3.6" fill="var(--surface-1)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="14_ShadowLugia_zglog60m/judge.html"><circle class="hit" tabindex="-1" cx="381.0" cy="181.0" r="8.6" data-tip="ShadowLugia 1:38:17
+layouts -4.7 s over 45 sublevels
+luckier than 51% of random runs"/><circle class="dot" cx="381.0" cy="181.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr22_IceCube_y415njny/judge.html"><circle class="hit" tabindex="-1" cx="265.2" cy="173.0" r="8.6" data-tip="IceCube 1:38:26
+layouts -54.0 s over 45 sublevels
+luckier than 84% of random runs"/><circle class="dot" cx="265.2" cy="173.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="15_randomRyze_m76vqjey/judge.html"><circle class="hit" tabindex="-1" cx="180.9" cy="197.0" r="8.6" data-tip="randomRyze 1:38:55
+layouts -89.9 s over 45 sublevels
+luckier than 96% of random runs"/><circle class="dot" cx="180.9" cy="197.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr21_IceCube_z11q6nwz/judge.html"><circle class="hit" tabindex="-1" cx="224.6" cy="181.0" r="8.6" data-tip="IceCube 1:39:21
+layouts -71.4 s over 45 sublevels
+luckier than 92% of random runs"/><circle class="dot" cx="224.6" cy="181.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr20_Kap_zq3g19ry/judge.html"><circle class="hit" tabindex="-1" cx="203.4" cy="197.0" r="8.6" data-tip="Kap 1:41:35
+layouts -80.4 s over 45 sublevels
+luckier than 94% of random runs"/><circle class="dot" cx="203.4" cy="197.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><a href="wr17_theurbandear_mk4r711y/judge.html"><circle class="hit" tabindex="-1" cx="208.8" cy="205.0" r="8.6" data-tip="theurbandear 1:43:10
+layouts -78.1 s over 45 sublevels
+luckier than 94% of random runs"/><circle class="dot" cx="208.8" cy="205.0" r="3.6" fill="var(--good-mark)" stroke="var(--good-mark)" stroke-width="1.6"/></a><text x="392" y="222" text-anchor="middle">total seconds the layouts should save against median layouts (negative = luckier)</text></svg></div>
+</main>
+<script>
+(() => {
+  const tip = document.createElement('div'); tip.id = 'viz-tip'; tip.className = 'viz-root';
+  document.body.appendChild(tip);
+  let at = null;
+  const place = () => {
+    if (!at) return;
+    const [x, y] = at, w = tip.offsetWidth, h = tip.offsetHeight, gap = 14;
+    // right of the pointer if it fits, else left; vertically centred on it, kept inside the window
+    let left = x + gap + w <= innerWidth - 8 ? x + gap : x - gap - w;
+    left = Math.max(8, Math.min(left, innerWidth - w - 8));
+    const top = Math.max(8, Math.min(y - h / 2, innerHeight - h - 8));
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  };
+  let cur = null;
+  const hide = () => { tip.style.display = 'none'; cur = null; };
+  const show = (el, x, y) => {
+    if (cur === el) { at = [x, y]; place(); return; }  // same mark: just follow the pointer
+    cur = el;
+    tip.replaceChildren();
+    const [head, ...rest] = el.dataset.tip.split('\n');
+    const b = document.createElement('b'); b.textContent = head; tip.appendChild(b);
+    rest.forEach(line => { const d = document.createElement('div'); d.textContent = line; tip.appendChild(d); });
+    if (el.dataset.img) {
+      const im = document.createElement('img'); im.alt = ''; im.addEventListener('load', place);
+      im.src = el.dataset.img; tip.appendChild(im);
+    }
+    tip.style.display = 'block';
+    at = [x, y]; place();
+  };
+  // touch: the first tap on a mark shows its tooltip, a second tap on the same mark follows its link
+  let touch = false;
+  addEventListener('pointerdown', e => { touch = e.pointerType === 'touch'; }, true);
+  addEventListener('scroll', () => { if (touch) hide(); }, { passive: true });
+  addEventListener('click', e => { if (touch && !e.target.closest('[data-tip]')) hide(); });
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('click', e => {
+      if (!touch || cur === el) return;
+      e.preventDefault(); e.stopPropagation(); show(el, e.clientX, e.clientY);
+    });
+    el.addEventListener('pointermove', e => { if (e.pointerType !== 'touch') show(el, e.clientX, e.clientY); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') hide(); });
+    el.addEventListener('focus', () => { if (touch) return; const r = el.getBoundingClientRect(); show(el, r.right, r.top); });
+    el.addEventListener('blur', hide);
+  });
+})();
+</script>
+
+<footer class="site-footer">Layouts, pictures, treasures and the judge from <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from <a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. Source: <a href="https://github.com/JHawk4/pikmin2-layout-ledger">github.com/JHawk4/pikmin2-layout-ledger</a>.</footer><script>
+for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('click', () => {
+  const p = location.pathname.split('/').filter(Boolean); const here = p.slice(-2).join('/');
+  const u = new URL(a.href); u.searchParams.set('from', here); a.href = u.toString(); });
+</script></body></html>

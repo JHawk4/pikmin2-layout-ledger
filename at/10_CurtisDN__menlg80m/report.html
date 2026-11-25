@@ -1,0 +1,1529 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#10 CurtisDN_ — https://www.speedrun.com/pikmin2/runs/menlg80m</title>
+<style>
+:root { --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8; --hi:#1f7a3a; --mid:#a86b00; --lo:#b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161614; --fg:#ececea; --muted:#9a9a94; --card:#20201e; --line:#33332f; --hi:#5cc27a; --mid:#e0a63a; --lo:#f0786d; } }
+body { background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,sans-serif; margin:0; padding:24px 16px; }
+main { max-width:1100px; margin:0 auto; }
+h1 { font-size:22px; margin:0 0 4px; } .meta { color:var(--muted); margin-bottom:20px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+.card header { display:flex; align-items:baseline; gap:12px; } .card h2 { margin:0; font-size:18px; }
+.conf { font-size:12px; text-transform:uppercase; letter-spacing:.05em; font-weight:600; }
+.high .conf { color:var(--hi); } .medium .conf { color:var(--mid); } .low .conf, .none .conf { color:var(--lo); }
+dl { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:10px 0; } dt { color:var(--muted); } dd { margin:0; }
+.imgs { display:flex; flex-wrap:wrap; gap:10px; } .imgs img { max-width:100%; height:auto; max-height:300px; border-radius:4px; border:1px solid var(--line); }
+code { font-size:14px; } a { color:inherit; }
+
+:root, :root[data-theme="light"] {
+  --bg:#e4eed2; --bg-2:#d3e4b8; --fg:#1d2418; --muted:#5f6b58; --card:#ffffff; --line:#d5dccb; --field:#f7faf1;
+  --leaf:#4b9a3c; --leaf-2:#3c8531; --leaf-dark:#2c6a24; --accent:#3c8531; --sun:#f2a01c;
+  --good:#2c6a24; --mid:#8a6a1f; --bad:#b3261e; --goodbg:#e3f1dc; --midbg:#f6ecd6; --badbg:#f8e1df; --bar:#c9d3bd;
+  --radius:14px; --shadow:0 1px 2px rgba(44,106,36,.12), 0 2px 10px rgba(44,106,36,.08); color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#141c10; --bg-2:#0d130a; --fg:#e6ece0; --muted:#a3ae98; --card:#1d2619; --line:#34442c; --field:#161e12;
+  --leaf-dark:#a6dc8f; --accent:#8fd37a; --good:#8fd37a; --mid:#e0b45a; --bad:#f2b8b5;
+  --goodbg:#1e3319; --midbg:#352d19; --badbg:#3b2120; --bar:#3a4a32;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.25); color-scheme:dark; } }
+html { background:var(--bg); }
+body { background:linear-gradient(180deg, var(--bg) 0, var(--bg) 340px, var(--bg-2) 100%) fixed; color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+a { color:var(--accent); } a:hover { color:var(--leaf-dark); }
+.site-header { max-width:1240px; margin:0 auto 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.site-logo { display:flex; align-items:center; gap:6px; color:var(--leaf-dark); text-decoration:none; font-weight:800;
+  letter-spacing:-.5px; font-size:1.25rem; text-shadow:1px 1px 0 rgba(255,255,255,.8); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .site-logo { text-shadow:none; } }
+.site-nav { display:flex; flex-wrap:wrap; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  background:linear-gradient(135deg, var(--leaf), var(--leaf-2)); box-shadow:inset 4px 0 0 var(--sun); }
+.site-nav a { text-decoration:none; color:#fff; padding:3px 12px; border-radius:999px; }
+.site-nav a:hover { color:#fff; background:rgba(0,0,0,.15); }
+.site-nav a[aria-current="page"] { background:#fff; color:var(--leaf-2); }
+.site-cats { display:flex; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  border:2px solid var(--accent); background:var(--card); }
+.site-cats a { text-decoration:none; color:var(--accent); padding:1px 12px; border-radius:999px; }
+.site-cats a:hover { background:var(--goodbg); }
+.site-cats a[aria-current="page"] { background:var(--leaf-2); color:#fff; }
+.site-footer { max-width:1240px; margin:28px auto 0; color:var(--muted); font-size:.85rem; }
+h1, h2 { color:var(--leaf-dark); }
+h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-block; }
+.tablewrap, .card, .help, .tile, .stat { border-radius:var(--radius) !important; box-shadow:var(--shadow); }
+</style></head><body><header class="site-header"><a class="site-logo" href="../../index.html"><svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true"><path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 25 C8.5 25.5 5 23.5 3.6 20.6 C7.4 19.6 10.6 21.5 12 25 Z" fill="#5fb447" stroke="#3c8531" stroke-width="1"/><ellipse cx="12.0" cy="4.4" rx="3.1" ry="4.3" transform="rotate(0 12.0 4.4)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="16.37" cy="7.58" rx="3.1" ry="4.3" transform="rotate(72 16.37 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="14.7" cy="12.72" rx="3.1" ry="4.3" transform="rotate(144 14.7 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="9.3" cy="12.72" rx="3.1" ry="4.3" transform="rotate(216 9.3 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="7.63" cy="7.58" rx="3.1" ry="4.3" transform="rotate(288 7.63 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><circle cx="12" cy="9" r="3.1" fill="#f2c230" stroke="#d39a12" stroke-width="0.9"/></svg>Pikmin 2 Layout Ledger</a><nav class="site-cats" aria-label="Category"><a href="../../index.html">Pay Off Debt</a><a href="../../wii/index.html">Pay Off Debt (Wii)</a><a href="../../at/index.html" aria-current=page>All Treasures</a></nav><nav class="site-nav"><a href="../index.html">All runs</a><a href="judge.html">Layouts</a><a href="report.html" aria-current=page>Seed detection</a><a href="../../gecko.html">Gecko code</a><a href="../../suggest.html" class=nav-suggest>Suggestion box</a></nav><button type="button" id="lang-toggle" class="lang-toggle" lang="ja" title="日本語で表示">日本語</button><style>html.i18n-wait body{visibility:hidden}.lang-toggle{margin-left:auto;font:inherit;font-size:.88rem;font-weight:700;color:var(--accent,#3c8531);background:var(--card,#fff);border:2px solid var(--accent,#3c8531);border-radius:999px;padding:1px 12px;min-height:30px;cursor:pointer}.lang-toggle:hover{background:var(--goodbg,#e3f1dc)}</style><script>(function(){var l=null;try{var q=new URLSearchParams(location.search).get("lang");l=q==="ja"||q==="en"?q:localStorage.getItem("ledger-lang")||localStorage.getItem("cavegen3-lang");}catch(e){}if(l!=="ja"&&l!=="en")l=(navigator.language||"").toLowerCase().indexOf("ja")===0?"ja":"en";if(l==="ja"){var h=document.documentElement;h.classList.add("i18n-wait");h.lang="ja";setTimeout(function(){h.classList.remove("i18n-wait")},3000);}})();</script><script src="../../i18n.js" defer></script></header><main>
+<h1>#10 CurtisDN_ — https://www.speedrun.com/pikmin2/runs/menlg80m</h1>
+<div class="meta">98 sublevel entries · 9 high, 25 medium, 48 low, 16 no seed · processed in 31510 s</div>
+
+<section class="card low">
+  <header><h2>EC-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:08:21</dd>
+    <dt>Layout seed</dt><dd><code>0x7EBE0498</code></dd>
+    <dt>Letter seed</dt><dd><code>0x416A57FE</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.168 px · score 1.69 (next 1.9)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_15032.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>EC-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:08:43</dd>
+    <dt>Layout seed</dt><dd><code>0x1945FD2F</code></dd>
+    <dt>Letter seed</dt><dd><code>0x428DF10D</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.162 px · score 7.6 (next 11.7)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_15718.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>EC-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:10:18</dd>
+    <dt>Layout seed</dt><dd><code>0x002AFE95</code></dd>
+    <dt>Letter seed</dt><dd><code>0x565F7323</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.13 px · score 17.53 (next 20.07)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 2)</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_18551.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>EC-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:11:22</dd>
+    <dt>Layout seed</dt><dd><code>0x041A01F0</code></dd>
+    <dt>Letter seed</dt><dd><code>0x74B78616</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.287 px · score 4.67 (next 4.7)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_20462.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:16:15</dd>
+    <dt>Layout seed</dt><dd><code>0x041B55A8</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7A8459BC</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.519 px · score 0.15 (next 0.16)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timed by the video clock</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_29278.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:17:29</dd>
+    <dt>Layout seed</dt><dd><code>0x0FC147A1</code></dd>
+    <dt>Letter seed</dt><dd><code>0x77AAEE25</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.116 px · score 0.02 (next 0.03)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_31481.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:18:50</dd>
+    <dt>Layout seed</dt><dd><code>0x08A35A6B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x56FC884F</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.05 px · score 0.0 (next 0.05)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_33911.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:20:42</dd>
+    <dt>Layout seed</dt><dd><code>0x28C0F1A7</code></dd>
+    <dt>Letter seed</dt><dd><code>0x29F9E3CB</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.072 px · score 0.03 (next 0.04)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_37273.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:21:47</dd>
+    <dt>Layout seed</dt><dd><code>0x074FFC7C</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3E767B50</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.173 px · score 0.06 (next 0.1)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_39231.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoB-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:26:11</dd>
+    <dt>Layout seed</dt><dd><code>0x5D534188</code></dd>
+    <dt>Letter seed</dt><dd><code>0x643F186E</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.107 px · score 5.61 (next 14.71)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_47159.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoB-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:26:50</dd>
+    <dt>Layout seed</dt><dd><code>0x20D8CCCD</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7DC3F11B</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.098 px · score 0.71 (next 2.55)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_48315.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card medium">
+  <header><h2>HoB-3</h2><span class="conf">medium</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:27:33</dd>
+    <dt>Layout seed</dt><dd><code>0x0DC52506</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5382835C</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.076 px · score 0.82 (next 2.62)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>seed found just before the next sublevel (SCx 1)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_49593.jpg" alt="entry screen">
+    <img src="img/layout_49593_HoB-3.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoB-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:28:54</dd>
+    <dt>Layout seed</dt><dd><code>0x4FDCBDDF</code></dd>
+    <dt>Letter seed</dt><dd><code>0x078AC33D</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.104 px · score 23.52 (next 25.99)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_52041.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoB-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:30:19</dd>
+    <dt>Layout seed</dt><dd><code>0x0D6F3E0A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x12308D80</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.191 px · score 21.16 (next 29.89)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_54587.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-1</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:40:26</dd>
+    <dt>Layout seed</dt><dd><code>0x550579C9</code></dd>
+    <dt>Letter seed</dt><dd><code>0x446210F6</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.08 px · score 1.45 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 39 seed confirmed by a later or earlier sublevel&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_72801.jpg" alt="entry screen">
+    <img src="img/layout_72801_SCx-1.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SCx-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:42:29</dd>
+    <dt>Layout seed</dt><dd><code>0x474F6637</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3BF1D30C</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.141 px · score 33.65 (next 60.8)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timed by the video clock, timing step of -1 frame at fall frame 92 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_76492.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:43:50</dd>
+    <dt>Layout seed</dt><dd><code>0x3A96B610</code></dd>
+    <dt>Letter seed</dt><dd><code>0x38DC1CD1</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.077 px · score 1.43 (next 61.98)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timed by the video clock seed confirmed by a later or earlier sublevel&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_78913.jpg" alt="entry screen">
+    <img src="img/layout_78913_SCx-3.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SCx-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:45:48</dd>
+    <dt>Layout seed</dt><dd><code>0x105794FD</code></dd>
+    <dt>Letter seed</dt><dd><code>0x51130D9A</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.059 px · score 25.69 (next 54.02)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 43 (its own read was out of RNG order with its neighbours) (a linked seed was out of order with its neighbors, so it was dropped)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_82467.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SCx-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:47:11</dd>
+    <dt>Layout seed</dt><dd><code>0x2C9842D3</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4C2917F8</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.07 px · score 28.42 (next 55.01)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 39 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_84952.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SCx-6</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:49:18</dd>
+    <dt>Layout seed</dt><dd><code>0x64E68003</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6CB54768</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.472 px · score 9.42 (next 31.9)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timed by the video clock, timing step of -1 frame at fall frame 91 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_88745.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-7</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:51:00</dd>
+    <dt>Layout seed</dt><dd><code>0x6BAC234A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0D0CCE43</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.087 px · score 5.49 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timed by the video clock seed confirmed by a later or earlier sublevel&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_91821.jpg" alt="entry screen">
+    <img src="img/layout_91821_SCx-7.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SCx-8</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:52:52</dd>
+    <dt>Layout seed</dt><dd><code>0x7CF6AE9E</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1B8FB487</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.082 px · score 33.48 (next 54.16)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 48 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_95185.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SCx-9</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:53:53</dd>
+    <dt>Layout seed</dt><dd><code>0x45BDA19B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5070C620</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.115 px · score 38.12 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 51 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_96996.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>FC-1</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:56:54</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.899 px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>letter fit too poor (0.90 px)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_102425.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card medium">
+  <header><h2>FC-2</h2><span class="conf">medium</span></header>
+  <dl>
+    <dt>Video</dt><dd>0:59:19</dd>
+    <dt>Layout seed</dt><dd><code>0x547B4D92</code></dd>
+    <dt>Letter seed</dt><dd><code>0x262BADE1</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.071 px · score 1.19 (next 1.33)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed found near the previous sublevel (SCx 7)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_106797.jpg" alt="entry screen">
+    <img src="img/layout_106797_FC-2.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:00:50</dd>
+    <dt>Layout seed</dt><dd><code>0x05FD28AC</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0A6C2D03</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.07 px · score 1.56 (next 2.5)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_109525.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:03:22</dd>
+    <dt>Layout seed</dt><dd><code>0x087AB9AD</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0B7FA118</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.109 px · score 2.23 (next 4.47)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_114088.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>FC-5</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:04:44</dd>
+    <dt>Layout seed</dt><dd><code>0x3785CB70</code></dd>
+    <dt>Letter seed</dt><dd><code>0x77E90317</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.073 px · score 0.59 (next 1.46)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed found near the previous sublevel (FC 2)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_116523.jpg" alt="entry screen">
+    <img src="img/layout_116523_FC-5.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-6</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:06:18</dd>
+    <dt>Layout seed</dt><dd><code>0x3255A99B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x567D419E</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.1 px · score 0.22 (next 2.77)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_119349.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-7</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:08:18</dd>
+    <dt>Layout seed</dt><dd><code>0x1A7570AB</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6EBA85EE</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.124 px · score 1.64 (next 2.37)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_122945.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-8</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:10:19</dd>
+    <dt>Layout seed</dt><dd><code>0x470850D5</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6CA45F60</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.174 px · score 1.7 (next 1.74)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_126575.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoS-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:20:22</dd>
+    <dt>Layout seed</dt><dd><code>0x5847557A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7BAAEBE9</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.171 px · score 1.34 (next 1.36)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_144676.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoS-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:21:25</dd>
+    <dt>Layout seed</dt><dd><code>0x05147E7B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x132DD7FE</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.164 px · score 1.26 (next 1.66)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_146570.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoS-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:22:48</dd>
+    <dt>Layout seed</dt><dd><code>0x6705C053</code></dd>
+    <dt>Letter seed</dt><dd><code>0x66A7E6B6</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.068 px · score 0.02 (next 0.04)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timed by the video clock</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_149065.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card medium">
+  <header><h2>CoS-4</h2><span class="conf">medium</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:24:39</dd>
+    <dt>Layout seed</dt><dd><code>0x56AB666A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x59E65F99</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.145 px · score 0.49 (next 1.91)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed found near the previous sublevel (FC 5)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_152374.jpg" alt="entry screen">
+    <img src="img/layout_152374_CoS-4.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoS-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:26:40</dd>
+    <dt>Layout seed</dt><dd><code>0x03E969F6</code></dd>
+    <dt>Letter seed</dt><dd><code>0x41CBDE15</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.076 px · score 0.02 (next 0.03)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_156013.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>GK-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:29:26</dd>
+    <dt>Layout seed</dt><dd><code>0x10F4A368</code></dd>
+    <dt>Letter seed</dt><dd><code>0x126C426F</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.094 px · score 1.08 (next 1.23)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_160993.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>GK-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:30:11</dd>
+    <dt>Layout seed</dt><dd><code>0x591A6E26</code></dd>
+    <dt>Letter seed</dt><dd><code>0x11780605</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.111 px · score 0.87 (next 1.96)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_162347.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>GK-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:31:27</dd>
+    <dt>Layout seed</dt><dd><code>0x44CE9F68</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7B11EE6F</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.211 px · score 0.85 (next 1.32)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_164637.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>GK-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:33:16</dd>
+    <dt>Layout seed</dt><dd><code>0x26DA8112</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1E3F6761</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.142 px · score 0.89 (next 2.27)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_167886.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>GK-5</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:34:52</dd>
+    <dt>Layout seed</dt><dd><code>0x20F76CFE</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5ADB95BD</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.085 px · score 1.42 (next 1.76)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed found near the previous sublevel (CoS 4) seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_170788.jpg" alt="entry screen">
+    <img src="img/layout_170788_GK-5.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>GK-6</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:36:45</dd>
+    <dt>Layout seed</dt><dd><code>0x40E1D285</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6ABD52D0</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.167 px · score 5.65 (next 6.22)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>seed found near the previous sublevel (GK 5) seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_174175.jpg" alt="entry screen">
+    <img src="img/layout_174175_GK-6.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SC-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:42:22</dd>
+    <dt>Layout seed</dt><dd><code>0x79A03E06</code></dd>
+    <dt>Letter seed</dt><dd><code>0x69CCD83A</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.043 px · score 0.02 (next 0.09)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timed by the video clock</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_184280.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>SC-2</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:44:15</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_187661.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SC-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:46:46</dd>
+    <dt>Layout seed</dt><dd><code>0x292FB30A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x351844FE</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.06 px · score 0.02 (next 0.06)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_192199.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SC-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:49:28</dd>
+    <dt>Layout seed</dt><dd><code>0x4898310C</code></dd>
+    <dt>Letter seed</dt><dd><code>0x37F186E0</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.061 px · score 0.01 (next 0.07)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timed by the video clock</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_197046.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SC-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:52:00</dd>
+    <dt>Layout seed</dt><dd><code>0x11714339</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0141E03D</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.048 px · score 0.07 (next 0.11)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timed by the video clock</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_201606.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SR-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>1:59:57</dd>
+    <dt>Layout seed</dt><dd><code>0x110C4E06</code></dd>
+    <dt>Letter seed</dt><dd><code>0x31ABC2CF</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.117 px · score 36.54 (next 75.69)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>(its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_215916.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SR-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:00:53</dd>
+    <dt>Layout seed</dt><dd><code>0x67DDAF05</code></dd>
+    <dt>Letter seed</dt><dd><code>0x22EBEE02</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.06 px · score 1.78 (next 38.56)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 43 seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_217603.jpg" alt="entry screen">
+    <img src="img/layout_217603_SR-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SR-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:02:32</dd>
+    <dt>Layout seed</dt><dd><code>0x117DCEA7</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0E8BE4BC</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.085 px · score 3.12 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 48 seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_220562.jpg" alt="entry screen">
+    <img src="img/layout_220562_SR-3.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SR-4</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:04:38</dd>
+    <dt>Layout seed</dt><dd><code>0x6F77AB14</code></dd>
+    <dt>Letter seed</dt><dd><code>0x38A35505</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.088 px · score 5.54 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_224368.jpg" alt="entry screen">
+    <img src="img/layout_224368_SR-4.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SR-5</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:05:53</dd>
+    <dt>Layout seed</dt><dd><code>0x4C00A704</code></dd>
+    <dt>Letter seed</dt><dd><code>0x18990435</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.105 px · score 3.33 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_226611.jpg" alt="entry screen">
+    <img src="img/layout_226611_SR-5.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SR-6</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:08:33</dd>
+    <dt>Layout seed</dt><dd><code>0x4D695B9B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7BAEB820</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.081 px · score 36.5 (next 51.8)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 55 (its own read was out of RNG order with its neighbours) seed confirmed by a chain of 5 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_231400.jpg" alt="entry screen">
+    <img src="img/layout_231400_SR-6.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SR-7</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:11:16</dd>
+    <dt>Layout seed</dt><dd><code>0x4A5B0479</code></dd>
+    <dt>Letter seed</dt><dd><code>0x2654CFE6</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.085 px · score 28.37 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timed by the video clock (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_236308.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>BK-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:20:19</dd>
+    <dt>Layout seed</dt><dd><code>0x4CF1EED0</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3FA3C0B8</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.134 px · score 28.72 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>(its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_252597.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>BK-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:21:01</dd>
+    <dt>Layout seed</dt><dd><code>0x29D36403</code></dd>
+    <dt>Letter seed</dt><dd><code>0x47F5AE8B</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.145 px · score 27.22 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>(its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_253833.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>BK-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:21:52</dd>
+    <dt>Layout seed</dt><dd><code>0x569583D1</code></dd>
+    <dt>Letter seed</dt><dd><code>0x22B41A99</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.079 px · score 16.13 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 45 (its own read was out of RNG order with its neighbours) seed found just before the next sublevel (BK 6)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_255383.jpg" alt="entry screen">
+    <img src="img/layout_255383_BK-3.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>BK-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:22:42</dd>
+    <dt>Layout seed</dt><dd><code>0x36F7969F</code></dd>
+    <dt>Letter seed</dt><dd><code>0x39F319A7</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.133 px · score 41.63 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>(its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_256870.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>BK-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:24:01</dd>
+    <dt>Layout seed</dt><dd><code>0x6BA94E4B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x06ACB7D3</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.166 px · score 31.39 (next 53.47)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>(its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_259239.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>BK-6</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:24:57</dd>
+    <dt>Layout seed</dt><dd><code>0x27A674CA</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3C1F2972</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.397 px · score 2.71 (next 63.85)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>first falling stretch, timing step of +1 frame at fall frame 49 seed confirmed by a later or earlier sublevel&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_260928.jpg" alt="entry screen">
+    <img src="img/layout_260928_BK-6.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>BK-7</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:26:26</dd>
+    <dt>Layout seed</dt><dd><code>0x134F99FF</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4EDF9107</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.115 px · score 39.1 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>(its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_263598.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SH-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:30:05</dd>
+    <dt>Layout seed</dt><dd><code>0x321DDD26</code></dd>
+    <dt>Letter seed</dt><dd><code>0x143A7F6F</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.075 px · score 39.56 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 46 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_270179.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SH-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:31:22</dd>
+    <dt>Layout seed</dt><dd><code>0x4F0D84AB</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1C84A9F0</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.079 px · score 4.32 (next 61.72)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 49, cave name matched weakly (blurry capture) seed confirmed by a later or earlier sublevel&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_272463.jpg" alt="entry screen">
+    <img src="img/layout_272463_SH-2.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SH-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:33:13</dd>
+    <dt>Layout seed</dt><dd><code>0x7E400A17</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5FD8ED6C</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.092 px · score 30.86 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 35 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_275809.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SH-4</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:34:11</dd>
+    <dt>Layout seed</dt><dd><code>0x07E1E896</code></dd>
+    <dt>Letter seed</dt><dd><code>0x55CB181F</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.095 px · score 1.08 (next 30.1)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 48 seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_277557.jpg" alt="entry screen">
+    <img src="img/layout_277557_SH-4.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SH-5</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:36:09</dd>
+    <dt>Layout seed</dt><dd><code>0x39BED47A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x165DE1B3</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.107 px · score 17.88 (next 40.37)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 3 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_281083.jpg" alt="entry screen">
+    <img src="img/layout_281083_SH-5.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SH-6</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:37:48</dd>
+    <dt>Layout seed</dt><dd><code>0x437B5EF5</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7129C132</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.096 px · score 0.54 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timed by the video clock seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_284060.jpg" alt="entry screen">
+    <img src="img/layout_284060_SH-6.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SH-7</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:40:44</dd>
+    <dt>Layout seed</dt><dd><code>0x23A85C44</code></dd>
+    <dt>Letter seed</dt><dd><code>0x25FA6875</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.067 px · score 38.45 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 58 (its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_289345.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>BK-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:42:51</dd>
+    <dt>Layout seed</dt><dd><code>0x117C9789</code></dd>
+    <dt>Letter seed</dt><dd><code>0x2D504F51</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.094 px · score 25.23 (next 41.33)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>(its own read was out of RNG order with its neighbours)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_293132.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>BK-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:43:07</dd>
+    <dt>Layout seed</dt><dd><code>0x111C85B6</code></dd>
+    <dt>Letter seed</dt><dd><code>0x47C838DE</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.108 px · score 18.84 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_293617.jpg" alt="entry screen">
+    <img src="img/layout_293617_BK-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>BK-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:43:29</dd>
+    <dt>Layout seed</dt><dd><code>0x70C329E4</code></dd>
+    <dt>Letter seed</dt><dd><code>0x41547D4C</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.076 px · score 3.68 (next 45.86)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>timing step of +1 frame at fall frame 39 seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_294285.jpg" alt="entry screen">
+    <img src="img/layout_294285_BK-3.png" alt="layout">
+  </div>
+</section>
+<section class="card medium">
+  <header><h2>BK-4</h2><span class="conf">medium</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:43:46</dd>
+    <dt>Layout seed</dt><dd><code>0x2E66807A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x509A2F22</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.312 px · score 22.89 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_294789.jpg" alt="entry screen">
+    <img src="img/layout_294789_BK-4.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-1</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:50:10</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_306324.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-2</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:51:14</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_308232.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-3</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:52:26</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_310400.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-4</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:53:24</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_312128.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-5</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:55:32</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_315988.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-6</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:57:00</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_318628.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-7</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:57:49</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_320094.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-8</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>2:58:46</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_321799.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-9</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:00:46</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_325409.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-10</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:02:17</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_328122.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-1</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:03:23</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 11)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_330117.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-12</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:05:07</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 2)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_333211.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-13</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:06:42</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_336069.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-14</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:07:27</dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_337412.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoH-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:18:44</dd>
+    <dt>Layout seed</dt><dd><code>0x3B4CAD57</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5C733C75</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.079 px · score 0.02 (next 0.05)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_357727.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoH-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:22:43</dd>
+    <dt>Layout seed</dt><dd><code>0x071F99A4</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4E88906A</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.087 px · score 13.36 (next 16.35)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_364916.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:33:45</dd>
+    <dt>Layout seed</dt><dd><code>0x3E1AFBFD</code></dd>
+    <dt>Letter seed</dt><dd><code>0x52DFC1A8</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.128 px · score 1.11 (next 2.49)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_384761.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:34:45</dd>
+    <dt>Layout seed</dt><dd><code>0x638D7BE0</code></dd>
+    <dt>Letter seed</dt><dd><code>0x77290C47</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.144 px · score 0.5 (next 2.6)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_386566.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:36:22</dd>
+    <dt>Layout seed</dt><dd><code>0x0271FC42</code></dd>
+    <dt>Letter seed</dt><dd><code>0x31CC5251</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.075 px · score 0.56 (next 1.45)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_389464.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:38:18</dd>
+    <dt>Layout seed</dt><dd><code>0x1EBE1978</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1355E1BF</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.11 px · score 0.03 (next 0.07)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_392944.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:39:38</dd>
+    <dt>Layout seed</dt><dd><code>0x20C2E2D8</code></dd>
+    <dt>Letter seed</dt><dd><code>0x53D7069F</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.081 px · score 0.07 (next 2.34)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_395343.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-6</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:40:08</dd>
+    <dt>Layout seed</dt><dd><code>0x384CE8C7</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7743043A</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.34 px · score 1.57 (next 2.07)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_396240.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-7</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:41:25</dd>
+    <dt>Layout seed</dt><dd><code>0x0197C8BF</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5F4AEB92</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.047 px · score 6.37 (next 6.94)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_398561.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-8</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:43:02</dd>
+    <dt>Layout seed</dt><dd><code>0x125F5583</code></dd>
+    <dt>Letter seed</dt><dd><code>0x27A6F3A6</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.141 px · score 2.0 (next 3.39)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_401484.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-9</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:44:19</dd>
+    <dt>Layout seed</dt><dd><code>0x2CD3305B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x004E8F5E</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.132 px · score 0.85 (next 1.54)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_403791.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoC-10</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd>3:45:31</dd>
+    <dt>Layout seed</dt><dd><code>0x4948B694</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7B3B690B</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.102 px · score 0.71 (next 1.68)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_405951.jpg" alt="entry screen">
+    
+  </div>
+</section>
+</main><footer class="site-footer">Layouts, pictures, treasures and the judge from <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from <a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. Source: <a href="https://github.com/JHawk4/pikmin2-layout-ledger">github.com/JHawk4/pikmin2-layout-ledger</a>.</footer><script>
+for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('click', () => {
+  const p = location.pathname.split('/').filter(Boolean); const here = p.slice(-2).join('/');
+  const u = new URL(a.href); u.searchParams.set('from', here); a.href = u.toString(); });
+</script></body></html>

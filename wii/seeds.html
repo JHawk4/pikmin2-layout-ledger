@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pikmin 2 Layout Ledger · seed order check</title>
+<style>
+:root { --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8; --good:#1f7a3a; --bad:#b42318; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161614; --fg:#ececea; --muted:#9a9a94;
+  --card:#20201e; --line:#33332f; --good:#5cc27a; --bad:#f0786d; } }
+.good-text { color:var(--good); } .bad-text { color:var(--bad); } .mid-text { color:var(--muted); }
+:root[data-theme="dark"] { --bg:#161614; --fg:#ececea; --muted:#9a9a94; --card:#20201e; --line:#33332f;
+  --good:#5cc27a; --bad:#f0786d; }
+* { box-sizing:border-box; }
+body { background:var(--bg); color:var(--fg); font:15px/1.5 system-ui,sans-serif; margin:0; padding:24px 16px 48px; }
+main { max-width:1080px; margin:0 auto; }
+h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:19px; margin:36px 0 8px; }
+a { color:inherit; } .muted { color:var(--muted); } p { max-width:780px; }
+.tablewrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:10px; }
+.heatgrid { font-size:12px; } .heatgrid th, .heatgrid td { padding:4px 7px; white-space:nowrap; }
+.heatgrid th:first-child, .heatgrid td:first-child { position:sticky; left:0; background:var(--card); z-index:1; }
+.heatgrid td.heat a { color:var(--fg); text-decoration:none; font-weight:600; }
+.heatgrid td.heat { outline:none; } .heatgrid td.heat:hover, .heatgrid td.heat:focus { box-shadow:inset 0 0 0 2px var(--fg); }
+table { border-collapse:collapse; width:100%; font-size:14px; }
+th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+th { color:var(--muted); font-weight:500; } tr:last-child td { border-bottom:none; }
+.num { text-align:right; font-variant-numeric:tabular-nums; }
+.curves { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:12px; }
+@media (max-width:480px) { .curves { grid-template-columns:1fr; } }
+h3 { font-size:16px; margin:28px 0 6px; } .findings { font-size:14px; }
+details { margin:10px 0 0; } summary { cursor:pointer; color:var(--muted); font-size:14px; }
+details .tablewrap { max-height:360px; overflow:auto; margin-top:8px; }
+code { font:13px ui-monospace,Consolas,monospace; }
+.lead { font-size:16px; } .intro { max-width:820px; } .legend-list { margin:6px 0 14px; padding-left:18px; max-width:820px; }
+.badge { font-size:11px; font-weight:700; color:var(--sun); border:1px solid var(--sun); border-radius:999px; padding:0 6px; margin-left:4px; }
+th[data-sort] { cursor:pointer; user-select:none; } th[data-sort]:hover { color:var(--fg); }
+th[aria-sort="ascending"]::after { content:" ▲"; } th[aria-sort="descending"]::after { content:" ▼"; }
+td.weak { color:var(--bad); }
+.ts-pick { border:1px solid var(--line); border-radius:10px; background:var(--card); padding:8px 12px; margin:0 0 12px;
+  display:flex; flex-direction:column; gap:4px; max-width:820px; }
+.ts-pick label { cursor:pointer; } .small { font-size:13px; }
+@media (max-width:640px) { td.sticky, th.sticky { position:sticky; left:0; background:var(--card); z-index:1; } }
+
+.sc-keys[hidden] { display:none !important; }
+.scatter-controls { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; font-size:13px; margin:0 0 6px; }
+.scatter-controls select { font:inherit; color:inherit; background:var(--surface-1); border:1px solid var(--grid); border-radius:6px; padding:2px 6px; max-width:60vw; }
+.cumul .brush-area { cursor:crosshair; touch-action:none; }
+.cumul .sortval { font-size:10px; }
+.cumul .brush-read { font-size:12px; font-weight:600; }
+.cumul .hover-read { font-size:11px; fill:var(--ink-1); }
+.viz-root { --surface-1:#fcfcfb; --ink-1:#0b0b0b; --ink-2:#52514e; --ink-3:#8a8984; --grid:#e6e5e0;
+  --range:#d4d3cd; --good-mark:#0ca30c; --bad-mark:#d03b3b; --series-1:#2a78d6; --series-2:#eb6834; --series-3:#1baf7a; --series-4:#eda100;
+  --series-5:#e87ba4; --series-6:#008300; --series-7:#6250d6; --series-8:#e34948; }
+@media (prefers-color-scheme: dark) { :root:where(:not([data-theme="light"])) .viz-root {
+  --surface-1:#1a1a19; --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8f8e88; --grid:#2f2f2c; --range:#45443f;
+  --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70; --series-4:#c98500; --series-5:#d55181;
+  --series-6:#0ca30c; --series-7:#9085e9; --series-8:#e66767; } }
+:root[data-theme="dark"] .viz-root { --surface-1:#1a1a19; --ink-1:#f0efec; --ink-2:#c3c2b7; --ink-3:#8f8e88;
+  --grid:#2f2f2c; --range:#45443f; --series-1:#3987e5; --series-2:#d95926; --series-3:#199e70;
+  --series-4:#c98500; --series-5:#d55181; --series-6:#0ca30c; --series-7:#9085e9; --series-8:#e66767; }
+.chart { background:var(--surface-1); border:1px solid var(--grid); border-radius:10px; padding:12px 12px 6px; }
+.chart svg { display:block; width:100%; height:auto; overflow:visible; }
+.chart text { fill:var(--ink-2); font:11px system-ui,sans-serif; }
+.chart .ttl { fill:var(--ink-1); font-weight:600; font-size:12px; }
+.chart .grid { stroke:var(--grid); stroke-width:1; }
+.chart .zero { stroke:var(--ink-3); stroke-width:1; }
+.chart .range { stroke:var(--range); stroke-width:6; stroke-linecap:round; }
+.chart .hit { fill:transparent; cursor:default; outline:none; }
+.chart svg text, .chart .dot { pointer-events:none; }
+.chart .hit:hover + .dot, .chart .hit:focus + .dot { stroke:var(--ink-1); stroke-width:2; }
+.chart .runline { opacity:.35; } .chart .runline:hover, .chart .runline:focus-within { opacity:1; }
+.chart .runline:hover path { stroke-width:2.5; }
+.legend { display:flex; flex-wrap:wrap; gap:4px 14px; margin:8px 2px 2px; font-size:12px; color:var(--ink-2); }
+.legend i { display:inline-block; width:16px; height:2px; vertical-align:middle; margin-right:6px; border-radius:1px; }
+.legend i.dotkey { width:8px; height:8px; border-radius:50%; }
+#viz-tip { position:fixed; pointer-events:none; z-index:10; background:var(--surface-1); color:var(--ink-2);
+  border:1px solid var(--grid); border-radius:8px; padding:6px 9px; font:12px/1.4 system-ui,sans-serif;
+  box-shadow:0 4px 14px rgba(0,0,0,.25); display:none; box-sizing:border-box; max-width:min(260px, calc(100vw - 16px)); }
+#viz-tip b { color:var(--ink-1); display:block; font-size:13px; }
+#viz-tip img { display:block; width:240px; height:min(200px, 45vh); object-fit:contain; max-width:100%; margin-top:6px;
+  border-radius:4px; background:#000; }
+
+
+:root, :root[data-theme="light"] {
+  --bg:#e4eed2; --bg-2:#d3e4b8; --fg:#1d2418; --muted:#5f6b58; --card:#ffffff; --line:#d5dccb; --field:#f7faf1;
+  --leaf:#4b9a3c; --leaf-2:#3c8531; --leaf-dark:#2c6a24; --accent:#3c8531; --sun:#f2a01c;
+  --good:#2c6a24; --mid:#8a6a1f; --bad:#b3261e; --goodbg:#e3f1dc; --midbg:#f6ecd6; --badbg:#f8e1df; --bar:#c9d3bd;
+  --radius:14px; --shadow:0 1px 2px rgba(44,106,36,.12), 0 2px 10px rgba(44,106,36,.08); color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#141c10; --bg-2:#0d130a; --fg:#e6ece0; --muted:#a3ae98; --card:#1d2619; --line:#34442c; --field:#161e12;
+  --leaf-dark:#a6dc8f; --accent:#8fd37a; --good:#8fd37a; --mid:#e0b45a; --bad:#f2b8b5;
+  --goodbg:#1e3319; --midbg:#352d19; --badbg:#3b2120; --bar:#3a4a32;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.25); color-scheme:dark; } }
+html { background:var(--bg); }
+body { background:linear-gradient(180deg, var(--bg) 0, var(--bg) 340px, var(--bg-2) 100%) fixed; color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+a { color:var(--accent); } a:hover { color:var(--leaf-dark); }
+.site-header { max-width:1240px; margin:0 auto 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.site-logo { display:flex; align-items:center; gap:6px; color:var(--leaf-dark); text-decoration:none; font-weight:800;
+  letter-spacing:-.5px; font-size:1.25rem; text-shadow:1px 1px 0 rgba(255,255,255,.8); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .site-logo { text-shadow:none; } }
+.site-nav { display:flex; flex-wrap:wrap; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  background:linear-gradient(135deg, var(--leaf), var(--leaf-2)); box-shadow:inset 4px 0 0 var(--sun); }
+.site-nav a { text-decoration:none; color:#fff; padding:3px 12px; border-radius:999px; }
+.site-nav a:hover { color:#fff; background:rgba(0,0,0,.15); }
+.site-nav a[aria-current="page"] { background:#fff; color:var(--leaf-2); }
+.site-cats { display:flex; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  border:2px solid var(--accent); background:var(--card); }
+.site-cats a { text-decoration:none; color:var(--accent); padding:1px 12px; border-radius:999px; }
+.site-cats a:hover { background:var(--goodbg); }
+.site-cats a[aria-current="page"] { background:var(--leaf-2); color:#fff; }
+.site-footer { max-width:1240px; margin:28px auto 0; color:var(--muted); font-size:.85rem; }
+h1, h2 { color:var(--leaf-dark); }
+h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-block; }
+.tablewrap, .card, .help, .tile, .stat { border-radius:var(--radius) !important; box-shadow:var(--shadow); }
+</style></head><body><header class="site-header"><a class="site-logo" href="../index.html"><svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true"><path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 25 C8.5 25.5 5 23.5 3.6 20.6 C7.4 19.6 10.6 21.5 12 25 Z" fill="#5fb447" stroke="#3c8531" stroke-width="1"/><ellipse cx="12.0" cy="4.4" rx="3.1" ry="4.3" transform="rotate(0 12.0 4.4)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="16.37" cy="7.58" rx="3.1" ry="4.3" transform="rotate(72 16.37 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="14.7" cy="12.72" rx="3.1" ry="4.3" transform="rotate(144 14.7 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="9.3" cy="12.72" rx="3.1" ry="4.3" transform="rotate(216 9.3 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="7.63" cy="7.58" rx="3.1" ry="4.3" transform="rotate(288 7.63 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><circle cx="12" cy="9" r="3.1" fill="#f2c230" stroke="#d39a12" stroke-width="0.9"/></svg>Pikmin 2 Layout Ledger</a><nav class="site-cats" aria-label="Category"><a href="../index.html">Pay Off Debt</a><a href="../wii/index.html" aria-current=page>Pay Off Debt (Wii)</a><a href="../at/index.html">All Treasures</a></nav><nav class="site-nav"><a href="index.html">All runs</a><a href="layouts.html">Layouts</a><a href="detection.html">Detection</a><a href="timesave.html">Time saved</a><a href="pokos.html">Pokos</a><a href="how-judge.html">The judge</a><a href="accuracy.html">Judge accuracy</a><a href="seeds.html" aria-current=page>Seed check</a><a href="../gecko.html">Gecko code</a><a href="../suggest.html" class=nav-suggest>Suggestion box</a></nav><button type="button" id="lang-toggle" class="lang-toggle" lang="ja" title="日本語で表示">日本語</button><style>html.i18n-wait body{visibility:hidden}.lang-toggle{margin-left:auto;font:inherit;font-size:.88rem;font-weight:700;color:var(--accent,#3c8531);background:var(--card,#fff);border:2px solid var(--accent,#3c8531);border-radius:999px;padding:1px 12px;min-height:30px;cursor:pointer}.lang-toggle:hover{background:var(--goodbg,#e3f1dc)}</style><script>(function(){var l=null;try{var q=new URLSearchParams(location.search).get("lang");l=q==="ja"||q==="en"?q:localStorage.getItem("ledger-lang")||localStorage.getItem("cavegen3-lang");}catch(e){}if(l!=="ja"&&l!=="en")l=(navigator.language||"").toLowerCase().indexOf("ja")===0?"ja":"en";if(l==="ja"){var h=document.documentElement;h.classList.add("i18n-wait");h.lang="ja";setTimeout(function(){h.classList.remove("i18n-wait")},3000);}})();</script><script src="../i18n.js" defer></script></header><main>
+<h1 id="seed-order">Seed order</h1>
+<p>A check on the seed reading: each seed's position in the game's random number sequence, counted from the run's first
+seed. The RNG only moves forward, so every line should climb steadily; a point off its line marks a doubtful seed.</p>
+<details><summary>Show the chart and the table</summary>
+<div class="chart viz-root"><svg viewBox="0 0 960 360" role="img" aria-label="RNG position of each detected seed"><text class="ttl" x="56" y="14">RNG position of each detected seed</text><line class="grid" x1="56" x2="840" y1="320.0" y2="320.0"/><text x="50" y="324.0" text-anchor="end">0</text><line class="grid" x1="56" x2="840" y1="261.2" y2="261.2"/><text x="50" y="265.2" text-anchor="end">1</text><line class="grid" x1="56" x2="840" y1="202.4" y2="202.4"/><text x="50" y="206.4" text-anchor="end">2</text><line class="grid" x1="56" x2="840" y1="143.6" y2="143.6"/><text x="50" y="147.6" text-anchor="end">3</text><line class="grid" x1="56" x2="840" y1="84.8" y2="84.8"/><text x="50" y="88.8" text-anchor="end">4</text><line class="grid" x1="56" x2="840" y1="26.0" y2="26.0"/><text x="50" y="30.0" text-anchor="end">5</text><text x="56.0" y="336" text-anchor="middle">0</text><text x="212.8" y="336" text-anchor="middle">25</text><text x="369.6" y="336" text-anchor="middle">50</text><text x="526.4" y="336" text-anchor="middle">75</text><text x="683.2" y="336" text-anchor="middle">100</text><text x="840.0" y="336" text-anchor="middle">125</text><text x="448" y="354" text-anchor="middle">minutes into the video</text><text x="14" y="173" transform="rotate(-90 14 173)" text-anchor="middle">million RNG steps after the run&#x27;s first seed</text><g><path d="M141.9,320.0 L150.9,318.7 L193.7,306.7 L202.3,303.5 L210.2,301.2 L217.1,298.6 L230.0,292.9 L231.6,292.7 L232.9,292.5 L243.8,285.9 L249.1,283.2 L254.0,282.2 L263.5,278.7 L268.1,276.5 L310.8,263.7 L315.3,260.6 L319.5,258.2 L320.4,258.1 L327.5,253.1 L329.8,252.7 L340.5,246.8 L364.8,237.6 L366.2,237.4 L375.8,233.0 L387.2,226.4 L389.9,223.9 L412.7,212.7 L413.7,212.6 L417.7,210.0 L427.3,204.4" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/><path d="M446.3,194.8 L477.3,181.3 L482.7,178.8 L491.1,174.0 L495.9,172.3 L505.5,167.2 L512.2,164.5 L517.6,161.2 L558.9,140.6 L565.5,136.5 L573.4,130.4 L584.1,125.7 L586.3,123.2 L588.7,122.8 L599.5,114.4 L613.2,107.7 L626.2,98.8 L633.4,96.7 L643.5,93.6 L653.5,90.2 L662.5,87.7 L668.9,86.3 L671.9,85.9" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round"/><circle class="hit" tabindex="0" cx="141.9" cy="320.0" r="12" data-tip="0.00 M steps
+EC 1 · Sbudiver 1:38:29
+at 0:13:41 in the video"/><circle class="dot" cx="141.9" cy="320.0" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="150.9" cy="318.7" r="12" data-tip="0.02 M steps
+EC 2 · Sbudiver 1:38:29
+at 0:15:07 in the video"/><circle class="dot" cx="150.9" cy="318.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="193.7" cy="306.7" r="12" data-tip="0.23 M steps
+HoB 1 · Sbudiver 1:38:29
+at 0:21:57 in the video"/><circle class="dot" cx="193.7" cy="306.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="202.3" cy="303.5" r="12" data-tip="0.28 M steps
+HoB 3 · Sbudiver 1:38:29
+at 0:23:20 in the video"/><circle class="dot" cx="202.3" cy="303.5" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="210.2" cy="301.2" r="12" data-tip="0.32 M steps
+HoB 4 · Sbudiver 1:38:29
+at 0:24:34 in the video"/><circle class="dot" cx="210.2" cy="301.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="217.1" cy="298.6" r="12" data-tip="0.36 M steps
+HoB 5 · Sbudiver 1:38:29
+at 0:25:41 in the video"/><circle class="dot" cx="217.1" cy="298.6" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="230.0" cy="292.9" r="12" data-tip="0.46 M steps
+WFG 1 · Sbudiver 1:38:29
+at 0:27:44 in the video"/><circle class="dot" cx="230.0" cy="292.9" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="231.6" cy="292.7" r="12" data-tip="0.46 M steps
+WFG 2 · Sbudiver 1:38:29
+at 0:27:59 in the video"/><circle class="dot" cx="231.6" cy="292.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="232.9" cy="292.5" r="12" data-tip="0.47 M steps
+WFG 3 · Sbudiver 1:38:29
+at 0:28:12 in the video"/><circle class="dot" cx="232.9" cy="292.5" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="243.8" cy="285.9" r="12" data-tip="0.58 M steps
+WFG 1 · Sbudiver 1:38:29
+at 0:29:56 in the video"/><circle class="dot" cx="243.8" cy="285.9" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="249.1" cy="283.2" r="12" data-tip="0.63 M steps
+WFG 2 · Sbudiver 1:38:29
+at 0:30:47 in the video"/><circle class="dot" cx="249.1" cy="283.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="254.0" cy="282.2" r="12" data-tip="0.64 M steps
+WFG 3 · Sbudiver 1:38:29
+at 0:31:34 in the video"/><circle class="dot" cx="254.0" cy="282.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="263.5" cy="278.7" r="12" data-tip="0.70 M steps
+WFG 4 · Sbudiver 1:38:29
+at 0:33:04 in the video"/><circle class="dot" cx="263.5" cy="278.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="268.1" cy="276.5" r="12" data-tip="0.74 M steps
+WFG 5 · Sbudiver 1:38:29
+at 0:33:48 in the video"/><circle class="dot" cx="268.1" cy="276.5" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="310.8" cy="263.7" r="12" data-tip="0.96 M steps
+BK 1 · Sbudiver 1:38:29
+at 0:40:37 in the video"/><circle class="dot" cx="310.8" cy="263.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="315.3" cy="260.6" r="12" data-tip="1.01 M steps
+BK 2 · Sbudiver 1:38:29
+at 0:41:20 in the video"/><circle class="dot" cx="315.3" cy="260.6" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="319.5" cy="258.2" r="12" data-tip="1.05 M steps
+BK 3 · Sbudiver 1:38:29
+at 0:42:00 in the video"/><circle class="dot" cx="319.5" cy="258.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="320.4" cy="258.1" r="12" data-tip="1.05 M steps
+BK 4 · Sbudiver 1:38:29
+at 0:42:09 in the video"/><circle class="dot" cx="320.4" cy="258.1" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="327.5" cy="253.1" r="12" data-tip="1.14 M steps
+BK 5 · Sbudiver 1:38:29
+at 0:43:17 in the video"/><circle class="dot" cx="327.5" cy="253.1" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="329.8" cy="252.7" r="12" data-tip="1.14 M steps
+BK 6 · Sbudiver 1:38:29
+at 0:43:38 in the video"/><circle class="dot" cx="329.8" cy="252.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="340.5" cy="246.8" r="12" data-tip="1.25 M steps
+BK 7 · Sbudiver 1:38:29
+at 0:45:21 in the video"/><circle class="dot" cx="340.5" cy="246.8" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="364.8" cy="237.6" r="12" data-tip="1.40 M steps
+CoS 1 · Sbudiver 1:38:29
+at 0:49:13 in the video"/><circle class="dot" cx="364.8" cy="237.6" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="366.2" cy="237.4" r="12" data-tip="1.41 M steps
+CoS 2 · Sbudiver 1:38:29
+at 0:49:27 in the video"/><circle class="dot" cx="366.2" cy="237.4" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="375.8" cy="233.0" r="12" data-tip="1.48 M steps
+CoS 3 · Sbudiver 1:38:29
+at 0:50:58 in the video"/><circle class="dot" cx="375.8" cy="233.0" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="387.2" cy="226.4" r="12" data-tip="1.59 M steps
+CoS 4 · Sbudiver 1:38:29
+at 0:52:48 in the video"/><circle class="dot" cx="387.2" cy="226.4" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="389.9" cy="223.9" r="12" data-tip="1.63 M steps
+CoS 5 · Sbudiver 1:38:29
+at 0:53:14 in the video"/><circle class="dot" cx="389.9" cy="223.9" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="412.7" cy="212.7" r="12" data-tip="1.82 M steps
+GK 1 · Sbudiver 1:38:29
+at 0:56:52 in the video"/><circle class="dot" cx="412.7" cy="212.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="413.7" cy="212.6" r="12" data-tip="1.83 M steps
+GK 2 · Sbudiver 1:38:29
+at 0:57:02 in the video"/><circle class="dot" cx="413.7" cy="212.6" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="417.7" cy="210.0" r="12" data-tip="1.87 M steps
+GK 3 · Sbudiver 1:38:29
+at 0:57:39 in the video"/><circle class="dot" cx="417.7" cy="210.0" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="427.3" cy="204.4" r="12" data-tip="1.97 M steps
+GK 4 · Sbudiver 1:38:29
+at 0:59:12 in the video"/><circle class="dot" cx="427.3" cy="204.4" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="446.3" cy="194.8" r="12" data-tip="2.13 M steps
+GK 6 · Sbudiver 1:38:29
+at 1:02:13 in the video"/><circle class="dot" cx="446.3" cy="194.8" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="477.3" cy="181.3" r="12" data-tip="2.36 M steps
+SH 1 · Sbudiver 1:38:29
+at 1:07:10 in the video"/><circle class="dot" cx="477.3" cy="181.3" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="482.7" cy="178.8" r="12" data-tip="2.40 M steps
+SH 2 · Sbudiver 1:38:29
+at 1:08:01 in the video"/><circle class="dot" cx="482.7" cy="178.8" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="491.1" cy="174.0" r="12" data-tip="2.48 M steps
+SH 3 · Sbudiver 1:38:29
+at 1:09:22 in the video"/><circle class="dot" cx="491.1" cy="174.0" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="495.9" cy="172.3" r="12" data-tip="2.51 M steps
+SH 4 · Sbudiver 1:38:29
+at 1:10:08 in the video"/><circle class="dot" cx="495.9" cy="172.3" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="505.5" cy="167.2" r="12" data-tip="2.60 M steps
+SH 5 · Sbudiver 1:38:29
+at 1:11:40 in the video"/><circle class="dot" cx="505.5" cy="167.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="512.2" cy="164.5" r="12" data-tip="2.65 M steps
+SH 6 · Sbudiver 1:38:29
+at 1:12:44 in the video"/><circle class="dot" cx="512.2" cy="164.5" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="517.6" cy="161.2" r="12" data-tip="2.70 M steps
+SH 7 · Sbudiver 1:38:29
+at 1:13:35 in the video"/><circle class="dot" cx="517.6" cy="161.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="558.9" cy="140.6" r="12" data-tip="3.05 M steps
+SCx 1 · Sbudiver 1:38:29
+at 1:20:10 in the video"/><circle class="dot" cx="558.9" cy="140.6" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="565.5" cy="136.5" r="12" data-tip="3.12 M steps
+SCx 2 · Sbudiver 1:38:29
+at 1:21:13 in the video"/><circle class="dot" cx="565.5" cy="136.5" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="573.4" cy="130.4" r="12" data-tip="3.22 M steps
+SCx 3 · Sbudiver 1:38:29
+at 1:22:30 in the video"/><circle class="dot" cx="573.4" cy="130.4" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="584.1" cy="125.7" r="12" data-tip="3.30 M steps
+SCx 4 · Sbudiver 1:38:29
+at 1:24:11 in the video"/><circle class="dot" cx="584.1" cy="125.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="586.3" cy="123.2" r="12" data-tip="3.35 M steps
+SCx 5 · Sbudiver 1:38:29
+at 1:24:33 in the video"/><circle class="dot" cx="586.3" cy="123.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="588.7" cy="122.8" r="12" data-tip="3.35 M steps
+SCx 6 · Sbudiver 1:38:29
+at 1:24:55 in the video"/><circle class="dot" cx="588.7" cy="122.8" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="599.5" cy="114.4" r="12" data-tip="3.50 M steps
+SCx 7 · Sbudiver 1:38:29
+at 1:26:39 in the video"/><circle class="dot" cx="599.5" cy="114.4" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="613.2" cy="107.7" r="12" data-tip="3.61 M steps
+SCx 8 · Sbudiver 1:38:29
+at 1:28:50 in the video"/><circle class="dot" cx="613.2" cy="107.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="626.2" cy="98.8" r="12" data-tip="3.76 M steps
+FC 1 · Sbudiver 1:38:29
+at 1:30:54 in the video"/><circle class="dot" cx="626.2" cy="98.8" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="633.4" cy="96.7" r="12" data-tip="3.80 M steps
+FC 2 · Sbudiver 1:38:29
+at 1:32:03 in the video"/><circle class="dot" cx="633.4" cy="96.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="643.5" cy="93.6" r="12" data-tip="3.85 M steps
+FC 3 · Sbudiver 1:38:29
+at 1:33:39 in the video"/><circle class="dot" cx="643.5" cy="93.6" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="653.5" cy="90.2" r="12" data-tip="3.91 M steps
+FC 4 · Sbudiver 1:38:29
+at 1:35:16 in the video"/><circle class="dot" cx="653.5" cy="90.2" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="662.5" cy="87.7" r="12" data-tip="3.95 M steps
+FC 5 · Sbudiver 1:38:29
+at 1:36:42 in the video"/><circle class="dot" cx="662.5" cy="87.7" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="668.9" cy="86.3" r="12" data-tip="3.98 M steps
+FC 6 · Sbudiver 1:38:29
+at 1:37:43 in the video"/><circle class="dot" cx="668.9" cy="86.3" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="671.9" cy="85.9" r="12" data-tip="3.98 M steps
+FC 7 · Sbudiver 1:38:29
+at 1:38:11 in the video"/><circle class="dot" cx="671.9" cy="85.9" r="3" fill="var(--series-1)" stroke="var(--surface-1)" stroke-width="1"/></g><text x="685.9" y="89.9" style="fill:var(--ink-1)">Sbudiver 1:38:29</text><g><path d="M137.4,320.0 L146.1,319.0 L188.0,310.3 L193.6,307.5 L197.2,306.2 L205.1,304.1 L212.5,300.7 L227.5,294.0 L229.3,293.8 L230.7,293.6 L242.3,287.6 L247.6,284.7 L253.0,283.2 L262.1,279.3 L266.3,278.5 L327.8,259.2 L329.1,259.0 L334.4,257.0 L346.1,246.7 L354.9,241.3 L363.3,236.9 L379.4,227.5 L381.1,227.3 L390.3,222.0 L399.9,215.8 L401.7,215.3 L426.6,207.7 L430.9,205.5 L435.7,202.2 L437.2,202.0 L445.6,195.7 L446.9,195.5 L454.8,191.1 L485.8,176.0 L491.6,173.1 L498.9,169.8 L503.5,167.4 L510.7,164.1 L517.1,161.6 L522.5,157.7 L555.3,141.3 L557.7,140.9 L565.8,137.7 L575.3,133.2 L577.1,133.0 L580.6,132.4 L592.6,125.9 L605.0,121.6 L617.1,112.4 L627.3,106.3 L637.1,102.1 L649.8,95.6 L658.1,91.5 L665.8,88.1 L668.5,87.7" fill="none" stroke="var(--series-2)" stroke-width="2" stroke-linejoin="round"/><circle class="hit" tabindex="0" cx="137.4" cy="320.0" r="12" data-tip="0.00 M steps
+EC 1 · kobachi 1:38:52
+at 0:12:58 in the video"/><circle class="dot" cx="137.4" cy="320.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="146.1" cy="319.0" r="12" data-tip="0.02 M steps
+EC 2 · kobachi 1:38:52
+at 0:14:21 in the video"/><circle class="dot" cx="146.1" cy="319.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="188.0" cy="310.3" r="12" data-tip="0.16 M steps
+HoB 1 · kobachi 1:38:52
+at 0:21:03 in the video"/><circle class="dot" cx="188.0" cy="310.3" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="193.6" cy="307.5" r="12" data-tip="0.21 M steps
+HoB 2 · kobachi 1:38:52
+at 0:21:56 in the video"/><circle class="dot" cx="193.6" cy="307.5" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="197.2" cy="306.2" r="12" data-tip="0.23 M steps
+HoB 3 · kobachi 1:38:52
+at 0:22:31 in the video"/><circle class="dot" cx="197.2" cy="306.2" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="205.1" cy="304.1" r="12" data-tip="0.27 M steps
+HoB 4 · kobachi 1:38:52
+at 0:23:45 in the video"/><circle class="dot" cx="205.1" cy="304.1" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="212.5" cy="300.7" r="12" data-tip="0.33 M steps
+HoB 5 · kobachi 1:38:52
+at 0:24:57 in the video"/><circle class="dot" cx="212.5" cy="300.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="227.5" cy="294.0" r="12" data-tip="0.44 M steps
+WFG 1 · kobachi 1:38:52
+at 0:27:20 in the video"/><circle class="dot" cx="227.5" cy="294.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="229.3" cy="293.8" r="12" data-tip="0.45 M steps
+WFG 2 · kobachi 1:38:52
+at 0:27:38 in the video"/><circle class="dot" cx="229.3" cy="293.8" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="230.7" cy="293.6" r="12" data-tip="0.45 M steps
+WFG 3 · kobachi 1:38:52
+at 0:27:51 in the video"/><circle class="dot" cx="230.7" cy="293.6" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="242.3" cy="287.6" r="12" data-tip="0.55 M steps
+WFG 1 · kobachi 1:38:52
+at 0:29:41 in the video"/><circle class="dot" cx="242.3" cy="287.6" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="247.6" cy="284.7" r="12" data-tip="0.60 M steps
+WFG 2 · kobachi 1:38:52
+at 0:30:33 in the video"/><circle class="dot" cx="247.6" cy="284.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="253.0" cy="283.2" r="12" data-tip="0.63 M steps
+WFG 3 · kobachi 1:38:52
+at 0:31:24 in the video"/><circle class="dot" cx="253.0" cy="283.2" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="262.1" cy="279.3" r="12" data-tip="0.69 M steps
+WFG 4 · kobachi 1:38:52
+at 0:32:51 in the video"/><circle class="dot" cx="262.1" cy="279.3" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="266.3" cy="278.5" r="12" data-tip="0.71 M steps
+WFG 5 · kobachi 1:38:52
+at 0:33:31 in the video"/><circle class="dot" cx="266.3" cy="278.5" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="327.8" cy="259.2" r="12" data-tip="1.03 M steps
+GK 1 · kobachi 1:38:52
+at 0:43:20 in the video"/><circle class="dot" cx="327.8" cy="259.2" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="329.1" cy="259.0" r="12" data-tip="1.04 M steps
+GK 2 · kobachi 1:38:52
+at 0:43:32 in the video"/><circle class="dot" cx="329.1" cy="259.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="334.4" cy="257.0" r="12" data-tip="1.07 M steps
+GK 3 · kobachi 1:38:52
+at 0:44:23 in the video"/><circle class="dot" cx="334.4" cy="257.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="346.1" cy="246.7" r="12" data-tip="1.25 M steps
+GK 4 · kobachi 1:38:52
+at 0:46:14 in the video"/><circle class="dot" cx="346.1" cy="246.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="354.9" cy="241.3" r="12" data-tip="1.34 M steps
+GK 5 · kobachi 1:38:52
+at 0:47:39 in the video"/><circle class="dot" cx="354.9" cy="241.3" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="363.3" cy="236.9" r="12" data-tip="1.41 M steps
+GK 6 · kobachi 1:38:52
+at 0:48:59 in the video"/><circle class="dot" cx="363.3" cy="236.9" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="379.4" cy="227.5" r="12" data-tip="1.57 M steps
+CoS 1 · kobachi 1:38:52
+at 0:51:33 in the video"/><circle class="dot" cx="379.4" cy="227.5" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="381.1" cy="227.3" r="12" data-tip="1.58 M steps
+CoS 2 · kobachi 1:38:52
+at 0:51:50 in the video"/><circle class="dot" cx="381.1" cy="227.3" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="390.3" cy="222.0" r="12" data-tip="1.67 M steps
+CoS 3 · kobachi 1:38:52
+at 0:53:18 in the video"/><circle class="dot" cx="390.3" cy="222.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="399.9" cy="215.8" r="12" data-tip="1.77 M steps
+CoS 4 · kobachi 1:38:52
+at 0:54:50 in the video"/><circle class="dot" cx="399.9" cy="215.8" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="401.7" cy="215.3" r="12" data-tip="1.78 M steps
+CoS 5 · kobachi 1:38:52
+at 0:55:07 in the video"/><circle class="dot" cx="401.7" cy="215.3" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="426.6" cy="207.7" r="12" data-tip="1.91 M steps
+BK 1 · kobachi 1:38:52
+at 0:59:05 in the video"/><circle class="dot" cx="426.6" cy="207.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="430.9" cy="205.5" r="12" data-tip="1.95 M steps
+BK 2 · kobachi 1:38:52
+at 0:59:46 in the video"/><circle class="dot" cx="430.9" cy="205.5" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="435.7" cy="202.2" r="12" data-tip="2.00 M steps
+BK 3 · kobachi 1:38:52
+at 1:00:32 in the video"/><circle class="dot" cx="435.7" cy="202.2" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="437.2" cy="202.0" r="12" data-tip="2.01 M steps
+BK 4 · kobachi 1:38:52
+at 1:00:46 in the video"/><circle class="dot" cx="437.2" cy="202.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="445.6" cy="195.7" r="12" data-tip="2.11 M steps
+BK 5 · kobachi 1:38:52
+at 1:02:07 in the video"/><circle class="dot" cx="445.6" cy="195.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="446.9" cy="195.5" r="12" data-tip="2.12 M steps
+BK 6 · kobachi 1:38:52
+at 1:02:19 in the video"/><circle class="dot" cx="446.9" cy="195.5" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="454.8" cy="191.1" r="12" data-tip="2.19 M steps
+BK 7 · kobachi 1:38:52
+at 1:03:34 in the video"/><circle class="dot" cx="454.8" cy="191.1" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="485.8" cy="176.0" r="12" data-tip="2.45 M steps
+SH 1 · kobachi 1:38:52
+at 1:08:31 in the video"/><circle class="dot" cx="485.8" cy="176.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="491.6" cy="173.1" r="12" data-tip="2.50 M steps
+SH 2 · kobachi 1:38:52
+at 1:09:26 in the video"/><circle class="dot" cx="491.6" cy="173.1" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="498.9" cy="169.8" r="12" data-tip="2.55 M steps
+SH 3 · kobachi 1:38:52
+at 1:10:36 in the video"/><circle class="dot" cx="498.9" cy="169.8" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="503.5" cy="167.4" r="12" data-tip="2.59 M steps
+SH 4 · kobachi 1:38:52
+at 1:11:20 in the video"/><circle class="dot" cx="503.5" cy="167.4" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="510.7" cy="164.1" r="12" data-tip="2.65 M steps
+SH 5 · kobachi 1:38:52
+at 1:12:29 in the video"/><circle class="dot" cx="510.7" cy="164.1" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="517.1" cy="161.6" r="12" data-tip="2.69 M steps
+SH 6 · kobachi 1:38:52
+at 1:13:31 in the video"/><circle class="dot" cx="517.1" cy="161.6" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="522.5" cy="157.7" r="12" data-tip="2.76 M steps
+SH 7 · kobachi 1:38:52
+at 1:14:22 in the video"/><circle class="dot" cx="522.5" cy="157.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="555.3" cy="141.3" r="12" data-tip="3.04 M steps
+SCx 1 · kobachi 1:38:52
+at 1:19:36 in the video"/><circle class="dot" cx="555.3" cy="141.3" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="557.7" cy="140.9" r="12" data-tip="3.05 M steps
+SCx 2 · kobachi 1:38:52
+at 1:19:59 in the video"/><circle class="dot" cx="557.7" cy="140.9" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="565.8" cy="137.7" r="12" data-tip="3.10 M steps
+SCx 3 · kobachi 1:38:52
+at 1:21:17 in the video"/><circle class="dot" cx="565.8" cy="137.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="575.3" cy="133.2" r="12" data-tip="3.18 M steps
+SCx 4 · kobachi 1:38:52
+at 1:22:47 in the video"/><circle class="dot" cx="575.3" cy="133.2" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="577.1" cy="133.0" r="12" data-tip="3.18 M steps
+SCx 5 · kobachi 1:38:52
+at 1:23:04 in the video"/><circle class="dot" cx="577.1" cy="133.0" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="580.6" cy="132.4" r="12" data-tip="3.19 M steps
+SCx 6 · kobachi 1:38:52
+at 1:23:38 in the video"/><circle class="dot" cx="580.6" cy="132.4" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="592.6" cy="125.9" r="12" data-tip="3.30 M steps
+SCx 7 · kobachi 1:38:52
+at 1:25:33 in the video"/><circle class="dot" cx="592.6" cy="125.9" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="605.0" cy="121.6" r="12" data-tip="3.37 M steps
+SCx 8 · kobachi 1:38:52
+at 1:27:31 in the video"/><circle class="dot" cx="605.0" cy="121.6" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="617.1" cy="112.4" r="12" data-tip="3.53 M steps
+FC 1 · kobachi 1:38:52
+at 1:29:27 in the video"/><circle class="dot" cx="617.1" cy="112.4" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="627.3" cy="106.3" r="12" data-tip="3.63 M steps
+FC 2 · kobachi 1:38:52
+at 1:31:05 in the video"/><circle class="dot" cx="627.3" cy="106.3" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="637.1" cy="102.1" r="12" data-tip="3.71 M steps
+FC 3 · kobachi 1:38:52
+at 1:32:39 in the video"/><circle class="dot" cx="637.1" cy="102.1" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="649.8" cy="95.6" r="12" data-tip="3.82 M steps
+FC 4 · kobachi 1:38:52
+at 1:34:40 in the video"/><circle class="dot" cx="649.8" cy="95.6" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="658.1" cy="91.5" r="12" data-tip="3.89 M steps
+FC 5 · kobachi 1:38:52
+at 1:35:59 in the video"/><circle class="dot" cx="658.1" cy="91.5" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="665.8" cy="88.1" r="12" data-tip="3.94 M steps
+FC 6 · kobachi 1:38:52
+at 1:37:13 in the video"/><circle class="dot" cx="665.8" cy="88.1" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="668.5" cy="87.7" r="12" data-tip="3.95 M steps
+FC 7 · kobachi 1:38:52
+at 1:37:39 in the video"/><circle class="dot" cx="668.5" cy="87.7" r="3" fill="var(--series-2)" stroke="var(--surface-1)" stroke-width="1"/></g><text x="682.5" y="104.7" style="fill:var(--ink-1)">kobachi 1:38:52</text><g><path d="M134.7,320.0 L143.3,318.8 L183.6,310.1 L200.3,303.7" fill="none" stroke="var(--series-3)" stroke-width="2" stroke-linejoin="round"/><path d="M302.5,267.5 L311.7,263.1 L323.1,256.1 L329.7,252.2 L354.1,239.2" fill="none" stroke="var(--series-3)" stroke-width="2" stroke-linejoin="round"/><path d="M356.5,238.8 L367.9,230.9 L377.7,226.4 L388.2,220.6 L416.2,210.8 L420.3,207.8 L426.4,204.8 L433.8,199.6 L435.1,199.4 L444.3,194.4 L474.9,178.5 L480.4,175.6 L491.1,170.3 L496.6,166.9 L504.6,162.6 L510.9,160.1 L515.7,156.9" fill="none" stroke="var(--series-3)" stroke-width="2" stroke-linejoin="round"/><path d="M558.9,131.9 L566.2,128.6 L577.1,124.4 L578.9,122.6 L581.3,122.3" fill="none" stroke="var(--series-3)" stroke-width="2" stroke-linejoin="round"/><path d="M609.6,108.2 L621.9,99.5 L630.4,96.1 L648.6,88.6 L657.9,84.8 L664.5,81.9 L667.1,81.6" fill="none" stroke="var(--series-3)" stroke-width="2" stroke-linejoin="round"/><circle class="hit" tabindex="0" cx="134.7" cy="320.0" r="12" data-tip="0.00 M steps
+EC 1 · mercysnow 1:38:59
+at 0:12:33 in the video"/><circle class="dot" cx="134.7" cy="320.0" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="143.3" cy="318.8" r="12" data-tip="0.02 M steps
+EC 2 · mercysnow 1:38:59
+at 0:13:55 in the video"/><circle class="dot" cx="143.3" cy="318.8" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="183.6" cy="310.1" r="12" data-tip="0.17 M steps
+HoB 1 · mercysnow 1:38:59
+at 0:20:21 in the video"/><circle class="dot" cx="183.6" cy="310.1" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="200.3" cy="303.7" r="12" data-tip="0.28 M steps
+HoB 4 · mercysnow 1:38:59
+at 0:23:00 in the video"/><circle class="dot" cx="200.3" cy="303.7" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="302.5" cy="267.5" r="12" data-tip="0.89 M steps
+CoS 1 · mercysnow 1:38:59
+at 0:39:18 in the video"/><circle class="dot" cx="302.5" cy="267.5" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="311.7" cy="263.1" r="12" data-tip="0.97 M steps
+CoS 3 · mercysnow 1:38:59
+at 0:40:46 in the video"/><circle class="dot" cx="311.7" cy="263.1" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="323.1" cy="256.1" r="12" data-tip="1.09 M steps
+CoS 4 · mercysnow 1:38:59
+at 0:42:35 in the video"/><circle class="dot" cx="323.1" cy="256.1" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="329.7" cy="252.2" r="12" data-tip="1.15 M steps
+CoS 5 · mercysnow 1:38:59
+at 0:43:38 in the video"/><circle class="dot" cx="329.7" cy="252.2" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="354.1" cy="239.2" r="12" data-tip="1.37 M steps
+GK 1 · mercysnow 1:38:59
+at 0:47:31 in the video"/><circle class="dot" cx="354.1" cy="239.2" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="356.5" cy="238.8" r="12" data-tip="1.38 M steps
+GK 3 · mercysnow 1:38:59
+at 0:47:55 in the video"/><circle class="dot" cx="356.5" cy="238.8" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="367.9" cy="230.9" r="12" data-tip="1.52 M steps
+GK 4 · mercysnow 1:38:59
+at 0:49:43 in the video"/><circle class="dot" cx="367.9" cy="230.9" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="377.7" cy="226.4" r="12" data-tip="1.59 M steps
+GK 5 · mercysnow 1:38:59
+at 0:51:17 in the video"/><circle class="dot" cx="377.7" cy="226.4" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="388.2" cy="220.6" r="12" data-tip="1.69 M steps
+GK 6 · mercysnow 1:38:59
+at 0:52:57 in the video"/><circle class="dot" cx="388.2" cy="220.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="416.2" cy="210.8" r="12" data-tip="1.86 M steps
+BK 1 · mercysnow 1:38:59
+at 0:57:26 in the video"/><circle class="dot" cx="416.2" cy="210.8" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="420.3" cy="207.8" r="12" data-tip="1.91 M steps
+BK 2 · mercysnow 1:38:59
+at 0:58:05 in the video"/><circle class="dot" cx="420.3" cy="207.8" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="426.4" cy="204.8" r="12" data-tip="1.96 M steps
+BK 4 · mercysnow 1:38:59
+at 0:59:03 in the video"/><circle class="dot" cx="426.4" cy="204.8" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="433.8" cy="199.6" r="12" data-tip="2.05 M steps
+BK 5 · mercysnow 1:38:59
+at 1:00:13 in the video"/><circle class="dot" cx="433.8" cy="199.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="435.1" cy="199.4" r="12" data-tip="2.05 M steps
+BK 6 · mercysnow 1:38:59
+at 1:00:26 in the video"/><circle class="dot" cx="435.1" cy="199.4" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="444.3" cy="194.4" r="12" data-tip="2.14 M steps
+BK 7 · mercysnow 1:38:59
+at 1:01:54 in the video"/><circle class="dot" cx="444.3" cy="194.4" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="474.9" cy="178.5" r="12" data-tip="2.41 M steps
+SH 1 · mercysnow 1:38:59
+at 1:06:47 in the video"/><circle class="dot" cx="474.9" cy="178.5" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="480.4" cy="175.6" r="12" data-tip="2.46 M steps
+SH 2 · mercysnow 1:38:59
+at 1:07:40 in the video"/><circle class="dot" cx="480.4" cy="175.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="491.1" cy="170.3" r="12" data-tip="2.55 M steps
+SH 3 · mercysnow 1:38:59
+at 1:09:22 in the video"/><circle class="dot" cx="491.1" cy="170.3" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="496.6" cy="166.9" r="12" data-tip="2.60 M steps
+SH 4 · mercysnow 1:38:59
+at 1:10:14 in the video"/><circle class="dot" cx="496.6" cy="166.9" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="504.6" cy="162.6" r="12" data-tip="2.68 M steps
+SH 5 · mercysnow 1:38:59
+at 1:11:31 in the video"/><circle class="dot" cx="504.6" cy="162.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="510.9" cy="160.1" r="12" data-tip="2.72 M steps
+SH 6 · mercysnow 1:38:59
+at 1:12:31 in the video"/><circle class="dot" cx="510.9" cy="160.1" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="515.7" cy="156.9" r="12" data-tip="2.77 M steps
+SH 7 · mercysnow 1:38:59
+at 1:13:17 in the video"/><circle class="dot" cx="515.7" cy="156.9" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="558.9" cy="131.9" r="12" data-tip="3.20 M steps
+SCx 2 · mercysnow 1:38:59
+at 1:20:11 in the video"/><circle class="dot" cx="558.9" cy="131.9" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="566.2" cy="128.6" r="12" data-tip="3.25 M steps
+SCx 3 · mercysnow 1:38:59
+at 1:21:20 in the video"/><circle class="dot" cx="566.2" cy="128.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="577.1" cy="124.4" r="12" data-tip="3.33 M steps
+SCx 4 · mercysnow 1:38:59
+at 1:23:05 in the video"/><circle class="dot" cx="577.1" cy="124.4" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="578.9" cy="122.6" r="12" data-tip="3.36 M steps
+SCx 5 · mercysnow 1:38:59
+at 1:23:22 in the video"/><circle class="dot" cx="578.9" cy="122.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="581.3" cy="122.3" r="12" data-tip="3.36 M steps
+SCx 6 · mercysnow 1:38:59
+at 1:23:45 in the video"/><circle class="dot" cx="581.3" cy="122.3" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="609.6" cy="108.2" r="12" data-tip="3.60 M steps
+SCx 8 · mercysnow 1:38:59
+at 1:28:16 in the video"/><circle class="dot" cx="609.6" cy="108.2" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="621.9" cy="99.5" r="12" data-tip="3.75 M steps
+FC 1 · mercysnow 1:38:59
+at 1:30:13 in the video"/><circle class="dot" cx="621.9" cy="99.5" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="630.4" cy="96.1" r="12" data-tip="3.81 M steps
+FC 2 · mercysnow 1:38:59
+at 1:31:35 in the video"/><circle class="dot" cx="630.4" cy="96.1" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="648.6" cy="88.6" r="12" data-tip="3.94 M steps
+FC 4 · mercysnow 1:38:59
+at 1:34:28 in the video"/><circle class="dot" cx="648.6" cy="88.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="657.9" cy="84.8" r="12" data-tip="4.00 M steps
+FC 5 · mercysnow 1:38:59
+at 1:35:57 in the video"/><circle class="dot" cx="657.9" cy="84.8" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="664.5" cy="81.9" r="12" data-tip="4.05 M steps
+FC 6 · mercysnow 1:38:59
+at 1:37:01 in the video"/><circle class="dot" cx="664.5" cy="81.9" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="667.1" cy="81.6" r="12" data-tip="4.05 M steps
+FC 7 · mercysnow 1:38:59
+at 1:37:25 in the video"/><circle class="dot" cx="667.1" cy="81.6" r="3" fill="var(--series-3)" stroke="var(--surface-1)" stroke-width="1"/></g><text x="681.1" y="124.6" style="fill:var(--ink-1)">mercysnow 1:38:59</text><g><path d="M138.3,320.0 L146.1,319.0 L191.6,306.6 L196.3,304.7 L199.8,302.8 L207.7,300.4 L214.6,298.3 L228.0,292.3 L229.6,292.1 L230.9,292.0 L242.2,286.7 L247.8,284.0 L253.5,281.9 L262.7,278.7 L266.0,278.0 L309.1,265.3 L313.5,263.1 L319.5,259.2 L320.5,259.0 L329.1,252.4 L330.4,252.1 L338.4,247.7 L362.6,238.4 L364.3,238.0 L373.2,233.5 L382.5,227.3 L389.3,221.7 L413.2,209.9 L414.3,209.8 L420.6,207.5 L431.2,200.3 L440.9,195.5 L449.4,191.5 L482.4,177.9 L488.3,174.8 L498.3,171.6 L502.8,169.5 L510.5,164.8 L517.9,161.1 L523.2,156.9 L562.7,137.8 L572.1,132.2 L578.2,129.0 L590.0,123.3 L592.2,121.4 L594.4,120.5 L605.7,112.8 L621.5,105.6 L635.6,92.4 L645.1,87.4 L655.5,81.8 L666.6,76.6 L675.6,72.4 L683.3,69.2 L691.1,66.1" fill="none" stroke="var(--series-4)" stroke-width="2" stroke-linejoin="round"/><circle class="hit" tabindex="0" cx="138.3" cy="320.0" r="12" data-tip="0.00 M steps
+EC 1 · JHawk4 1:42:55
+at 0:13:07 in the video"/><circle class="dot" cx="138.3" cy="320.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="146.1" cy="319.0" r="12" data-tip="0.02 M steps
+EC 2 · JHawk4 1:42:55
+at 0:14:21 in the video"/><circle class="dot" cx="146.1" cy="319.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="191.6" cy="306.6" r="12" data-tip="0.23 M steps
+HoB 1 · JHawk4 1:42:55
+at 0:21:37 in the video"/><circle class="dot" cx="191.6" cy="306.6" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="196.3" cy="304.7" r="12" data-tip="0.26 M steps
+HoB 2 · JHawk4 1:42:55
+at 0:22:22 in the video"/><circle class="dot" cx="196.3" cy="304.7" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="199.8" cy="302.8" r="12" data-tip="0.29 M steps
+HoB 3 · JHawk4 1:42:55
+at 0:22:55 in the video"/><circle class="dot" cx="199.8" cy="302.8" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="207.7" cy="300.4" r="12" data-tip="0.33 M steps
+HoB 4 · JHawk4 1:42:55
+at 0:24:11 in the video"/><circle class="dot" cx="207.7" cy="300.4" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="214.6" cy="298.3" r="12" data-tip="0.37 M steps
+HoB 5 · JHawk4 1:42:55
+at 0:25:17 in the video"/><circle class="dot" cx="214.6" cy="298.3" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="228.0" cy="292.3" r="12" data-tip="0.47 M steps
+WFG 1 · JHawk4 1:42:55
+at 0:27:25 in the video"/><circle class="dot" cx="228.0" cy="292.3" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="229.6" cy="292.1" r="12" data-tip="0.47 M steps
+WFG 2 · JHawk4 1:42:55
+at 0:27:41 in the video"/><circle class="dot" cx="229.6" cy="292.1" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="230.9" cy="292.0" r="12" data-tip="0.48 M steps
+WFG 3 · JHawk4 1:42:55
+at 0:27:53 in the video"/><circle class="dot" cx="230.9" cy="292.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="242.2" cy="286.7" r="12" data-tip="0.57 M steps
+WFG 1 · JHawk4 1:42:55
+at 0:29:41 in the video"/><circle class="dot" cx="242.2" cy="286.7" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="247.8" cy="284.0" r="12" data-tip="0.61 M steps
+WFG 2 · JHawk4 1:42:55
+at 0:30:34 in the video"/><circle class="dot" cx="247.8" cy="284.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="253.5" cy="281.9" r="12" data-tip="0.65 M steps
+WFG 3 · JHawk4 1:42:55
+at 0:31:29 in the video"/><circle class="dot" cx="253.5" cy="281.9" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="262.7" cy="278.7" r="12" data-tip="0.70 M steps
+WFG 4 · JHawk4 1:42:55
+at 0:32:57 in the video"/><circle class="dot" cx="262.7" cy="278.7" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="266.0" cy="278.0" r="12" data-tip="0.71 M steps
+WFG 5 · JHawk4 1:42:55
+at 0:33:28 in the video"/><circle class="dot" cx="266.0" cy="278.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="309.1" cy="265.3" r="12" data-tip="0.93 M steps
+BK 1 · JHawk4 1:42:55
+at 0:40:20 in the video"/><circle class="dot" cx="309.1" cy="265.3" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="313.5" cy="263.1" r="12" data-tip="0.97 M steps
+BK 2 · JHawk4 1:42:55
+at 0:41:03 in the video"/><circle class="dot" cx="313.5" cy="263.1" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="319.5" cy="259.2" r="12" data-tip="1.03 M steps
+BK 3 · JHawk4 1:42:55
+at 0:42:00 in the video"/><circle class="dot" cx="319.5" cy="259.2" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="320.5" cy="259.0" r="12" data-tip="1.04 M steps
+BK 4 · JHawk4 1:42:55
+at 0:42:10 in the video"/><circle class="dot" cx="320.5" cy="259.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="329.1" cy="252.4" r="12" data-tip="1.15 M steps
+BK 5 · JHawk4 1:42:55
+at 0:43:32 in the video"/><circle class="dot" cx="329.1" cy="252.4" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="330.4" cy="252.1" r="12" data-tip="1.15 M steps
+BK 6 · JHawk4 1:42:55
+at 0:43:44 in the video"/><circle class="dot" cx="330.4" cy="252.1" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="338.4" cy="247.7" r="12" data-tip="1.23 M steps
+BK 7 · JHawk4 1:42:55
+at 0:45:01 in the video"/><circle class="dot" cx="338.4" cy="247.7" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="362.6" cy="238.4" r="12" data-tip="1.39 M steps
+CoS 1 · JHawk4 1:42:55
+at 0:48:52 in the video"/><circle class="dot" cx="362.6" cy="238.4" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="364.3" cy="238.0" r="12" data-tip="1.39 M steps
+CoS 2 · JHawk4 1:42:55
+at 0:49:09 in the video"/><circle class="dot" cx="364.3" cy="238.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="373.2" cy="233.5" r="12" data-tip="1.47 M steps
+CoS 3 · JHawk4 1:42:55
+at 0:50:34 in the video"/><circle class="dot" cx="373.2" cy="233.5" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="382.5" cy="227.3" r="12" data-tip="1.58 M steps
+CoS 4 · JHawk4 1:42:55
+at 0:52:03 in the video"/><circle class="dot" cx="382.5" cy="227.3" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="389.3" cy="221.7" r="12" data-tip="1.67 M steps
+CoS 5 · JHawk4 1:42:55
+at 0:53:08 in the video"/><circle class="dot" cx="389.3" cy="221.7" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="413.2" cy="209.9" r="12" data-tip="1.87 M steps
+GK 1 · JHawk4 1:42:55
+at 0:56:57 in the video"/><circle class="dot" cx="413.2" cy="209.9" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="414.3" cy="209.8" r="12" data-tip="1.87 M steps
+GK 2 · JHawk4 1:42:55
+at 0:57:07 in the video"/><circle class="dot" cx="414.3" cy="209.8" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="420.6" cy="207.5" r="12" data-tip="1.91 M steps
+GK 3 · JHawk4 1:42:55
+at 0:58:08 in the video"/><circle class="dot" cx="420.6" cy="207.5" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="431.2" cy="200.3" r="12" data-tip="2.04 M steps
+GK 4 · JHawk4 1:42:55
+at 0:59:49 in the video"/><circle class="dot" cx="431.2" cy="200.3" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="440.9" cy="195.5" r="12" data-tip="2.12 M steps
+GK 5 · JHawk4 1:42:55
+at 1:01:22 in the video"/><circle class="dot" cx="440.9" cy="195.5" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="449.4" cy="191.5" r="12" data-tip="2.18 M steps
+GK 6 · JHawk4 1:42:55
+at 1:02:42 in the video"/><circle class="dot" cx="449.4" cy="191.5" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="482.4" cy="177.9" r="12" data-tip="2.42 M steps
+SH 1 · JHawk4 1:42:55
+at 1:07:59 in the video"/><circle class="dot" cx="482.4" cy="177.9" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="488.3" cy="174.8" r="12" data-tip="2.47 M steps
+SH 2 · JHawk4 1:42:55
+at 1:08:55 in the video"/><circle class="dot" cx="488.3" cy="174.8" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="498.3" cy="171.6" r="12" data-tip="2.52 M steps
+SH 3 · JHawk4 1:42:55
+at 1:10:31 in the video"/><circle class="dot" cx="498.3" cy="171.6" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="502.8" cy="169.5" r="12" data-tip="2.56 M steps
+SH 4 · JHawk4 1:42:55
+at 1:11:13 in the video"/><circle class="dot" cx="502.8" cy="169.5" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="510.5" cy="164.8" r="12" data-tip="2.64 M steps
+SH 5 · JHawk4 1:42:55
+at 1:12:27 in the video"/><circle class="dot" cx="510.5" cy="164.8" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="517.9" cy="161.1" r="12" data-tip="2.70 M steps
+SH 6 · JHawk4 1:42:55
+at 1:13:38 in the video"/><circle class="dot" cx="517.9" cy="161.1" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="523.2" cy="156.9" r="12" data-tip="2.77 M steps
+SH 7 · JHawk4 1:42:55
+at 1:14:29 in the video"/><circle class="dot" cx="523.2" cy="156.9" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="562.7" cy="137.8" r="12" data-tip="3.10 M steps
+SCx 1 · JHawk4 1:42:55
+at 1:20:47 in the video"/><circle class="dot" cx="562.7" cy="137.8" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="572.1" cy="132.2" r="12" data-tip="3.19 M steps
+SCx 2 · JHawk4 1:42:55
+at 1:22:17 in the video"/><circle class="dot" cx="572.1" cy="132.2" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="578.2" cy="129.0" r="12" data-tip="3.25 M steps
+SCx 3 · JHawk4 1:42:55
+at 1:23:15 in the video"/><circle class="dot" cx="578.2" cy="129.0" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="590.0" cy="123.3" r="12" data-tip="3.35 M steps
+SCx 4 · JHawk4 1:42:55
+at 1:25:08 in the video"/><circle class="dot" cx="590.0" cy="123.3" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="592.2" cy="121.4" r="12" data-tip="3.38 M steps
+SCx 5 · JHawk4 1:42:55
+at 1:25:29 in the video"/><circle class="dot" cx="592.2" cy="121.4" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="594.4" cy="120.5" r="12" data-tip="3.39 M steps
+SCx 6 · JHawk4 1:42:55
+at 1:25:50 in the video"/><circle class="dot" cx="594.4" cy="120.5" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="605.7" cy="112.8" r="12" data-tip="3.52 M steps
+SCx 7 · JHawk4 1:42:55
+at 1:27:38 in the video"/><circle class="dot" cx="605.7" cy="112.8" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="621.5" cy="105.6" r="12" data-tip="3.65 M steps
+SCx 8 · JHawk4 1:42:55
+at 1:30:09 in the video"/><circle class="dot" cx="621.5" cy="105.6" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="635.6" cy="92.4" r="12" data-tip="3.87 M steps
+FC 1 · JHawk4 1:42:55
+at 1:32:24 in the video"/><circle class="dot" cx="635.6" cy="92.4" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="645.1" cy="87.4" r="12" data-tip="3.96 M steps
+FC 2 · JHawk4 1:42:55
+at 1:33:55 in the video"/><circle class="dot" cx="645.1" cy="87.4" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="655.5" cy="81.8" r="12" data-tip="4.05 M steps
+FC 3 · JHawk4 1:42:55
+at 1:35:35 in the video"/><circle class="dot" cx="655.5" cy="81.8" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="666.6" cy="76.6" r="12" data-tip="4.14 M steps
+FC 4 · JHawk4 1:42:55
+at 1:37:21 in the video"/><circle class="dot" cx="666.6" cy="76.6" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="675.6" cy="72.4" r="12" data-tip="4.21 M steps
+FC 5 · JHawk4 1:42:55
+at 1:38:47 in the video"/><circle class="dot" cx="675.6" cy="72.4" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="683.3" cy="69.2" r="12" data-tip="4.27 M steps
+FC 6 · JHawk4 1:42:55
+at 1:40:01 in the video"/><circle class="dot" cx="683.3" cy="69.2" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/><circle class="hit" tabindex="0" cx="691.1" cy="66.1" r="12" data-tip="4.32 M steps
+FC 7 · JHawk4 1:42:55
+at 1:41:15 in the video"/><circle class="dot" cx="691.1" cy="66.1" r="3" fill="var(--series-4)" stroke="var(--surface-1)" stroke-width="1"/></g><text x="705.1" y="70.1" style="fill:var(--ink-1)">JHawk4 1:42:55</text></svg><div class="legend"><span><i style="background:var(--series-1)"></i>Sbudiver 1:38:29</span><span><i style="background:var(--series-2)"></i>kobachi 1:38:52</span><span><i style="background:var(--series-3)"></i>mercysnow 1:38:59</span><span><i style="background:var(--series-4)"></i>JHawk4 1:42:55</span></div></div>
+<div class="tablewrap"><table>
+<thead><tr><th>Runner</th><th>Video time</th><th>Sublevel</th><th>Letter seed</th><th class="num">RNG steps</th></tr></thead>
+<tbody><tr><td>Sbudiver 1:38:29</td><td>0:13:41</td><td>EC 1</td><td><code>0x0E9C399B</code></td><td class='num'>0</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:15:07</td><td>EC 2</td><td><code>0x29F3A65F</code></td><td class='num'>22,556</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:21:57</td><td>HoB 1</td><td><code>0x1AD04174</code></td><td class='num'>225,845</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:23:20</td><td>HoB 3</td><td><code>0x4C756718</code></td><td class='num'>280,225</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:24:34</td><td>HoB 4</td><td><code>0x2B5D2CFE</code></td><td class='num'>320,027</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:25:41</td><td>HoB 5</td><td><code>0x71B86CFD</code></td><td class='num'>364,758</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:27:44</td><td>WFG 1</td><td><code>0x76ECC7D5</code></td><td class='num'>461,502</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:27:59</td><td>WFG 2</td><td><code>0x0B0B9E3C</code></td><td class='num'>464,717</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:28:12</td><td>WFG 3</td><td><code>0x55F7C25E</code></td><td class='num'>467,515</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:29:56</td><td>WFG 1</td><td><code>0x6E7DF71F</code></td><td class='num'>580,444</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:30:47</td><td>WFG 2</td><td><code>0x77189292</code></td><td class='num'>625,847</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:31:34</td><td>WFG 3</td><td><code>0x61D5C914</code></td><td class='num'>643,605</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:33:04</td><td>WFG 4</td><td><code>0x016E3F20</code></td><td class='num'>703,225</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:33:48</td><td>WFG 5</td><td><code>0x6619DDC0</code></td><td class='num'>739,801</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:40:37</td><td>BK 1</td><td><code>0x5282605B</code></td><td class='num'>956,736</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:41:20</td><td>BK 2</td><td><code>0x05559B4A</code></td><td class='num'>1,009,375</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:42:00</td><td>BK 3</td><td><code>0x0036E57C</code></td><td class='num'>1,050,381</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:42:09</td><td>BK 4</td><td><code>0x04502B0C</code></td><td class='num'>1,053,245</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:43:17</td><td>BK 5</td><td><code>0x5A0DEC84</code></td><td class='num'>1,137,637</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:43:38</td><td>BK 6</td><td><code>0x7F006E83</code></td><td class='num'>1,144,472</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:45:21</td><td>BK 7</td><td><code>0x691DAE4B</code></td><td class='num'>1,245,520</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:49:13</td><td>CoS 1</td><td><code>0x7DD5F3D6</code></td><td class='num'>1,401,891</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:49:27</td><td>CoS 2</td><td><code>0x2C148234</code></td><td class='num'>1,405,557</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:50:58</td><td>CoS 3</td><td><code>0x2EC7AD74</code></td><td class='num'>1,480,245</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:52:48</td><td>CoS 4</td><td><code>0x5509A996</code></td><td class='num'>1,592,675</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:53:14</td><td>CoS 5</td><td><code>0x10E9362A</code></td><td class='num'>1,633,663</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:56:52</td><td>GK 1</td><td><code>0x5C30AB44</code></td><td class='num'>1,824,293</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:57:02</td><td>GK 2</td><td><code>0x5959B9A4</code></td><td class='num'>1,826,885</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:57:39</td><td>GK 3</td><td><code>0x01C43384</code></td><td class='num'>1,870,053</td></tr><tr><td>Sbudiver 1:38:29</td><td>0:59:12</td><td>GK 4</td><td><code>0x25876825</code></td><td class='num'>1,966,062</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:02:13</td><td>GK 6</td><td><code>0x54B2F603</code></td><td class='num'>2,129,688</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:07:10</td><td>SH 1</td><td><code>0x3AB3EC40</code></td><td class='num'>2,359,641</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:08:01</td><td>SH 2</td><td><code>0x423BE648</code></td><td class='num'>2,401,969</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:09:22</td><td>SH 3</td><td><code>0x195BCA4B</code></td><td class='num'>2,483,536</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:10:08</td><td>SH 4</td><td><code>0x03932DEC</code></td><td class='num'>2,511,325</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:11:40</td><td>SH 5</td><td><code>0x68F5707F</code></td><td class='num'>2,597,884</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:12:44</td><td>SH 6</td><td><code>0x702D9709</code></td><td class='num'>2,645,066</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:13:35</td><td>SH 7</td><td><code>0x07D48E3B</code></td><td class='num'>2,700,128</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:20:10</td><td>SCx 1</td><td><code>0x0D642121</code></td><td class='num'>3,050,610</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:21:13</td><td>SCx 2</td><td><code>0x03DA5E5B</code></td><td class='num'>3,119,936</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:22:30</td><td>SCx 3</td><td><code>0x7F9E1F30</code></td><td class='num'>3,223,721</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:24:11</td><td>SCx 4</td><td><code>0x63BAE416</code></td><td class='num'>3,304,675</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:24:33</td><td>SCx 5</td><td><code>0x745A40EE</code></td><td class='num'>3,346,411</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:24:55</td><td>SCx 6</td><td><code>0x413247B6</code></td><td class='num'>3,353,539</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:26:39</td><td>SCx 7</td><td><code>0x2213AF9E</code></td><td class='num'>3,496,443</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:28:50</td><td>SCx 8</td><td><code>0x49406DC1</code></td><td class='num'>3,610,834</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:30:54</td><td>FC 1</td><td><code>0x4ACC9F79</code></td><td class='num'>3,762,522</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:32:03</td><td>FC 2</td><td><code>0x1F1B1FE2</code></td><td class='num'>3,798,439</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:33:39</td><td>FC 3</td><td><code>0x350D478F</code></td><td class='num'>3,850,732</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:35:16</td><td>FC 4</td><td><code>0x768F1271</code></td><td class='num'>3,908,002</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:36:42</td><td>FC 5</td><td><code>0x29791668</code></td><td class='num'>3,951,121</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:37:43</td><td>FC 6</td><td><code>0x2B8E8CA5</code></td><td class='num'>3,975,022</td></tr><tr><td>Sbudiver 1:38:29</td><td>1:38:11</td><td>FC 7</td><td><code>0x483EDFFB</code></td><td class='num'>3,981,728</td></tr><tr><td>kobachi 1:38:52</td><td>0:12:58</td><td>EC 1</td><td><code>0x2E1F7AED</code></td><td class='num'>0</td></tr><tr><td>kobachi 1:38:52</td><td>0:14:21</td><td>EC 2</td><td><code>0x471A4BC4</code></td><td class='num'>16,959</td></tr><tr><td>kobachi 1:38:52</td><td>0:21:03</td><td>HoB 1</td><td><code>0x3AE3FD78</code></td><td class='num'>164,187</td></tr><tr><td>kobachi 1:38:52</td><td>0:21:56</td><td>HoB 2</td><td><code>0x6FC003E1</code></td><td class='num'>212,556</td></tr><tr><td>kobachi 1:38:52</td><td>0:22:31</td><td>HoB 3</td><td><code>0x0E6F8AA8</code></td><td class='num'>234,347</td></tr><tr><td>kobachi 1:38:52</td><td>0:23:45</td><td>HoB 4</td><td><code>0x367B2732</code></td><td class='num'>270,129</td></tr><tr><td>kobachi 1:38:52</td><td>0:24:57</td><td>HoB 5</td><td><code>0x57485AB2</code></td><td class='num'>328,113</td></tr><tr><td>kobachi 1:38:52</td><td>0:27:20</td><td>WFG 1</td><td><code>0x558B862B</code></td><td class='num'>442,378</td></tr><tr><td>kobachi 1:38:52</td><td>0:27:38</td><td>WFG 2</td><td><code>0x2924786E</code></td><td class='num'>445,701</td></tr><tr><td>kobachi 1:38:52</td><td>0:27:51</td><td>WFG 3</td><td><code>0x4E4D81D5</code></td><td class='num'>448,344</td></tr><tr><td>kobachi 1:38:52</td><td>0:29:41</td><td>WFG 1</td><td><code>0x3CADCAC7</code></td><td class='num'>551,758</td></tr><tr><td>kobachi 1:38:52</td><td>0:30:33</td><td>WFG 2</td><td><code>0x251B0079</code></td><td class='num'>599,796</td></tr><tr><td>kobachi 1:38:52</td><td>0:31:24</td><td>WFG 3</td><td><code>0x65D9A07F</code></td><td class='num'>625,302</td></tr><tr><td>kobachi 1:38:52</td><td>0:32:51</td><td>WFG 4</td><td><code>0x6A040ECF</code></td><td class='num'>691,526</td></tr><tr><td>kobachi 1:38:52</td><td>0:33:31</td><td>WFG 5</td><td><code>0x08DC0527</code></td><td class='num'>706,286</td></tr><tr><td>kobachi 1:38:52</td><td>0:43:20</td><td>GK 1</td><td><code>0x109F37D6</code></td><td class='num'>1,033,917</td></tr><tr><td>kobachi 1:38:52</td><td>0:43:32</td><td>GK 2</td><td><code>0x46B51255</code></td><td class='num'>1,037,016</td></tr><tr><td>kobachi 1:38:52</td><td>0:44:23</td><td>GK 3</td><td><code>0x489A96BC</code></td><td class='num'>1,071,975</td></tr><tr><td>kobachi 1:38:52</td><td>0:46:14</td><td>GK 4</td><td><code>0x304F914F</code></td><td class='num'>1,245,894</td></tr><tr><td>kobachi 1:38:52</td><td>0:47:39</td><td>GK 5</td><td><code>0x5D4928E6</code></td><td class='num'>1,338,861</td></tr><tr><td>kobachi 1:38:52</td><td>0:48:59</td><td>GK 6</td><td><code>0x185D690D</code></td><td class='num'>1,413,344</td></tr><tr><td>kobachi 1:38:52</td><td>0:51:33</td><td>CoS 1</td><td><code>0x5ACA0801</code></td><td class='num'>1,572,652</td></tr><tr><td>kobachi 1:38:52</td><td>0:51:50</td><td>CoS 2</td><td><code>0x16C294B2</code></td><td class='num'>1,576,881</td></tr><tr><td>kobachi 1:38:52</td><td>0:53:18</td><td>CoS 3</td><td><code>0x1CC65B2D</code></td><td class='num'>1,666,496</td></tr><tr><td>kobachi 1:38:52</td><td>0:54:50</td><td>CoS 4</td><td><code>0x53350ABA</code></td><td class='num'>1,771,721</td></tr><tr><td>kobachi 1:38:52</td><td>0:55:07</td><td>CoS 5</td><td><code>0x177078CB</code></td><td class='num'>1,781,098</td></tr><tr><td>kobachi 1:38:52</td><td>0:59:05</td><td>BK 1</td><td><code>0x6D2BE838</code></td><td class='num'>1,909,659</td></tr><tr><td>kobachi 1:38:52</td><td>0:59:46</td><td>BK 2</td><td><code>0x22266AA1</code></td><td class='num'>1,947,020</td></tr><tr><td>kobachi 1:38:52</td><td>1:00:32</td><td>BK 3</td><td><code>0x6BEFE332</code></td><td class='num'>2,003,761</td></tr><tr><td>kobachi 1:38:52</td><td>1:00:46</td><td>BK 4</td><td><code>0x2736E023</code></td><td class='num'>2,006,930</td></tr><tr><td>kobachi 1:38:52</td><td>1:02:07</td><td>BK 5</td><td><code>0x611FB381</code></td><td class='num'>2,113,452</td></tr><tr><td>kobachi 1:38:52</td><td>1:02:19</td><td>BK 6</td><td><code>0x670D7808</code></td><td class='num'>2,116,747</td></tr><tr><td>kobachi 1:38:52</td><td>1:03:34</td><td>BK 7</td><td><code>0x4E1922B6</code></td><td class='num'>2,192,221</td></tr><tr><td>kobachi 1:38:52</td><td>1:08:31</td><td>SH 1</td><td><code>0x664A4A1A</code></td><td class='num'>2,448,617</td></tr><tr><td>kobachi 1:38:52</td><td>1:09:26</td><td>SH 2</td><td><code>0x5060E75F</code></td><td class='num'>2,497,974</td></tr><tr><td>kobachi 1:38:52</td><td>1:10:36</td><td>SH 3</td><td><code>0x1D7CBCFB</code></td><td class='num'>2,554,682</td></tr><tr><td>kobachi 1:38:52</td><td>1:11:20</td><td>SH 4</td><td><code>0x2CD442E1</code></td><td class='num'>2,594,636</td></tr><tr><td>kobachi 1:38:52</td><td>1:12:29</td><td>SH 5</td><td><code>0x2F3D8E4F</code></td><td class='num'>2,651,590</td></tr><tr><td>kobachi 1:38:52</td><td>1:13:31</td><td>SH 6</td><td><code>0x30B07558</code></td><td class='num'>2,694,651</td></tr><tr><td>kobachi 1:38:52</td><td>1:14:22</td><td>SH 7</td><td><code>0x696F5735</code></td><td class='num'>2,759,416</td></tr><tr><td>kobachi 1:38:52</td><td>1:19:36</td><td>SCx 1</td><td><code>0x1C6CF088</code></td><td class='num'>3,039,755</td></tr><tr><td>kobachi 1:38:52</td><td>1:19:59</td><td>SCx 2</td><td><code>0x21247E84</code></td><td class='num'>3,045,503</td></tr><tr><td>kobachi 1:38:52</td><td>1:21:17</td><td>SCx 3</td><td><code>0x59B2C4CA</code></td><td class='num'>3,101,177</td></tr><tr><td>kobachi 1:38:52</td><td>1:22:47</td><td>SCx 4</td><td><code>0x5D84D26A</code></td><td class='num'>3,177,689</td></tr><tr><td>kobachi 1:38:52</td><td>1:23:04</td><td>SCx 5</td><td><code>0x70413DE3</code></td><td class='num'>3,181,010</td></tr><tr><td>kobachi 1:38:52</td><td>1:23:38</td><td>SCx 6</td><td><code>0x66826AB0</code></td><td class='num'>3,190,211</td></tr><tr><td>kobachi 1:38:52</td><td>1:25:33</td><td>SCx 7</td><td><code>0x01F90BD4</code></td><td class='num'>3,301,103</td></tr><tr><td>kobachi 1:38:52</td><td>1:27:31</td><td>SCx 8</td><td><code>0x5BDD69C7</code></td><td class='num'>3,374,158</td></tr><tr><td>kobachi 1:38:52</td><td>1:29:27</td><td>FC 1</td><td><code>0x40CAF051</code></td><td class='num'>3,530,076</td></tr><tr><td>kobachi 1:38:52</td><td>1:31:05</td><td>FC 2</td><td><code>0x2E7E5CB0</code></td><td class='num'>3,634,115</td></tr><tr><td>kobachi 1:38:52</td><td>1:32:39</td><td>FC 3</td><td><code>0x7DEB43DB</code></td><td class='num'>3,705,946</td></tr><tr><td>kobachi 1:38:52</td><td>1:34:40</td><td>FC 4</td><td><code>0x7F8DA8A8</code></td><td class='num'>3,816,811</td></tr><tr><td>kobachi 1:38:52</td><td>1:35:59</td><td>FC 5</td><td><code>0x68758D3B</code></td><td class='num'>3,885,818</td></tr><tr><td>kobachi 1:38:52</td><td>1:37:13</td><td>FC 6</td><td><code>0x67F1CFAF</code></td><td class='num'>3,944,038</td></tr><tr><td>kobachi 1:38:52</td><td>1:37:39</td><td>FC 7</td><td><code>0x188D18CE</code></td><td class='num'>3,950,117</td></tr><tr><td>mercysnow 1:38:59</td><td>0:12:33</td><td>EC 1</td><td><code>0x14483B0B</code></td><td class='num'>0</td></tr><tr><td>mercysnow 1:38:59</td><td>0:13:55</td><td>EC 2</td><td><code>0x6770475E</code></td><td class='num'>19,627</td></tr><tr><td>mercysnow 1:38:59</td><td>0:20:21</td><td>HoB 1</td><td><code>0x65C33829</code></td><td class='num'>167,834</td></tr><tr><td>mercysnow 1:38:59</td><td>0:23:00</td><td>HoB 4</td><td><code>0x3592C66D</code></td><td class='num'>277,846</td></tr><tr><td>mercysnow 1:38:59</td><td>0:39:18</td><td>CoS 1</td><td><code>0x5BB7B774</code></td><td class='num'>892,837</td></tr><tr><td>mercysnow 1:38:59</td><td>0:40:46</td><td>CoS 3</td><td><code>0x00DEEBE7</code></td><td class='num'>966,916</td></tr><tr><td>mercysnow 1:38:59</td><td>0:42:35</td><td>CoS 4</td><td><code>0x3B96A918</code></td><td class='num'>1,087,505</td></tr><tr><td>mercysnow 1:38:59</td><td>0:43:38</td><td>CoS 5</td><td><code>0x7A0F01CC</code></td><td class='num'>1,153,005</td></tr><tr><td>mercysnow 1:38:59</td><td>0:47:31</td><td>GK 1</td><td><code>0x7186202F</code></td><td class='num'>1,374,908</td></tr><tr><td>mercysnow 1:38:59</td><td>0:47:55</td><td>GK 3</td><td><code>0x294F421B</code></td><td class='num'>1,381,104</td></tr><tr><td>mercysnow 1:38:59</td><td>0:49:43</td><td>GK 4</td><td><code>0x1049D196</code></td><td class='num'>1,515,731</td></tr><tr><td>mercysnow 1:38:59</td><td>0:51:17</td><td>GK 5</td><td><code>0x7CBDBD4A</code></td><td class='num'>1,591,375</td></tr><tr><td>mercysnow 1:38:59</td><td>0:52:57</td><td>GK 6</td><td><code>0x6260C5FE</code></td><td class='num'>1,689,739</td></tr><tr><td>mercysnow 1:38:59</td><td>0:57:26</td><td>BK 1</td><td><code>0x76E3E045</code></td><td class='num'>1,857,086</td></tr><tr><td>mercysnow 1:38:59</td><td>0:58:05</td><td>BK 2</td><td><code>0x31BEF8A1</code></td><td class='num'>1,907,810</td></tr><tr><td>mercysnow 1:38:59</td><td>0:59:03</td><td>BK 4</td><td><code>0x58A3EED3</code></td><td class='num'>1,959,352</td></tr><tr><td>mercysnow 1:38:59</td><td>1:00:13</td><td>BK 5</td><td><code>0x6FCD7C91</code></td><td class='num'>2,047,986</td></tr><tr><td>mercysnow 1:38:59</td><td>1:00:26</td><td>BK 6</td><td><code>0x6DEFAE6B</code></td><td class='num'>2,051,232</td></tr><tr><td>mercysnow 1:38:59</td><td>1:01:54</td><td>BK 7</td><td><code>0x71BC0090</code></td><td class='num'>2,135,353</td></tr><tr><td>mercysnow 1:38:59</td><td>1:06:47</td><td>SH 1</td><td><code>0x772AF727</code></td><td class='num'>2,406,852</td></tr><tr><td>mercysnow 1:38:59</td><td>1:07:40</td><td>SH 2</td><td><code>0x4C231B9B</code></td><td class='num'>2,455,920</td></tr><tr><td>mercysnow 1:38:59</td><td>1:09:22</td><td>SH 3</td><td><code>0x1FD57AC5</code></td><td class='num'>2,545,598</td></tr><tr><td>mercysnow 1:38:59</td><td>1:10:14</td><td>SH 4</td><td><code>0x5864C7B2</code></td><td class='num'>2,604,423</td></tr><tr><td>mercysnow 1:38:59</td><td>1:11:31</td><td>SH 5</td><td><code>0x72E68F12</code></td><td class='num'>2,676,135</td></tr><tr><td>mercysnow 1:38:59</td><td>1:12:31</td><td>SH 6</td><td><code>0x1319780C</code></td><td class='num'>2,718,893</td></tr><tr><td>mercysnow 1:38:59</td><td>1:13:17</td><td>SH 7</td><td><code>0x0EB1451E</code></td><td class='num'>2,774,507</td></tr><tr><td>mercysnow 1:38:59</td><td>1:20:11</td><td>SCx 2</td><td><code>0x232033AF</code></td><td class='num'>3,198,780</td></tr><tr><td>mercysnow 1:38:59</td><td>1:21:20</td><td>SCx 3</td><td><code>0x029495E4</code></td><td class='num'>3,254,901</td></tr><tr><td>mercysnow 1:38:59</td><td>1:23:05</td><td>SCx 4</td><td><code>0x7FE71963</code></td><td class='num'>3,326,760</td></tr><tr><td>mercysnow 1:38:59</td><td>1:23:22</td><td>SCx 5</td><td><code>0x000B5CFA</code></td><td class='num'>3,356,767</td></tr><tr><td>mercysnow 1:38:59</td><td>1:23:45</td><td>SCx 6</td><td><code>0x75B02A0B</code></td><td class='num'>3,363,072</td></tr><tr><td>mercysnow 1:38:59</td><td>1:28:16</td><td>SCx 8</td><td><code>0x370FD260</code></td><td class='num'>3,601,961</td></tr><tr><td>mercysnow 1:38:59</td><td>1:30:13</td><td>FC 1</td><td><code>0x50D6E6EF</code></td><td class='num'>3,749,884</td></tr><tr><td>mercysnow 1:38:59</td><td>1:31:35</td><td>FC 2</td><td><code>0x492BD64C</code></td><td class='num'>3,807,597</td></tr><tr><td>mercysnow 1:38:59</td><td>1:34:28</td><td>FC 4</td><td><code>0x00A1A06A</code></td><td class='num'>3,935,151</td></tr><tr><td>mercysnow 1:38:59</td><td>1:35:57</td><td>FC 5</td><td><code>0x14760D08</code></td><td class='num'>3,999,841</td></tr><tr><td>mercysnow 1:38:59</td><td>1:37:01</td><td>FC 6</td><td><code>0x2249D9DF</code></td><td class='num'>4,048,908</td></tr><tr><td>mercysnow 1:38:59</td><td>1:37:25</td><td>FC 7</td><td><code>0x08CE0567</code></td><td class='num'>4,054,916</td></tr><tr><td>JHawk4 1:42:55</td><td>0:13:07</td><td>EC 1</td><td><code>0x2024612B</code></td><td class='num'>0</td></tr><tr><td>JHawk4 1:42:55</td><td>0:14:21</td><td>EC 2</td><td><code>0x39011DDA</code></td><td class='num'>16,159</td></tr><tr><td>JHawk4 1:42:55</td><td>0:21:37</td><td>HoB 1</td><td><code>0x3276C9C7</code></td><td class='num'>227,140</td></tr><tr><td>JHawk4 1:42:55</td><td>0:22:22</td><td>HoB 2</td><td><code>0x2D32E811</code></td><td class='num'>259,730</td></tr><tr><td>JHawk4 1:42:55</td><td>0:22:55</td><td>HoB 3</td><td><code>0x1731AB9D</code></td><td class='num'>292,550</td></tr><tr><td>JHawk4 1:42:55</td><td>0:24:11</td><td>HoB 4</td><td><code>0x6BD5CB51</code></td><td class='num'>333,138</td></tr><tr><td>JHawk4 1:42:55</td><td>0:25:17</td><td>HoB 5</td><td><code>0x6D4173DF</code></td><td class='num'>369,708</td></tr><tr><td>JHawk4 1:42:55</td><td>0:27:25</td><td>WFG 1</td><td><code>0x5A53038B</code></td><td class='num'>470,432</td></tr><tr><td>JHawk4 1:42:55</td><td>0:27:41</td><td>WFG 2</td><td><code>0x39CE2C36</code></td><td class='num'>473,811</td></tr><tr><td>JHawk4 1:42:55</td><td>0:27:53</td><td>WFG 3</td><td><code>0x7C77886C</code></td><td class='num'>476,909</td></tr><tr><td>JHawk4 1:42:55</td><td>0:29:41</td><td>WFG 1</td><td><code>0x56D07026</code></td><td class='num'>566,947</td></tr><tr><td>JHawk4 1:42:55</td><td>0:30:34</td><td>WFG 2</td><td><code>0x7D814177</code></td><td class='num'>611,476</td></tr><tr><td>JHawk4 1:42:55</td><td>0:31:29</td><td>WFG 3</td><td><code>0x50398F26</code></td><td class='num'>648,099</td></tr><tr><td>JHawk4 1:42:55</td><td>0:32:57</td><td>WFG 4</td><td><code>0x3E9863A9</code></td><td class='num'>702,010</td></tr><tr><td>JHawk4 1:42:55</td><td>0:33:28</td><td>WFG 5</td><td><code>0x65AEB3A9</code></td><td class='num'>714,298</td></tr><tr><td>JHawk4 1:42:55</td><td>0:40:20</td><td>BK 1</td><td><code>0x5E599014</code></td><td class='num'>929,957</td></tr><tr><td>JHawk4 1:42:55</td><td>0:41:03</td><td>BK 2</td><td><code>0x581B33C9</code></td><td class='num'>968,474</td></tr><tr><td>JHawk4 1:42:55</td><td>0:42:00</td><td>BK 3</td><td><code>0x7FB6A5E1</code></td><td class='num'>1,034,050</td></tr><tr><td>JHawk4 1:42:55</td><td>0:42:10</td><td>BK 4</td><td><code>0x61E11A9A</code></td><td class='num'>1,036,639</td></tr><tr><td>JHawk4 1:42:55</td><td>0:43:32</td><td>BK 5</td><td><code>0x258E135F</code></td><td class='num'>1,150,124</td></tr><tr><td>JHawk4 1:42:55</td><td>0:43:44</td><td>BK 6</td><td><code>0x5D7CE171</code></td><td class='num'>1,154,098</td></tr><tr><td>JHawk4 1:42:55</td><td>0:45:01</td><td>BK 7</td><td><code>0x6D01E107</code></td><td class='num'>1,229,828</td></tr><tr><td>JHawk4 1:42:55</td><td>0:48:52</td><td>CoS 1</td><td><code>0x48D59C2C</code></td><td class='num'>1,388,589</td></tr><tr><td>JHawk4 1:42:55</td><td>0:49:09</td><td>CoS 2</td><td><code>0x25C86810</code></td><td class='num'>1,394,137</td></tr><tr><td>JHawk4 1:42:55</td><td>0:50:34</td><td>CoS 3</td><td><code>0x30090CBF</code></td><td class='num'>1,471,820</td></tr><tr><td>JHawk4 1:42:55</td><td>0:52:03</td><td>CoS 4</td><td><code>0x152F0883</code></td><td class='num'>1,576,488</td></tr><tr><td>JHawk4 1:42:55</td><td>0:53:08</td><td>CoS 5</td><td><code>0x43C32145</code></td><td class='num'>1,672,030</td></tr><tr><td>JHawk4 1:42:55</td><td>0:56:57</td><td>GK 1</td><td><code>0x7F04C8AD</code></td><td class='num'>1,871,670</td></tr><tr><td>JHawk4 1:42:55</td><td>0:57:07</td><td>GK 2</td><td><code>0x297C2CCD</code></td><td class='num'>1,874,454</td></tr><tr><td>JHawk4 1:42:55</td><td>0:58:08</td><td>GK 3</td><td><code>0x6F2C33C1</code></td><td class='num'>1,913,954</td></tr><tr><td>JHawk4 1:42:55</td><td>0:59:49</td><td>GK 4</td><td><code>0x4D44B84D</code></td><td class='num'>2,036,374</td></tr><tr><td>JHawk4 1:42:55</td><td>1:01:22</td><td>GK 5</td><td><code>0x19D50836</code></td><td class='num'>2,117,331</td></tr><tr><td>JHawk4 1:42:55</td><td>1:02:42</td><td>GK 6</td><td><code>0x0AF54A2B</code></td><td class='num'>2,184,960</td></tr><tr><td>JHawk4 1:42:55</td><td>1:07:59</td><td>SH 1</td><td><code>0x48E58DFF</code></td><td class='num'>2,416,652</td></tr><tr><td>JHawk4 1:42:55</td><td>1:08:55</td><td>SH 2</td><td><code>0x688ABC1A</code></td><td class='num'>2,469,343</td></tr><tr><td>JHawk4 1:42:55</td><td>1:10:31</td><td>SH 3</td><td><code>0x2D0C0221</code></td><td class='num'>2,524,418</td></tr><tr><td>JHawk4 1:42:55</td><td>1:11:13</td><td>SH 4</td><td><code>0x34C1367E</code></td><td class='num'>2,560,043</td></tr><tr><td>JHawk4 1:42:55</td><td>1:12:27</td><td>SH 5</td><td><code>0x2A208D5C</code></td><td class='num'>2,639,677</td></tr><tr><td>JHawk4 1:42:55</td><td>1:13:38</td><td>SH 6</td><td><code>0x52440920</code></td><td class='num'>2,701,961</td></tr><tr><td>JHawk4 1:42:55</td><td>1:14:29</td><td>SH 7</td><td><code>0x3F5B8BE1</code></td><td class='num'>2,773,314</td></tr><tr><td>JHawk4 1:42:55</td><td>1:20:47</td><td>SCx 1</td><td><code>0x47E37F1F</code></td><td class='num'>3,097,836</td></tr><tr><td>JHawk4 1:42:55</td><td>1:22:17</td><td>SCx 2</td><td><code>0x2A18526B</code></td><td class='num'>3,194,560</td></tr><tr><td>JHawk4 1:42:55</td><td>1:23:15</td><td>SCx 3</td><td><code>0x19863949</code></td><td class='num'>3,247,514</td></tr><tr><td>JHawk4 1:42:55</td><td>1:25:08</td><td>SCx 4</td><td><code>0x211B049E</code></td><td class='num'>3,345,035</td></tr><tr><td>JHawk4 1:42:55</td><td>1:25:29</td><td>SCx 5</td><td><code>0x3220258B</code></td><td class='num'>3,378,080</td></tr><tr><td>JHawk4 1:42:55</td><td>1:25:50</td><td>SCx 6</td><td><code>0x5FA1FA24</code></td><td class='num'>3,393,365</td></tr><tr><td>JHawk4 1:42:55</td><td>1:27:38</td><td>SCx 7</td><td><code>0x7F482676</code></td><td class='num'>3,522,963</td></tr><tr><td>JHawk4 1:42:55</td><td>1:30:09</td><td>SCx 8</td><td><code>0x04851424</code></td><td class='num'>3,646,805</td></tr><tr><td>JHawk4 1:42:55</td><td>1:32:24</td><td>FC 1</td><td><code>0x5AC96009</code></td><td class='num'>3,869,914</td></tr><tr><td>JHawk4 1:42:55</td><td>1:33:55</td><td>FC 2</td><td><code>0x0886522D</code></td><td class='num'>3,955,126</td></tr><tr><td>JHawk4 1:42:55</td><td>1:35:35</td><td>FC 3</td><td><code>0x11318B62</code></td><td class='num'>4,051,383</td></tr><tr><td>JHawk4 1:42:55</td><td>1:37:21</td><td>FC 4</td><td><code>0x1A6BDD41</code></td><td class='num'>4,138,722</td></tr><tr><td>JHawk4 1:42:55</td><td>1:38:47</td><td>FC 5</td><td><code>0x7791775A</code></td><td class='num'>4,211,615</td></tr><tr><td>JHawk4 1:42:55</td><td>1:40:01</td><td>FC 6</td><td><code>0x42C13FDF</code></td><td class='num'>4,266,028</td></tr><tr><td>JHawk4 1:42:55</td><td>1:41:15</td><td>FC 7</td><td><code>0x2EA7DF93</code></td><td class='num'>4,317,976</td></tr></tbody></table></div></details>
+</main>
+<script>
+(() => {
+  const tip = document.createElement('div'); tip.id = 'viz-tip'; tip.className = 'viz-root';
+  document.body.appendChild(tip);
+  let at = null;
+  const place = () => {
+    if (!at) return;
+    const [x, y] = at, w = tip.offsetWidth, h = tip.offsetHeight, gap = 14;
+    // right of the pointer if it fits, else left; vertically centred on it, kept inside the window
+    let left = x + gap + w <= innerWidth - 8 ? x + gap : x - gap - w;
+    left = Math.max(8, Math.min(left, innerWidth - w - 8));
+    const top = Math.max(8, Math.min(y - h / 2, innerHeight - h - 8));
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  };
+  let cur = null;
+  const hide = () => { tip.style.display = 'none'; cur = null; };
+  const show = (el, x, y) => {
+    if (cur === el) { at = [x, y]; place(); return; }  // same mark: just follow the pointer
+    cur = el;
+    tip.replaceChildren();
+    const [head, ...rest] = el.dataset.tip.split('\n');
+    const b = document.createElement('b'); b.textContent = head; tip.appendChild(b);
+    rest.forEach(line => { const d = document.createElement('div'); d.textContent = line; tip.appendChild(d); });
+    if (el.dataset.img) {
+      const im = document.createElement('img'); im.alt = ''; im.addEventListener('load', place);
+      im.src = el.dataset.img; tip.appendChild(im);
+    }
+    tip.style.display = 'block';
+    at = [x, y]; place();
+  };
+  // touch: the first tap on a mark shows its tooltip, a second tap on the same mark follows its link
+  let touch = false;
+  addEventListener('pointerdown', e => { touch = e.pointerType === 'touch'; }, true);
+  addEventListener('scroll', () => { if (touch) hide(); }, { passive: true });
+  addEventListener('click', e => { if (touch && !e.target.closest('[data-tip]')) hide(); });
+  document.querySelectorAll('[data-tip]').forEach(el => {
+    el.addEventListener('click', e => {
+      if (!touch || cur === el) return;
+      e.preventDefault(); e.stopPropagation(); show(el, e.clientX, e.clientY);
+    });
+    el.addEventListener('pointermove', e => { if (e.pointerType !== 'touch') show(el, e.clientX, e.clientY); });
+    el.addEventListener('pointerleave', e => { if (e.pointerType !== 'touch') hide(); });
+    el.addEventListener('focus', () => { if (touch) return; const r = el.getBoundingClientRect(); show(el, r.right, r.top); });
+    el.addEventListener('blur', hide);
+  });
+})();
+</script>
+
+<footer class="site-footer">Layouts, pictures, treasures and the judge from <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from <a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. Source: <a href="https://github.com/JHawk4/pikmin2-layout-ledger">github.com/JHawk4/pikmin2-layout-ledger</a>.</footer><script>
+for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('click', () => {
+  const p = location.pathname.split('/').filter(Boolean); const here = p.slice(-2).join('/');
+  const u = new URL(a.href); u.searchParams.set('from', here); a.href = u.toString(); });
+</script></body></html>

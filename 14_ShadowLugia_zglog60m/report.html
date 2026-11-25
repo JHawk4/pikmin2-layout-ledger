@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShadowLugia 1:38:17 · seed detection</title>
+<style>
+:root { --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8; --hi:#1f7a3a; --mid:#a86b00; --lo:#b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161614; --fg:#ececea; --muted:#9a9a94; --card:#20201e; --line:#33332f; --hi:#5cc27a; --mid:#e0a63a; --lo:#f0786d; } }
+* { box-sizing:border-box; }
+body { background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,sans-serif; margin:0; padding:24px 16px; }
+main { max-width:1240px; margin:0 auto; }
+h1 { font-size:22px; margin:0 0 4px; } .meta { color:var(--muted); margin-bottom:14px; }
+.help { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 16px; margin-bottom:18px; }
+.help summary { cursor:pointer; font-weight:600; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+.card header { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; } .card h2 { margin:0; font-size:18px; }
+.why { color:var(--muted); font-size:13px; }
+.conf { font-size:12px; text-transform:uppercase; letter-spacing:.05em; font-weight:600; }
+.high .conf { color:var(--hi); } .medium .conf { color:var(--mid); } .low .conf, .none .conf { color:var(--lo); }
+dl { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:10px 0; } dt { color:var(--muted); } dd { margin:0; }
+.imgs { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start; }
+figure { margin:0; } figure img { display:block; width:auto; max-width:100%; height:auto; max-height:320px; object-fit:contain; border-radius:4px; border:1px solid var(--line); }
+figure.wide { flex-basis:100%; } figure.wide img { max-height:none; width:100%; height:auto; }
+figcaption { color:var(--muted); font-size:12px; margin-top:3px; max-width:480px; }
+.why { margin:6px 0 0; } .card { scroll-margin-top:12px; }
+.filter { display:flex; gap:6px; align-items:center; font-size:14px; margin:0 0 12px; }
+body.only-unsure .card.high { display:none; }
+code { font-size:14px; } a { color:inherit; }
+.chips { display:flex; flex-wrap:wrap; gap:4px; margin:0 0 6px; }
+.chip { font-size:12px; font-weight:600; text-decoration:none; padding:1px 7px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); white-space:nowrap; }
+.chip.high { border-color:var(--hi); color:var(--hi); } .chip.medium { border-color:var(--mid); color:var(--mid); border-style:dashed; }
+.chip.low, .chip.none { border-color:var(--lo); color:var(--lo); border-style:dashed; background:transparent; }
+.legend-chips { font-size:12px; color:var(--muted); margin:0 0 14px; } .legend-chips .chip { margin-left:6px; }
+
+:root, :root[data-theme="light"] {
+  --bg:#e4eed2; --bg-2:#d3e4b8; --fg:#1d2418; --muted:#5f6b58; --card:#ffffff; --line:#d5dccb; --field:#f7faf1;
+  --leaf:#4b9a3c; --leaf-2:#3c8531; --leaf-dark:#2c6a24; --accent:#3c8531; --sun:#f2a01c;
+  --good:#2c6a24; --mid:#8a6a1f; --bad:#b3261e; --goodbg:#e3f1dc; --midbg:#f6ecd6; --badbg:#f8e1df; --bar:#c9d3bd;
+  --radius:14px; --shadow:0 1px 2px rgba(44,106,36,.12), 0 2px 10px rgba(44,106,36,.08); color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#141c10; --bg-2:#0d130a; --fg:#e6ece0; --muted:#a3ae98; --card:#1d2619; --line:#34442c; --field:#161e12;
+  --leaf-dark:#a6dc8f; --accent:#8fd37a; --good:#8fd37a; --mid:#e0b45a; --bad:#f2b8b5;
+  --goodbg:#1e3319; --midbg:#352d19; --badbg:#3b2120; --bar:#3a4a32;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.25); color-scheme:dark; } }
+html { background:var(--bg); }
+body { background:linear-gradient(180deg, var(--bg) 0, var(--bg) 340px, var(--bg-2) 100%) fixed; color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+a { color:var(--accent); } a:hover { color:var(--leaf-dark); }
+.site-header { max-width:1240px; margin:0 auto 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.site-logo { display:flex; align-items:center; gap:6px; color:var(--leaf-dark); text-decoration:none; font-weight:800;
+  letter-spacing:-.5px; font-size:1.25rem; text-shadow:1px 1px 0 rgba(255,255,255,.8); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .site-logo { text-shadow:none; } }
+.site-nav { display:flex; flex-wrap:wrap; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  background:linear-gradient(135deg, var(--leaf), var(--leaf-2)); box-shadow:inset 4px 0 0 var(--sun); }
+.site-nav a { text-decoration:none; color:#fff; padding:3px 12px; border-radius:999px; }
+.site-nav a:hover { color:#fff; background:rgba(0,0,0,.15); }
+.site-nav a[aria-current="page"] { background:#fff; color:var(--leaf-2); }
+.site-footer { max-width:1240px; margin:28px auto 0; color:var(--muted); font-size:.85rem; }
+h1, h2 { color:var(--leaf-dark); }
+h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-block; }
+.tablewrap, .card, .help, .tile, .stat { border-radius:var(--radius) !important; box-shadow:var(--shadow); }
+</style></head><body><header class="site-header"><a class="site-logo" href="../index.html"><svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true"><path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 25 C8.5 25.5 5 23.5 3.6 20.6 C7.4 19.6 10.6 21.5 12 25 Z" fill="#5fb447" stroke="#3c8531" stroke-width="1"/><ellipse cx="12.0" cy="4.4" rx="3.1" ry="4.3" transform="rotate(0 12.0 4.4)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="16.37" cy="7.58" rx="3.1" ry="4.3" transform="rotate(72 16.37 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="14.7" cy="12.72" rx="3.1" ry="4.3" transform="rotate(144 14.7 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="9.3" cy="12.72" rx="3.1" ry="4.3" transform="rotate(216 9.3 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="7.63" cy="7.58" rx="3.1" ry="4.3" transform="rotate(288 7.63 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><circle cx="12" cy="9" r="3.1" fill="#f2c230" stroke="#d39a12" stroke-width="0.9"/></svg>Pikmin 2 Layout Ledger</a><nav class="site-cats" aria-label="Category"><a href="../index.html" aria-current=page>Pay Off Debt</a><a href="../wii/index.html">Pay Off Debt (Wii)</a><a href="../at/index.html">All Treasures</a></nav><nav class="site-nav"><a href="../index.html">All runs</a><a href="judge.html">Layouts</a><a href="report.html" aria-current=page>Seed detection</a><a href="../gecko.html">Gecko code</a><a href="../suggest.html" class=nav-suggest>Suggestion box</a></nav><button type="button" id="lang-toggle" class="lang-toggle" lang="ja" title="日本語で表示">日本語</button><style>html.i18n-wait body{visibility:hidden}.lang-toggle{margin-left:auto;font:inherit;font-size:.88rem;font-weight:700;color:var(--accent,#3c8531);background:var(--card,#fff);border:2px solid var(--accent,#3c8531);border-radius:999px;padding:1px 12px;min-height:30px;cursor:pointer}.lang-toggle:hover{background:var(--goodbg,#e3f1dc)}</style><script>(function(){var l=null;try{var q=new URLSearchParams(location.search).get("lang");l=q==="ja"||q==="en"?q:localStorage.getItem("ledger-lang")||localStorage.getItem("cavegen3-lang");}catch(e){}if(l!=="ja"&&l!=="en")l=(navigator.language||"").toLowerCase().indexOf("ja")===0?"ja":"en";if(l==="ja"){var h=document.documentElement;h.classList.add("i18n-wait");h.lang="ja";setTimeout(function(){h.classList.remove("i18n-wait")},3000);}})();</script><script src="../i18n.js" defer></script></header><main>
+<h1>ShadowLugia 1:38:17 · seed detection</h1>
+<div class="meta">Seeds read with confidence on 52 of 52 sublevels.</div>
+<details class="help"><summary>How to read a detection</summary>
+<p>Each sublevel's entry screen drops the cave name's letters with starting speeds drawn from the game's random
+number generator. The detector tracks every letter's fall (the boxes in the pictures: green = used in the fit,
+orange = matched but not used, for example while bouncing; red ticks = where the fitted fall puts the letter),
+fits one starting speed per letter, then finds the generator state that produces those speeds.</p>
+<ul>
+<li><b>Letters</b>: how many letters had a clean enough fall to measure. Each letter narrows the seed down about
+50-fold, so 10 or more letters pin it down on their own.</li>
+<li><b>Fit</b>: the typical distance in pixels between a tracked letter and its fitted fall. Below about 0.2 px is a
+clean capture; above about 0.5 px something is off (a dropped frame, blur, a mistracked letter).</li>
+<li><b>Score</b>: how far the best seed's letter speeds are from the measured ones, in units of each letter's own
+measurement error, squared and summed over the letters (each letter's share capped, so one bad letter can't
+dominate) after removing a shared speed offset. Lower is better; about 1 per letter is a perfect match.</li>
+<li><b>Next</b>: the same score for the second-best seed. A big gap between the two means nothing else comes close.</li>
+<li><b>Confidence</b>: <i>high</i> needs 10+ letters, under 4 per letter and a gap of 30+; <i>medium</i> needs 7+,
+under 6 and a gap of 15+. A seed can also be confirmed by its neighbours: consecutive sublevels' seeds sit a few
+hundred thousand steps apart in the generator, which almost never happens by chance.</li>
+</ul>
+<p><b>Letter seed</b> is the random number generator's state when the title's letters start falling; the <b>layout
+seed</b> is its state when the floor was generated, a fixed number of steps earlier, and is what CaveGen needs.</p>
+<p>Two pictures from the video show the floor as the sublevel starts: the <b>comedown</b>, the high, wide view behind
+the title while the pod comes down (often dim, so it is brightened), and the <b>landing view</b>, the first view once
+the pod has landed. The layout, drawn by CaveGen3, outlines both on the floor: the comedown in blue (the game holds
+this one still shot, nearly straight down, while the title is up) and the landing view in yellow, with an arrow for
+the way the pod faces, so the pictures and the layout should match.</p></details>
+<nav class="chips" aria-label="Sublevels"><a class="chip high" href="#EC-1" title="high confidence">EC 1</a><a class="chip high" href="#EC-2" title="high confidence">EC 2</a><a class="chip high" href="#HoB-1" title="high confidence">HoB 1</a><a class="chip high" href="#HoB-2" title="high confidence">HoB 2</a><a class="chip high" href="#HoB-3" title="high confidence">HoB 3</a><a class="chip high" href="#HoB-4" title="high confidence">HoB 4</a><a class="chip high" href="#HoB-5" title="high confidence">HoB 5</a><a class="chip high" href="#WFG-1" title="high confidence">WFG 1</a><a class="chip high" href="#WFG-2" title="high confidence">WFG 2</a><a class="chip high" href="#WFG-3" title="high confidence">WFG 3</a><a class="chip high" href="#WFG-4" title="high confidence">WFG 4</a><a class="chip high" href="#WFG-5" title="high confidence">WFG 5</a><a class="chip high" href="#SH-1" title="high confidence">SH 1</a><a class="chip high" href="#SH-2" title="high confidence">SH 2</a><a class="chip high" href="#SH-3" title="high confidence">SH 3</a><a class="chip high" href="#SH-4" title="high confidence">SH 4</a><a class="chip high" href="#SH-5" title="high confidence">SH 5</a><a class="chip high" href="#SH-6" title="high confidence">SH 6</a><a class="chip high" href="#SH-7" title="high confidence">SH 7</a><a class="chip high" href="#BK-1" title="high confidence">BK 1</a><a class="chip high" href="#BK-2" title="high confidence">BK 2</a><a class="chip high" href="#BK-3" title="high confidence">BK 3</a><a class="chip high" href="#BK-4" title="high confidence">BK 4</a><a class="chip high" href="#BK-5" title="high confidence">BK 5</a><a class="chip high" href="#BK-6" title="high confidence">BK 6</a><a class="chip high" href="#BK-7" title="high confidence">BK 7</a><a class="chip high" href="#SCx-1" title="high confidence">SCx 1</a><a class="chip high" href="#SCx-2" title="high confidence">SCx 2</a><a class="chip high" href="#SCx-3" title="high confidence">SCx 3</a><a class="chip high" href="#SCx-4" title="high confidence">SCx 4</a><a class="chip high" href="#SCx-5" title="high confidence">SCx 5</a><a class="chip high" href="#SCx-6" title="high confidence">SCx 6</a><a class="chip high" href="#SCx-7" title="high confidence">SCx 7</a><a class="chip high" href="#SCx-8" title="high confidence">SCx 8</a><a class="chip high" href="#FC-1" title="high confidence">FC 1</a><a class="chip high" href="#FC-2" title="high confidence">FC 2</a><a class="chip high" href="#FC-3" title="high confidence">FC 3</a><a class="chip high" href="#FC-4" title="high confidence">FC 4</a><a class="chip high" href="#FC-5" title="high confidence">FC 5</a><a class="chip high" href="#FC-6" title="high confidence">FC 6</a><a class="chip high" href="#FC-7" title="high confidence">FC 7</a><a class="chip high" href="#CoS-1" title="high confidence">CoS 1</a><a class="chip high" href="#CoS-2" title="high confidence">CoS 2</a><a class="chip high" href="#CoS-3" title="high confidence">CoS 3</a><a class="chip high" href="#CoS-4" title="high confidence">CoS 4</a><a class="chip high" href="#CoS-5" title="high confidence">CoS 5</a><a class="chip high" href="#GK-1" title="high confidence">GK 1</a><a class="chip high" href="#GK-2" title="high confidence">GK 2</a><a class="chip high" href="#GK-3" title="high confidence">GK 3</a><a class="chip high" href="#GK-4" title="high confidence">GK 4</a><a class="chip high" href="#GK-5" title="high confidence">GK 5</a><a class="chip high" href="#GK-6" title="high confidence">GK 6</a></nav><p class="muted small legend-chips"><span class="chip high">high</span> read with confidence <span class="chip medium">medium</span> <span class="chip low">low</span> uncertain: left out of every total</p>
+<section class="card high" id="EC-1">
+  <header><h2>EC 1</h2><span class="conf">high: 13 letters, a clear best seed</span></header>
+  <p class="why">13 letters measured; fit 0.10 px (clean); best seed scores 5.14 (0.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=494" target="_blank" rel="noopener">0:08:19</a> · <a href="judge.html#EC-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x74C66E5A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x39D41638</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_14984.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_14984.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_14984.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_14984.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_14984.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_14984.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_14984.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_14984.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_14984.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_14984.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="EC-2">
+  <header><h2>EC 2</h2><span class="conf">high: 13 letters, a clear best seed</span></header>
+  <p class="why">13 letters measured; fit 0.09 px (clean); best seed scores 15.85 (1.2 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=560" target="_blank" rel="noopener">0:09:25</a> · <a href="judge.html#EC-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x35D863D3</code></dd>
+    <dt>Letter seed</dt><dd><code>0x56A5B499</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_16967.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_16967.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_16967.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_16967.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_16967.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_16967.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_16967.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_16967.jpg" width="822" height="833" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_16967.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_16967.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="HoB-1">
+  <header><h2>HoB 1</h2><span class="conf">high: 12 letters, a clear best seed</span></header>
+  <p class="why">12 letters measured; fit 0.07 px (clean); best seed scores 2.47 (0.2 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=917" target="_blank" rel="noopener">0:15:22</a> · <a href="judge.html#HoB-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x6456CADA</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0D59E6B8</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_27674.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_27674.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_27674.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_27674.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_27674.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_27674.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_27674.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_27674.jpg" width="664" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_27674.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_27674.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="HoB-2">
+  <header><h2>HoB 2</h2><span class="conf">high: 12 letters, a clear best seed</span></header>
+  <p class="why">12 letters measured; fit 0.08 px (clean); best seed scores 3.1 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=974" target="_blank" rel="noopener">0:16:19</a> · <a href="judge.html#HoB-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x02DFE573</code></dd>
+    <dt>Letter seed</dt><dd><code>0x20FE3739</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_29375.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_29375.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_29375.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_29375.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_29375.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_29375.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_29375.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_29375.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_29375.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_29375.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="HoB-3">
+  <header><h2>HoB 3</h2><span class="conf">high: 12 letters, a clear best seed</span></header>
+  <p class="why">12 letters measured; fit 0.08 px (clean); best seed scores 7.39 (0.6 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1012" target="_blank" rel="noopener">0:16:57</a> · <a href="judge.html#HoB-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x0940C048</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6A86D956</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_30514.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_30514.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_30514.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_30514.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_30514.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_30514.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_30514.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_30514.jpg" width="763" height="675" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_30514.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_30514.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="HoB-4">
+  <header><h2>HoB 4</h2><span class="conf">high: 12 letters, a clear best seed</span></header>
+  <p class="why">12 letters measured; fit 0.07 px (clean); best seed scores 4.82 (0.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1092" target="_blank" rel="noopener">0:18:17</a> · <a href="judge.html#HoB-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x4C3E19CE</code></dd>
+    <dt>Letter seed</dt><dd><code>0x315CA3CC</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_32929.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_32929.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_32929.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_32929.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_32929.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_32929.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_32929.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_32929.jpg" width="664" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_32929.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_32929.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="HoB-5">
+  <header><h2>HoB 5</h2><span class="conf">high: 12 letters, a clear best seed</span></header>
+  <p class="why">12 letters measured; fit 0.08 px (clean); best seed scores 2.46 (0.2 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1160" target="_blank" rel="noopener">0:19:25</a> · <a href="judge.html#HoB-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x0352F006</code></dd>
+    <dt>Letter seed</dt><dd><code>0x2FA482C4</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_34979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_34979.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_34979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_34979.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_34979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_34979.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_34979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_34979.jpg" width="664" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_34979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_34979.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="WFG-1">
+  <header><h2>WFG 1</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.10 px (clean); best seed scores 9.47 (0.6 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1287" target="_blank" rel="noopener">0:21:32</a> · <a href="judge.html#WFG-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x18B96E5F</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4D88DF50</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_38773.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_38773.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_38773.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_38773.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_38773.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_38773.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_38773.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_38773.jpg" width="763" height="727" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_38773.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_38773.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="WFG-2">
+  <header><h2>WFG 2</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.13 px (clean); best seed scores 11.99 (0.7 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1350" target="_blank" rel="noopener">0:22:35</a> · <a href="judge.html#WFG-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x2C835154</code></dd>
+    <dt>Letter seed</dt><dd><code>0x755F5251</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_40650.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_40650.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_40650.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_40650.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_40650.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_40650.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_40650.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_40650.jpg" width="800" height="786" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_40650.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_40650.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="WFG-3">
+  <header><h2>WFG 3</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.10 px (clean); best seed scores 8.45 (0.5 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1413" target="_blank" rel="noopener">0:23:38</a> · <a href="judge.html#WFG-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x34914C66</code></dd>
+    <dt>Letter seed</dt><dd><code>0x15E987DB</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_42549.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_42549.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_42549.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_42549.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_42549.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_42549.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_42549.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_42549.jpg" width="562" height="755" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_42549.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_42549.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="WFG-4">
+  <header><h2>WFG 4</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.11 px (clean); best seed scores 9.78 (0.6 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1527" target="_blank" rel="noopener">0:25:32</a> · <a href="judge.html#WFG-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x08AC7A47</code></dd>
+    <dt>Letter seed</dt><dd><code>0x198C3298</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_45964.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_45964.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_45964.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_45964.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_45964.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_45964.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_45964.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_45964.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_45964.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_45964.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="WFG-5">
+  <header><h2>WFG 5</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.10 px (clean); best seed scores 9.21 (0.5 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1560" target="_blank" rel="noopener">0:26:05</a> · <a href="judge.html#WFG-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x0736213C</code></dd>
+    <dt>Letter seed</dt><dd><code>0x550CD999</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_46958.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_46958.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_46958.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_46958.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_46958.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_46958.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_46958.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_46958.jpg" width="813" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_46958.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_46958.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SH-1">
+  <header><h2>SH 1</h2><span class="conf">high: 11 letters, a clear best seed</span></header>
+  <p class="why">11 letters measured; fit 0.08 px (clean); best seed scores 4.77 (0.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1798" target="_blank" rel="noopener">0:30:03</a> · <a href="judge.html#SH-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x51A08E1C</code></dd>
+    <dt>Letter seed</dt><dd><code>0x184D20D8</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_54103.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_54103.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_54103.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_54103.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_54103.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_54103.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_54103.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_54103.jpg" width="780" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_54103.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_54103.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SH-2">
+  <header><h2>SH 2</h2><span class="conf">high: 11 letters, a clear best seed</span></header>
+  <p class="why">11 letters measured; fit 0.08 px (clean); best seed scores 5.17 (0.5 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1857" target="_blank" rel="noopener">0:31:02</a> · <a href="judge.html#SH-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x375F98C7</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7C498E73</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_55865.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_55865.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_55865.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_55865.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_55865.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_55865.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_55865.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_55865.jpg" width="883" height="930" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_55865.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_55865.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SH-3">
+  <header><h2>SH 3</h2><span class="conf">high: 11 letters, a clear best seed</span></header>
+  <p class="why">11 letters measured; fit 0.09 px (clean); best seed scores 2.5 (0.2 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=1956" target="_blank" rel="noopener">0:32:41</a> · <a href="judge.html#SH-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x15D4FCD7</code></dd>
+    <dt>Letter seed</dt><dd><code>0x2AA2BF83</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_58851.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_58851.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_58851.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_58851.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_58851.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_58851.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_58851.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_58851.jpg" width="664" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_58851.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_58851.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SH-4">
+  <header><h2>SH 4</h2><span class="conf">high: 11 letters, a clear best seed</span></header>
+  <p class="why">11 letters measured; fit 0.08 px (clean); best seed scores 5.73 (0.5 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2007" target="_blank" rel="noopener">0:33:32</a> · <a href="judge.html#SH-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x4D2F797D</code></dd>
+    <dt>Letter seed</dt><dd><code>0x58107309</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_60374.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_60374.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_60374.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_60374.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_60374.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_60374.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_60374.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_60374.jpg" width="664" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_60374.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_60374.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SH-5">
+  <header><h2>SH 5</h2><span class="conf">high: 11 letters, a clear best seed</span></header>
+  <p class="why">11 letters measured; fit 0.07 px (clean); best seed scores 2.83 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2088" target="_blank" rel="noopener">0:34:53</a> · <a href="judge.html#SH-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x3FB29FB8</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0E55E134</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_62811.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_62811.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_62811.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_62811.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_62811.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_62811.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_62811.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_62811.jpg" width="899" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_62811.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_62811.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SH-6">
+  <header><h2>SH 6</h2><span class="conf">high: 11 letters, a clear best seed</span></header>
+  <p class="why">11 letters measured; fit 0.07 px (clean); best seed scores 2.22 (0.2 per letter); next best 114.71, a gap of 112.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2193" target="_blank" rel="noopener">0:36:38</a> · <a href="judge.html#SH-6">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x59F5F7B5</code></dd>
+    <dt>Letter seed</dt><dd><code>0x50E63EC1</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_65957.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_65957.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_65957.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_65957.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_65957.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_65957.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_65957.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_65957.jpg" width="789" height="719" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_65957.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_65957.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SH-7">
+  <header><h2>SH 7</h2><span class="conf">high: 11 letters, a clear best seed</span></header>
+  <p class="why">11 letters measured; fit 0.08 px (clean); best seed scores 1.85 (0.2 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2261" target="_blank" rel="noopener">0:37:46</a> · <a href="judge.html#SH-7">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x6719C83D</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6B28BDC9</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_67985.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_67985.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_67985.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_67985.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_67985.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_67985.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_67985.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_67985.jpg" width="800" height="786" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_67985.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_67985.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="BK-1">
+  <header><h2>BK 1</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.10 px (clean); best seed scores 15.54 (1.1 per letter); next best 179.38, a gap of 164.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2569" target="_blank" rel="noopener">0:42:54</a> · <a href="judge.html#BK-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x658DB763</code></dd>
+    <dt>Letter seed</dt><dd><code>0x05E31A30</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_77244.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_77244.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_77244.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_77244.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_77244.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_77244.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_77244.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_77244.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_77244.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_77244.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="BK-2">
+  <header><h2>BK 2</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.09 px (clean); best seed scores 25.03 (1.8 per letter); next best 182.42, a gap of 157.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2625" target="_blank" rel="noopener">0:43:50</a> · <a href="judge.html#BK-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x4E32507F</code></dd>
+    <dt>Letter seed</dt><dd><code>0x357B801C</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_78906.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_78906.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_78906.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_78906.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_78906.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_78906.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_78906.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_78906.jpg" width="691" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_78906.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_78906.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="BK-3">
+  <header><h2>BK 3</h2><span class="conf">high: confirmed by the neighbouring sublevels</span></header>
+  <p class="why">14 letters measured; fit 0.11 px (clean); best seed scores 71.23 (5.1 per letter); no runner-up seed; confirmed by the neighbouring sublevels&#x27; seeds.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2678" target="_blank" rel="noopener">0:44:43</a> · <a href="judge.html#BK-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x171D4FD0</code></dd>
+    <dt>Letter seed</dt><dd><code>0x690D5A59</code></dd>
+    <dt>How</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_80496.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_80496.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_80496.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_80496.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_80496.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_80496.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_80496.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_80496.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_80496.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_80496.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="BK-4">
+  <header><h2>BK 4</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.10 px (clean); best seed scores 21.75 (1.6 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2694" target="_blank" rel="noopener">0:44:59</a> · <a href="judge.html#BK-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x3BEDF745</code></dd>
+    <dt>Letter seed</dt><dd><code>0x788786EA</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_80993.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_80993.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_80993.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_80993.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_80993.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_80993.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_80993.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_80993.jpg" width="800" height="786" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_80993.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_80993.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="BK-5">
+  <header><h2>BK 5</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.08 px (clean); best seed scores 19.35 (1.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2778" target="_blank" rel="noopener">0:46:23</a> · <a href="judge.html#BK-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x77777037</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3F7E8B74</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_83510.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_83510.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_83510.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_83510.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_83510.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_83510.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_83510.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_83510.jpg" width="719" height="789" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_83510.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_83510.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="BK-6">
+  <header><h2>BK 6</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.10 px (clean); best seed scores 28.15 (2.0 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2796" target="_blank" rel="noopener">0:46:41</a> · <a href="judge.html#BK-6">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x60F08630</code></dd>
+    <dt>Letter seed</dt><dd><code>0x02834939</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_84044.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_84044.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_84044.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_84044.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_84044.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_84044.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_84044.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_84044.jpg" width="853" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_84044.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_84044.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="BK-7">
+  <header><h2>BK 7</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.09 px (clean); best seed scores 15.99 (1.1 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=2912" target="_blank" rel="noopener">0:48:37</a> · <a href="judge.html#BK-7">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x3F103CA3</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7FEBC670</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_87534.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_87534.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_87534.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_87534.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_87534.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_87534.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_87534.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_87534.jpg" width="951" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_87534.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_87534.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-1">
+  <header><h2>SCx 1</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.07 px (clean); best seed scores 7.59 (0.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=3413" target="_blank" rel="noopener">0:56:58</a> · <a href="judge.html#SCx-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x666A6A2F</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4CCFBBE3</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_102547.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_102547.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_102547.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_102547.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_102547.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_102547.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_102547.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_102547.jpg" width="962" height="789" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_102547.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_102547.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-2">
+  <header><h2>SCx 2</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.09 px (clean); best seed scores 8.9 (0.5 per letter); next best 190.07, a gap of 181.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=3475" target="_blank" rel="noopener">0:58:00</a> · <a href="judge.html#SCx-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x7AF8A6E0</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3DBF4544</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_104423.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_104423.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_104423.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_104423.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_104423.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_104423.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_104423.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_104423.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_104423.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_104423.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-3">
+  <header><h2>SCx 3</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.08 px (clean); best seed scores 5.51 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=3541" target="_blank" rel="noopener">0:59:06</a> · <a href="judge.html#SCx-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x35B44D37</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1BDACC6B</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_106406.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_106406.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_106406.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_106406.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_106406.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_106406.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_106406.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_106406.jpg" width="789" height="719" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_106406.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_106406.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-4">
+  <header><h2>SCx 4</h2><span class="conf">high: 16 letters, a clear best seed</span></header>
+  <p class="why">16 letters measured; fit 0.09 px (clean); best seed scores 8.46 (0.5 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=3675" target="_blank" rel="noopener">1:01:20</a> · <a href="judge.html#SCx-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x37E014DD</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7BFFC831</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_110421.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_110421.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_110421.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_110421.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_110421.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_110421.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_110421.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_110421.jpg" width="719" height="789" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_110421.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_110421.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-5">
+  <header><h2>SCx 5</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.09 px (clean); best seed scores 5.54 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=3724" target="_blank" rel="noopener">1:02:09</a> · <a href="judge.html#SCx-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x1AC0C5A5</code></dd>
+    <dt>Letter seed</dt><dd><code>0x09585A79</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_111870.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_111870.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_111870.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_111870.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_111870.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_111870.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_111870.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_111870.jpg" width="664" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_111870.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_111870.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-6">
+  <header><h2>SCx 6</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.11 px (clean); best seed scores 7.58 (0.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=3752" target="_blank" rel="noopener">1:02:37</a> · <a href="judge.html#SCx-6">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x5DE5BBFE</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1CE73902</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_112733.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_112733.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_112733.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_112733.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_112733.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_112733.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_112733.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_112733.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_112733.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_112733.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-7">
+  <header><h2>SCx 7</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.10 px (clean); best seed scores 5.33 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=3888" target="_blank" rel="noopener">1:04:53</a> · <a href="judge.html#SCx-7">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x15415600</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7DBDBA64</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_116790.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_116790.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_116790.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_116790.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_116790.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_116790.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_116790.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_116790.jpg" width="804" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_116790.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_116790.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="SCx-8">
+  <header><h2>SCx 8</h2><span class="conf">high: 17 letters, a clear best seed</span></header>
+  <p class="why">17 letters measured; fit 0.09 px (clean); best seed scores 8.22 (0.5 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4024" target="_blank" rel="noopener">1:07:09</a> · <a href="judge.html#SCx-8">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x3F37BBA4</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4D20ECC8</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_120890.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_120890.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_120890.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_120890.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_120890.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_120890.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_120890.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_120890.jpg" width="789" height="719" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_120890.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_120890.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="FC-1">
+  <header><h2>FC 1</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.09 px (clean); best seed scores 13.09 (0.9 per letter); next best 199.97, a gap of 187.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4147" target="_blank" rel="noopener">1:09:12</a> · <a href="judge.html#FC-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x0E7DACEF</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5518AFCC</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_124564.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_124564.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_124564.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_124564.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_124564.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_124564.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_124564.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_124564.jpg" width="786" height="800" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_124564.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_124564.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="FC-2">
+  <header><h2>FC 2</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.09 px (clean); best seed scores 18.07 (1.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4258" target="_blank" rel="noopener">1:11:03</a> · <a href="judge.html#FC-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x247328E7</code></dd>
+    <dt>Letter seed</dt><dd><code>0x08A23264</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_127910.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_127910.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_127910.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_127910.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_127910.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_127910.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_127910.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_127910.jpg" width="786" height="958" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_127910.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_127910.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="FC-3">
+  <header><h2>FC 3</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.09 px (clean); best seed scores 17 (1.2 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4368" target="_blank" rel="noopener">1:12:53</a> · <a href="judge.html#FC-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x11F67930</code></dd>
+    <dt>Letter seed</dt><dd><code>0x317A0039</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_131198.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_131198.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_131198.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_131198.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_131198.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_131198.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_131198.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_131198.jpg" width="657" height="600" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_131198.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_131198.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="FC-4">
+  <header><h2>FC 4</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.12 px (clean); best seed scores 15.65 (1.1 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4487" target="_blank" rel="noopener">1:14:52</a> · <a href="judge.html#FC-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x1EF6AEB2</code></dd>
+    <dt>Letter seed</dt><dd><code>0x24F33A13</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_134771.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_134771.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_134771.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_134771.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_134771.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_134771.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_134771.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_134771.jpg" width="833" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_134771.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_134771.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="FC-5">
+  <header><h2>FC 5</h2><span class="conf">high: 13 letters, a clear best seed</span></header>
+  <p class="why">13 letters measured; fit 0.09 px (clean); best seed scores 18.15 (1.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4569" target="_blank" rel="noopener">1:16:14</a> · <a href="judge.html#FC-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x7DD83F1E</code></dd>
+    <dt>Letter seed</dt><dd><code>0x208EE90F</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_137226.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_137226.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_137226.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_137226.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_137226.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_137226.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_137226.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_137226.jpg" width="693" height="763" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_137226.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_137226.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="FC-6">
+  <header><h2>FC 6</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.10 px (clean); best seed scores 17.89 (1.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4621" target="_blank" rel="noopener">1:17:06</a> · <a href="judge.html#FC-6">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x73C5BEC4</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3139EF3D</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_138792.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_138792.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_138792.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_138792.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_138792.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_138792.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_138792.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_138792.jpg" width="904" height="726" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_138792.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_138792.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="FC-7">
+  <header><h2>FC 7</h2><span class="conf">high: 14 letters, a clear best seed</span></header>
+  <p class="why">14 letters measured; fit 0.12 px (clean); best seed scores 19.62 (1.4 per letter); next best 182.43, a gap of 163.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4648" target="_blank" rel="noopener">1:17:33</a> · <a href="judge.html#FC-7">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x5B7EEC9B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4C176D08</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_139600.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_139600.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_139600.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_139600.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_139600.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_139600.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_139600.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_139600.jpg" width="664" height="984" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_139600.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_139600.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="CoS-1">
+  <header><h2>CoS 1</h2><span class="conf">high: 16 letters, a clear best seed</span></header>
+  <p class="why">16 letters measured; fit 0.07 px (clean); best seed scores 4.36 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4865" target="_blank" rel="noopener">1:21:10</a> · <a href="judge.html#CoS-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x198CE15D</code></dd>
+    <dt>Letter seed</dt><dd><code>0x23D56517</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_146107.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_146107.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_146107.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_146107.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_146107.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_146107.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_146107.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_146107.jpg" width="799" height="747" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_146107.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_146107.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="CoS-2">
+  <header><h2>CoS 2</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.07 px (clean); best seed scores 5.99 (0.4 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4885" target="_blank" rel="noopener">1:21:30</a> · <a href="judge.html#CoS-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x6A891F50</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5D991252</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_146705.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_146705.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_146705.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_146705.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_146705.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_146705.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_146705.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_146705.jpg" width="719" height="789" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_146705.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_146705.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="CoS-3">
+  <header><h2>CoS 3</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.09 px (clean); best seed scores 2.84 (0.2 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=4984" target="_blank" rel="noopener">1:23:09</a> · <a href="judge.html#CoS-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x6CFDF8A4</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3FA0F986</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_149678.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_149678.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_149678.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_149678.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_149678.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_149678.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_149678.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_149678.jpg" width="719" height="789" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_149678.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_149678.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="CoS-4">
+  <header><h2>CoS 4</h2><span class="conf">high: 16 letters, a clear best seed</span></header>
+  <p class="why">16 letters measured; fit 0.09 px (clean); best seed scores 4.22 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5127" target="_blank" rel="noopener">1:25:32</a> · <a href="judge.html#CoS-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x1BB09752</code></dd>
+    <dt>Letter seed</dt><dd><code>0x17AAC584</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_153979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_153979.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_153979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_153979.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_153979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_153979.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_153979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_153979.jpg" width="657" height="724" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_153979.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_153979.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="CoS-5">
+  <header><h2>CoS 5</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.09 px (clean); best seed scores 3.89 (0.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5172" target="_blank" rel="noopener">1:26:17</a> · <a href="judge.html#CoS-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x614D1862</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6D48B814</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_155330.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_155330.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_155330.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_155330.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_155330.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_155330.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_155330.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_155330.jpg" width="789" height="722" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_155330.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_155330.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="GK-1">
+  <header><h2>GK 1</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.08 px (clean); best seed scores 16.36 (1.1 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5346" target="_blank" rel="noopener">1:29:11</a> · <a href="judge.html#GK-1">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x7D0F6942</code></dd>
+    <dt>Letter seed</dt><dd><code>0x2D8F591D</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_160538.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_160538.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_160538.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_160538.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_160538.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_160538.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_160538.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_160538.jpg" width="611" height="726" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_160538.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_160538.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="GK-2">
+  <header><h2>GK 2</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.08 px (clean); best seed scores 18.95 (1.3 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5362" target="_blank" rel="noopener">1:29:27</a> · <a href="judge.html#GK-2">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x4ABBF0CF</code></dd>
+    <dt>Letter seed</dt><dd><code>0x583D287E</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_161020.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_161020.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_161020.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_161020.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_161020.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_161020.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_161020.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_161020.jpg" width="763" height="664" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_161020.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_161020.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="GK-3">
+  <header><h2>GK 3</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.09 px (clean); best seed scores 13.71 (0.9 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5419" target="_blank" rel="noopener">1:30:24</a> · <a href="judge.html#GK-3">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x16E63513</code></dd>
+    <dt>Letter seed</dt><dd><code>0x25B36652</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_162738.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_162738.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_162738.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_162738.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_162738.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_162738.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_162738.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_162738.jpg" width="763" height="813" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_162738.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_162738.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="GK-4">
+  <header><h2>GK 4</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.10 px (clean); best seed scores 15.41 (1.0 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5522" target="_blank" rel="noopener">1:32:07</a> · <a href="judge.html#GK-4">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x57789BA3</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6FC9B922</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_165831.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_165831.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_165831.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_165831.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_165831.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_165831.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_165831.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_165831.jpg" width="837" height="789" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_165831.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_165831.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="GK-5">
+  <header><h2>GK 5</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.08 px (clean); best seed scores 14.94 (1.0 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5651" target="_blank" rel="noopener">1:34:16</a> · <a href="judge.html#GK-5">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x6B16DBC3</code></dd>
+    <dt>Letter seed</dt><dd><code>0x094BFDC2</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_169704.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_169704.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_169704.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_169704.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_169704.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_169704.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_169704.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_169704.jpg" width="801" height="857" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_169704.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_169704.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+<section class="card high" id="GK-6">
+  <header><h2>GK 6</h2><span class="conf">high: 15 letters, a clear best seed</span></header>
+  <p class="why">15 letters measured; fit 0.08 px (clean); best seed scores 15.09 (1.0 per letter); no runner-up seed.</p>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=0OBZAqfSrOs&amp;t=5744" target="_blank" rel="noopener">1:35:49</a> · <a href="judge.html#GK-6">layout and luck</a></dd>
+    <dt>Layout seed</dt><dd><code>0x6E371FEA</code></dd>
+    <dt>Letter seed</dt><dd><code>0x2EF47F65</code></dd>
+    
+  </dl>
+  <div class="imgs"><figure class=wide><a href="img/fall_172494.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/fall_172494.jpg" width="1200" height="441" alt="falling letters"></a><figcaption>Falling letters: green boxes were used in the fit, orange ones were not; the plot below shows each letter&#x27;s fall against its fitted curve. Click to enlarge.</figcaption></figure><figure><a href="img/view_comedown_172494.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_comedown_172494.jpg" width="480" height="360" alt="comedown"></a><figcaption>Comedown (behind the title, brightened)</figcaption></figure><figure><a href="img/view_landing_172494.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/view_landing_172494.jpg" width="480" height="360" alt="landing view"></a><figcaption>Landing view</figcaption></figure><figure><a href="img/layout_views_172494.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/layout_views_172494.jpg" width="763" height="732" alt="layout"></a><figcaption>Layout (CaveGen3): comedown (blue), landing view (yellow), pod facing (arrow)</figcaption></figure><figure><a href="img/entry_172494.jpg" target="_blank" rel="noopener"><img loading="lazy" src="img/entry_172494.jpg" alt="entry screen"></a><figcaption>Entry screen</figcaption></figure></div>
+</section>
+</main>
+<script>
+const only = document.getElementById('only-unsure');
+if (only) only.addEventListener('change', () => document.body.classList.toggle('only-unsure', only.checked));
+</script><footer class="site-footer">Layouts by <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a> and <a href="https://github.com/JHawk4/CaveGen">CaveGen</a>; runs from <a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. Source: <a href="https://github.com/JHawk4/p2-vod-seeds">github.com/JHawk4/p2-vod-seeds</a>.</footer><script>
+for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('click', () => {
+  const p = location.pathname.split('/').filter(Boolean); const here = p.slice(-2).join('/');
+  const u = new URL(a.href); u.searchParams.set('from', here); a.href = u.toString(); });
+</script></body></html>

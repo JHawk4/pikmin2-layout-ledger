@@ -1,0 +1,974 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>#2 kobachi — https://www.speedrun.com/pikmin2/runs/mr0lwr8m</title>
+<style>
+:root { --bg:#f6f6f4; --fg:#1d1d1b; --muted:#6b6b66; --card:#fff; --line:#deded8; --hi:#1f7a3a; --mid:#a86b00; --lo:#b42318; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161614; --fg:#ececea; --muted:#9a9a94; --card:#20201e; --line:#33332f; --hi:#5cc27a; --mid:#e0a63a; --lo:#f0786d; } }
+body { background:var(--bg); color:var(--fg); font:15px/1.45 system-ui,sans-serif; margin:0; padding:24px 16px; }
+main { max-width:1100px; margin:0 auto; }
+h1 { font-size:22px; margin:0 0 4px; } .meta { color:var(--muted); margin-bottom:20px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+.card header { display:flex; align-items:baseline; gap:12px; } .card h2 { margin:0; font-size:18px; }
+.conf { font-size:12px; text-transform:uppercase; letter-spacing:.05em; font-weight:600; }
+.high .conf { color:var(--hi); } .medium .conf { color:var(--mid); } .low .conf, .none .conf { color:var(--lo); }
+dl { display:grid; grid-template-columns:max-content 1fr; gap:2px 14px; margin:10px 0; } dt { color:var(--muted); } dd { margin:0; }
+.imgs { display:flex; flex-wrap:wrap; gap:10px; } .imgs img { max-width:100%; height:auto; max-height:300px; border-radius:4px; border:1px solid var(--line); }
+code { font-size:14px; } a { color:inherit; }
+
+:root, :root[data-theme="light"] {
+  --bg:#e4eed2; --bg-2:#d3e4b8; --fg:#1d2418; --muted:#5f6b58; --card:#ffffff; --line:#d5dccb; --field:#f7faf1;
+  --leaf:#4b9a3c; --leaf-2:#3c8531; --leaf-dark:#2c6a24; --accent:#3c8531; --sun:#f2a01c;
+  --good:#2c6a24; --mid:#8a6a1f; --bad:#b3261e; --goodbg:#e3f1dc; --midbg:#f6ecd6; --badbg:#f8e1df; --bar:#c9d3bd;
+  --radius:14px; --shadow:0 1px 2px rgba(44,106,36,.12), 0 2px 10px rgba(44,106,36,.08); color-scheme:light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg:#141c10; --bg-2:#0d130a; --fg:#e6ece0; --muted:#a3ae98; --card:#1d2619; --line:#34442c; --field:#161e12;
+  --leaf-dark:#a6dc8f; --accent:#8fd37a; --good:#8fd37a; --mid:#e0b45a; --bad:#f2b8b5;
+  --goodbg:#1e3319; --midbg:#352d19; --badbg:#3b2120; --bar:#3a4a32;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 2px 10px rgba(0,0,0,.25); color-scheme:dark; } }
+html { background:var(--bg); }
+body { background:linear-gradient(180deg, var(--bg) 0, var(--bg) 340px, var(--bg-2) 100%) fixed; color:var(--fg);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+a { color:var(--accent); } a:hover { color:var(--leaf-dark); }
+.site-header { max-width:1240px; margin:0 auto 14px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+.site-logo { display:flex; align-items:center; gap:6px; color:var(--leaf-dark); text-decoration:none; font-weight:800;
+  letter-spacing:-.5px; font-size:1.25rem; text-shadow:1px 1px 0 rgba(255,255,255,.8); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .site-logo { text-shadow:none; } }
+.site-nav { display:flex; flex-wrap:wrap; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  background:linear-gradient(135deg, var(--leaf), var(--leaf-2)); box-shadow:inset 4px 0 0 var(--sun); }
+.site-nav a { text-decoration:none; color:#fff; padding:3px 12px; border-radius:999px; }
+.site-nav a:hover { color:#fff; background:rgba(0,0,0,.15); }
+.site-nav a[aria-current="page"] { background:#fff; color:var(--leaf-2); }
+.site-cats { display:flex; gap:2px; font-size:.92rem; font-weight:700; border-radius:999px; padding:3px;
+  border:2px solid var(--accent); background:var(--card); }
+.site-cats a { text-decoration:none; color:var(--accent); padding:1px 12px; border-radius:999px; }
+.site-cats a:hover { background:var(--goodbg); }
+.site-cats a[aria-current="page"] { background:var(--leaf-2); color:#fff; }
+.site-footer { max-width:1240px; margin:28px auto 0; color:var(--muted); font-size:.85rem; }
+h1, h2 { color:var(--leaf-dark); }
+h2 { padding-bottom:2px; border-bottom:2px solid var(--sun); display:inline-block; }
+.tablewrap, .card, .help, .tile, .stat { border-radius:var(--radius) !important; box-shadow:var(--shadow); }
+</style></head><body><header class="site-header"><a class="site-logo" href="../../index.html"><svg viewBox="0 0 24 34" width="22" height="31" aria-hidden="true"><path d="M12 33 C12 26 11.6 20 12 13" stroke="#3c8531" stroke-width="2.2" fill="none" stroke-linecap="round"/><path d="M12 25 C8.5 25.5 5 23.5 3.6 20.6 C7.4 19.6 10.6 21.5 12 25 Z" fill="#5fb447" stroke="#3c8531" stroke-width="1"/><ellipse cx="12.0" cy="4.4" rx="3.1" ry="4.3" transform="rotate(0 12.0 4.4)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="16.37" cy="7.58" rx="3.1" ry="4.3" transform="rotate(72 16.37 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="14.7" cy="12.72" rx="3.1" ry="4.3" transform="rotate(144 14.7 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="9.3" cy="12.72" rx="3.1" ry="4.3" transform="rotate(216 9.3 12.72)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><ellipse cx="7.63" cy="7.58" rx="3.1" ry="4.3" transform="rotate(288 7.63 7.58)" fill="#ffffff" stroke="#c9c2d6" stroke-width="0.8"/><circle cx="12" cy="9" r="3.1" fill="#f2c230" stroke="#d39a12" stroke-width="0.9"/></svg>Pikmin 2 Layout Ledger</a><nav class="site-cats" aria-label="Category"><a href="../../index.html">Pay Off Debt</a><a href="../../wii/index.html">Pay Off Debt (Wii)</a><a href="../../at/index.html" aria-current=page>All Treasures</a></nav><nav class="site-nav"><a href="../index.html">All runs</a><a href="judge.html">Layouts</a><a href="report.html" aria-current=page>Seed detection</a><a href="../../gecko.html">Gecko code</a><a href="../../suggest.html" class=nav-suggest>Suggestion box</a></nav><button type="button" id="lang-toggle" class="lang-toggle" lang="ja" title="日本語で表示">日本語</button><style>html.i18n-wait body{visibility:hidden}.lang-toggle{margin-left:auto;font:inherit;font-size:.88rem;font-weight:700;color:var(--accent,#3c8531);background:var(--card,#fff);border:2px solid var(--accent,#3c8531);border-radius:999px;padding:1px 12px;min-height:30px;cursor:pointer}.lang-toggle:hover{background:var(--goodbg,#e3f1dc)}</style><script>(function(){var l=null;try{var q=new URLSearchParams(location.search).get("lang");l=q==="ja"||q==="en"?q:localStorage.getItem("ledger-lang")||localStorage.getItem("cavegen3-lang");}catch(e){}if(l!=="ja"&&l!=="en")l=(navigator.language||"").toLowerCase().indexOf("ja")===0?"ja":"en";if(l==="ja"){var h=document.documentElement;h.classList.add("i18n-wait");h.lang="ja";setTimeout(function(){h.classList.remove("i18n-wait")},3000);}})();</script><script src="../../i18n.js" defer></script></header><main>
+<h1>#2 kobachi — https://www.speedrun.com/pikmin2/runs/mr0lwr8m</h1>
+<div class="meta">61 sublevel entries · 25 high, 0 medium, 12 low, 24 no seed · processed in 50518 s</div>
+
+<section class="card high">
+  <header><h2>EC-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=837">0:14:02</a></dd>
+    <dt>Layout seed</dt><dd><code>0x6021D4E3</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1EF73B61</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.075 px · score 0.51 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 3 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_25252.jpg" alt="entry screen">
+    <img src="img/layout_25252_EC-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>EC-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=981">0:16:26</a></dd>
+    <dt>Layout seed</dt><dd><code>0x370B5190</code></dd>
+    <dt>Letter seed</dt><dd><code>0x37617AB6</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.053 px · score 0.94 (next 33.92)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 3 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_29579.jpg" alt="entry screen">
+    <img src="img/layout_29579_EC-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>WFG-1</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1271">0:21:16</a></dd>
+    <dt>Layout seed</dt><dd><code>0x3030A2FD</code></dd>
+    <dt>Letter seed</dt><dd><code>0x08700BC1</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.051 px · score 0.26 (next 16.15)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 3 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_38251.jpg" alt="entry screen">
+    <img src="img/layout_38251_WFG-1.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>WFG-2</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1285">0:21:30</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_38684.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1298">0:21:43</a></dd>
+    <dt>Layout seed</dt><dd><code>0x79D4743F</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0FF9ECE3</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.059 px · score 0.16 (next 0.21)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_39066.jpg" alt="entry screen">
+    <img src="img/layout_39066_WFG-3.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1403">0:23:28</a></dd>
+    <dt>Layout seed</dt><dd><code>0x2504833B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x03BDC41F</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.048 px · score 0.24 (next 0.27)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 4)</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_42204.jpg" alt="entry screen">
+    <img src="img/layout_42204_WFG-1.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1465">0:24:30</a></dd>
+    <dt>Layout seed</dt><dd><code>0x7A0FB564</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6924F5B8</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.035 px · score 0.16 (next 0.18)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_44057.jpg" alt="entry screen">
+    <img src="img/layout_44057_WFG-2.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>WFG-3</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1514">0:25:19</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>fit failed: too few letters with a usable fall</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_45542.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>WFG-4</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1599">0:26:44</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>fit failed: too few letters with a usable fall</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_48073.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>WFG-5</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=1654">0:27:39</a></dd>
+    <dt>Layout seed</dt><dd><code>0x51389D3A</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4A35EC2E</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.067 px · score 0.07 (next 0.12)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_49734.jpg" alt="entry screen">
+    <img src="img/layout_49734_WFG-5.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>CoS-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=2281">0:38:06</a></dd>
+    <dt>Layout seed</dt><dd><code>0x32D9D7ED</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6AF2DC58</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.109 px · score 1.14 (next 6.31)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>cave name matched weakly (blurry capture)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_68531.jpg" alt="entry screen">
+    <img src="img/layout_68531_CoS-1.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>CoS-3</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=2414">0:40:19</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 2)</dd>
+    <dt>Note</dt><dd>too few letters measured, cave name matched weakly (blurry capture)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_72503.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoB-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=3064">0:51:09</a></dd>
+    <dt>Layout seed</dt><dd><code>0x10477228</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7F35360E</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.082 px · score 1.47 (next 27.23)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>cave name matched weakly (blurry capture)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_92002.jpg" alt="entry screen">
+    <img src="img/layout_92002_HoB-1.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-4</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=3222">0:53:47</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_96722.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-1</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=3785">1:03:10</a></dd>
+    <dt>Layout seed</dt><dd><code>0x5EE1DFE8</code></dd>
+    <dt>Letter seed</dt><dd><code>0x032DB8EF</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.181 px · score 11.66 (next 13.44)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_113607.jpg" alt="entry screen">
+    <img src="img/layout_113607_FC-1.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>FC-2</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=3917">1:05:22</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>fit failed: too few letters with a usable fall, cave name matched weakly (blurry capture)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_117548.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-3</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4007">1:06:52</a></dd>
+    <dt>Layout seed</dt><dd><code>0x49385975</code></dd>
+    <dt>Letter seed</dt><dd><code>0x43C67480</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.212 px · score 5.74 (next 6.01)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_120262.jpg" alt="entry screen">
+    <img src="img/layout_120262_FC-3.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-4</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4103">1:08:28</a></dd>
+    <dt>Layout seed</dt><dd><code>0x1F19698B</code></dd>
+    <dt>Letter seed</dt><dd><code>0x3E53104E</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.063 px · score 0.12 (next 8.22)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_123132.jpg" alt="entry screen">
+    <img src="img/layout_123132_FC-4.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>FC-6</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4270">1:11:15</a></dd>
+    <dt>Layout seed</dt><dd><code>0x51A88428</code></dd>
+    <dt>Letter seed</dt><dd><code>0x50F8F22F</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.035 px · score 0.07 (next 0.12)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 5)</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_128136.jpg" alt="entry screen">
+    <img src="img/layout_128136_FC-6.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>FC-8</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4435">1:14:00</a></dd>
+    <dt>Layout seed</dt><dd><code>0x188874BD</code></dd>
+    <dt>Letter seed</dt><dd><code>0x018DE968</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.074 px · score 2.51 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 7)</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 8 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_133087.jpg" alt="entry screen">
+    <img src="img/layout_133087_FC-8.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-1</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4636">1:17:21</a></dd>
+    <dt>Layout seed</dt><dd><code>0x0A727C10</code></dd>
+    <dt>Letter seed</dt><dd><code>0x6C9FAAD1</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.077 px · score 1.63 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_139113.jpg" alt="entry screen">
+    <img src="img/layout_139113_SCx-1.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4719">1:18:44</a></dd>
+    <dt>Layout seed</dt><dd><code>0x47000E53</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5D528D78</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.054 px · score 0.32 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_141582.jpg" alt="entry screen">
+    <img src="img/layout_141582_SCx-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4783">1:19:48</a></dd>
+    <dt>Layout seed</dt><dd><code>0x65BF02DE</code></dd>
+    <dt>Letter seed</dt><dd><code>0x652F6BC7</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.103 px · score 3.65 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_143504.jpg" alt="entry screen">
+    <img src="img/layout_143504_SCx-3.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-4</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4886">1:21:31</a></dd>
+    <dt>Layout seed</dt><dd><code>0x7199CF0F</code></dd>
+    <dt>Letter seed</dt><dd><code>0x27A4A004</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.103 px · score 3.29 (next None)</dd>
+    <dt>Sublevel from</dt><dd>sequence</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_146593.jpg" alt="entry screen">
+    <img src="img/layout_146593_SCx-4.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-5</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=4930">1:22:15</a></dd>
+    <dt>Layout seed</dt><dd><code>0x18BD973D</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5AA51ADA</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.072 px · score 0.14 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_147912.jpg" alt="entry screen">
+    <img src="img/layout_147912_SCx-5.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-7</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=5118">1:25:23</a></dd>
+    <dt>Layout seed</dt><dd><code>0x2D81BB3E</code></dd>
+    <dt>Letter seed</dt><dd><code>0x5F2570A7</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.105 px · score 6.96 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 6)</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_153557.jpg" alt="entry screen">
+    <img src="img/layout_153557_SCx-7.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SCx-8</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=5219">1:27:04</a></dd>
+    <dt>Layout seed</dt><dd><code>0x45E3E92D</code></dd>
+    <dt>Letter seed</dt><dd><code>0x42EEA80A</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.105 px · score 5.41 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_156577.jpg" alt="entry screen">
+    <img src="img/layout_156577_SCx-8.png" alt="layout">
+  </div>
+</section>
+<section class="card low">
+  <header><h2>SC-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=5626">1:33:51</a></dd>
+    <dt>Layout seed</dt><dd><code>0x67FFEB09</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0A06AB0D</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.058 px · score 0.06 (next 0.13)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_168772.jpg" alt="entry screen">
+    <img src="img/layout_168772_SC-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SC-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=5778">1:36:23</a></dd>
+    <dt>Layout seed</dt><dd><code>0x67677586</code></dd>
+    <dt>Letter seed</dt><dd><code>0x73E797BA</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.062 px · score 2.42 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed found by following the gap from Subterranean Complex 8 to Glutton&#x27;s Kitchen 2</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_173318.jpg" alt="entry screen">
+    <img src="img/layout_173318_SC-3.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SC-4</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=5899">1:38:24</a></dd>
+    <dt>Layout seed</dt><dd><code>0x2E7D29C1</code></dd>
+    <dt>Letter seed</dt><dd><code>0x0ED6EE45</code></dd>
+    <dt>Letters</dt><dd>4 measured · fit 0.053 px · score 0.12 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed found by following the gap from Subterranean Complex 8 to Glutton&#x27;s Kitchen 2</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_176956.jpg" alt="entry screen">
+    <img src="img/layout_176956_SC-4.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>GK-1</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=6201">1:43:26</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>fit failed: too few letters with a usable fall, cave name matched weakly (blurry capture)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_186007.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>GK-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=6241">1:44:06</a></dd>
+    <dt>Layout seed</dt><dd><code>0x3E3538D5</code></dd>
+    <dt>Letter seed</dt><dd><code>0x20EB6760</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.068 px · score 2.27 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 4 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_187213.jpg" alt="entry screen">
+    <img src="img/layout_187213_GK-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>GK-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=6300">1:45:05</a></dd>
+    <dt>Layout seed</dt><dd><code>0x68DE713D</code></dd>
+    <dt>Letter seed</dt><dd><code>0x68271FE8</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.053 px · score 0.15 (next 32.13)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 4 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_188970.jpg" alt="entry screen">
+    <img src="img/layout_188970_GK-3.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>GK-4</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=6372">1:46:17</a></dd>
+    <dt>Layout seed</dt><dd><code>0x21DC2D37</code></dd>
+    <dt>Letter seed</dt><dd><code>0x4A4E316A</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.041 px · score 0.19 (next 19.15)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 4 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_191146.jpg" alt="entry screen">
+    <img src="img/layout_191146_GK-4.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>GK-5</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=6447">1:47:32</a></dd>
+    <dt>Layout seed</dt><dd><code>0x4D919B46</code></dd>
+    <dt>Letter seed</dt><dd><code>0x655399A5</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.047 px · score 0.26 (next 24.12)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 4 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_193392.jpg" alt="entry screen">
+    <img src="img/layout_193392_GK-5.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>GK-6</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=6530">1:48:55</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>fit failed: too few letters with a usable fall, cave name matched weakly (blurry capture)</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_195882.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SR-4</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=7210">2:00:15</a></dd>
+    <dt>Layout seed</dt><dd><code>0x004669D2</code></dd>
+    <dt>Letter seed</dt><dd><code>0x7BF9D12B</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.053 px · score 1.96 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>seed confirmed by a later or earlier sublevel&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_216243.jpg" alt="entry screen">
+    <img src="img/layout_216243_SR-4.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-1</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=7928">2:12:13</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_237767.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SH-2</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=7999">2:13:24</a></dd>
+    <dt>Layout seed</dt><dd><code>0x0D3B5D4C</code></dd>
+    <dt>Letter seed</dt><dd><code>0x198F43DD</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.147 px · score 23.97 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_239895.jpg" alt="entry screen">
+    <img src="img/layout_239895_SH-2.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SH-4</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=8129">2:15:34</a></dd>
+    <dt>Layout seed</dt><dd><code>0x253D5B61</code></dd>
+    <dt>Letter seed</dt><dd><code>0x59574FAE</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.145 px · score 1.97 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 3)</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_243805.jpg" alt="entry screen">
+    <img src="img/layout_243805_SH-4.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>SH-5</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=8224">2:17:09</a></dd>
+    <dt>Layout seed</dt><dd><code>0x4FE704E7</code></dd>
+    <dt>Letter seed</dt><dd><code>0x31E295FC</code></dd>
+    <dt>Letters</dt><dd>7 measured · fit 0.152 px · score 5.66 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_246637.jpg" alt="entry screen">
+    <img src="img/layout_246637_SH-5.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>BK-7</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=8899">2:28:24</a></dd>
+    <dt>Layout seed</dt><dd><code>0x56AE8B37</code></dd>
+    <dt>Letter seed</dt><dd><code>0x265B733F</code></dd>
+    <dt>Letters</dt><dd>8 measured · fit 0.117 px · score 0.49 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>cave name matched weakly (blurry capture) seed confirmed by its neighbor&#x27;s</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_266864.jpg" alt="entry screen">
+    <img src="img/layout_266864_BK-7.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-2</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9416">2:37:01</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>fit failed: too few letters with a usable fall</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_282377.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-3</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9474">2:37:59</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_284102.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-4</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9522">2:38:47</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_285545.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-5</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9593">2:39:58</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_287670.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-6</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9661">2:41:06</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_289713.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-7</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9703">2:41:48</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_290955.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-8</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9749">2:42:34</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_292352.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-9</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9847">2:44:12</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_295276.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-10</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9916">2:45:21</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_297353.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-1</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=9977">2:46:22</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 11)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_299182.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-2</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=10069">2:47:54</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_301943.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-13</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=10173">2:49:38</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 3)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_305040.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-4</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=10206">2:50:11</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 14)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_306040.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-6</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=10962">3:02:47</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_328696.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card low">
+  <header><h2>HoH-2</h2><span class="conf">low</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=11231">3:07:16</a></dd>
+    <dt>Layout seed</dt><dd><code>0x42D87725</code></dd>
+    <dt>Letter seed</dt><dd><code>0x076F7433</code></dd>
+    <dt>Letters</dt><dd>6 measured · fit 0.078 px · score 2.09 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_336750.jpg" alt="entry screen">
+    <img src="img/layout_336750_HoH-2.png" alt="layout">
+  </div>
+</section>
+<section class="card none">
+  <header><h2>DD-13</h2><span class="conf">none</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=11278">3:08:03</a></dd>
+    <dt>Layout seed</dt><dd><code>—</code></dd>
+    <dt>Letter seed</dt><dd><code>—</code></dd>
+    <dt>Letters</dt><dd>0 measured · fit None px · score None (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>too few letters measured</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_338155.jpg" alt="entry screen">
+    
+  </div>
+</section>
+<section class="card high">
+  <header><h2>CoC-1</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=11490">3:11:35</a></dd>
+    <dt>Layout seed</dt><dd><code>0x1E62120C</code></dd>
+    <dt>Letter seed</dt><dd><code>0x32AFF1E3</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.075 px · score 2.84 (next None)</dd>
+    <dt>Sublevel from</dt><dd>digit</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 3 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_344522.jpg" alt="entry screen">
+    <img src="img/layout_344522_CoC-1.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>CoC-3</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=11623">3:13:48</a></dd>
+    <dt>Layout seed</dt><dd><code>0x3CFFE76C</code></dd>
+    <dt>Letter seed</dt><dd><code>0x1D7312C3</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.068 px · score 1.99 (next 29.95)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 2)</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 3 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_348493.jpg" alt="entry screen">
+    <img src="img/layout_348493_CoC-3.png" alt="layout">
+  </div>
+</section>
+<section class="card high">
+  <header><h2>CoC-8</h2><span class="conf">high</span></header>
+  <dl>
+    <dt>Video</dt><dd><a href="https://www.youtube.com/watch?v=PvM1KKiryOE&amp;t=11990">3:19:55</a></dd>
+    <dt>Layout seed</dt><dd><code>0x5C80D025</code></dd>
+    <dt>Letter seed</dt><dd><code>0x45D480F0</code></dd>
+    <dt>Letters</dt><dd>5 measured · fit 0.039 px · score 0.98 (next 26.14)</dd>
+    <dt>Sublevel from</dt><dd>digit (sequence said 1)</dd>
+    <dt>Note</dt><dd>seed confirmed by a chain of 3 sublevels</dd>
+  </dl>
+  <div class="imgs">
+    <img src="img/entry_359491.jpg" alt="entry screen">
+    <img src="img/layout_359491_CoC-8.png" alt="layout">
+  </div>
+</section>
+</main><footer class="site-footer">Layouts, pictures, treasures and the judge from <a href="https://jhawk4.github.io/CaveGen3/">CaveGen3</a>; runs from <a href="https://www.speedrun.com/pikmin2">speedrun.com</a>. Source: <a href="https://github.com/JHawk4/pikmin2-layout-ledger">github.com/JHawk4/pikmin2-layout-ledger</a>.</footer><script>
+for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('click', () => {
+  const p = location.pathname.split('/').filter(Boolean); const here = p.slice(-2).join('/');
+  const u = new URL(a.href); u.searchParams.set('from', here); a.href = u.toString(); });
+</script></body></html>
