@@ -94,7 +94,7 @@ p2-vod-seeds/
 │  │  └─ cli.py               # `python -m p2seeds analyze <video|manifest>`
 │  ├─ tools/synth.py          # synthetic entry-screen generator (testing, §8)
 │  └─ tests/
-├─ vendor/CaveGen/            # fresh `git clone` of github.com/JHaack4/CaveGen, pinned commit
+├─ vendor/CaveGen/            # fresh `git clone` of github.com/JHawk4/CaveGen, pinned commit
 ├─ data/                      # gitignored: videos/, clips/, cache/, output/
 └─ PLAN.md
 ```
@@ -250,4 +250,4 @@ Phase 0 matters most: it tests the one real unknown before we build anything lar
 2. **Keep full videos or clips only after analysis?** I recommend keeping the full video until Phase 6, then switching to clips only.
 3. **Scope of the first test set:** top 5 **PoD GC**, then top 5 **AT GC** (recommended), or other categories or consoles?
 4. **Seed search:** a Python port (recommended: one language, easier to test) or calling the Java code?
-5. **Repo location:** `Desktop\Claude\p2-vod-seeds` (empty git repo already created) and, later, a private GitHub repo under `JHaack4`?
+5. **Repo location:** `Desktop\Claude\p2-vod-seeds` (empty git repo already created) and, later, a GitHub repo (now public at JHawk4/pikmin2-layout-ledger)?
