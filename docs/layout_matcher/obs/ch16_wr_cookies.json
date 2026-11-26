@@ -1,0 +1,9 @@
+[
+ {"label": "Bug Bait ~ (450,-170)", "names": ["cookie"], "ahead": 450, "side": -170, "tol": 110},
+ {"label": "Bug Bait ~ (330,-60)", "names": ["cookie"], "ahead": 330, "side": -60, "tol": 110},
+ {"label": "swirl ~ (250,10)", "names": ["cookie_m_l"], "ahead": 250, "side": 10, "tol": 110},
+ {"label": "brown meringue ~ (640,-100)", "names": ["cookie_u_l"], "ahead": 640, "side": -100, "tol": 140},
+ {"label": "checker ~ (490,180)", "names": ["cookie_s", "cookie_s_l"], "ahead": 490, "side": 180, "tol": 130},
+ {"label": "yellow meringue ~ (470,330)", "names": ["cookie_u"], "ahead": 470, "side": 330, "tol": 130},
+ {"label": "checker ~ (600,400)", "names": ["cookie_s", "cookie_s_l"], "ahead": 600, "side": 400, "tol": 130}
+]

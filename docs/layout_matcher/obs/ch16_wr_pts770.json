@@ -1,0 +1,10 @@
+{"frame": "wr_16_r22.mp4 770 (pixels at 1280x720)", "init": [580, 820, 0.84],
+ "points": [
+  {"label": "Bug Bait (5/10)", "px": [465, 425], "names": ["cookie"]},
+  {"label": "Bug Bait (5/10)", "px": [535, 545], "names": ["cookie"]},
+  {"label": "swirl", "px": [580, 610], "names": ["cookie_m_l"]},
+  {"label": "brown meringue", "px": [495, 285], "names": ["cookie_u_l"]},
+  {"label": "big-square checker", "px": [730, 410], "names": ["cookie_s", "cookie_s_l"]},
+  {"label": "yellow meringue", "px": [855, 425], "names": ["cookie_u"]},
+  {"label": "checker", "px": [920, 320], "names": ["cookie_s", "cookie_s_l"]}
+ ]}
