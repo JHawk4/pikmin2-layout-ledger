@@ -448,11 +448,135 @@ blue share the same flower, though.
   first 60 in only 4 of 13 dives. Wrong flower reads are mostly stages with two or more of red,
   yellow and blue (CH21, CH14), plus CH29 and CH10.
 
-**Verdict.** Detection is not yet better than the grey reader overall. It is stronger on some
-dives (CH28 WR, cmal04 CH18). Next steps that would help:
-- body detection to tell red, yellow and blue apart;
-- a geometry fit that doesn't need a candidate state (from the detections alone);
-- re-ranking only where the grey margin is low.
+**Improvements tried** (`docs/challenge_dive/det_eval.py`: grey reads are cached, so a variant is
+scored on every truth-known dive in about an hour; `--blind` leaves the truth out of the state set).
+
+| Change | Effect |
+|---|---|
+| **Reverse term** (`back_w`): every flower detection in a frame earns its value × exp(−d²/2σ²), d = distance to the nearest predicted Pikmin that could be that colour. It penalises states whose Pikmin are not where the flowers are, not only rewarding states whose Pikmin land on flowers. | cmal04: 5 → 7 of 13 correct (truth in set); on the 10 dives whose truth is in the grey shortlist, the pick is the truth or one Pikmin away (±4 draws) on all 10. cmal13 blind: 4 → 6 of 14 (7 within 4 draws). Used from here on (`back_w` 2, σ 3 px). |
+| Fade frames (more than 45% of the region changed) dropped | Removed about 80 junk detections per fade frame. |
+| Body colour under each flower (red/yellow/blue share a flower) | The colour maps look right mid-dive; not yet evaluated. |
+| One-Pikmin shift resolution: refit state ± 4j draws and compare | **No gain.** Picks move both ways (CH10 fixed, CH8 and CH14 broken). Scoring only each colour's first 1–3 Pikmin at a fixed geometry picks from −16 to +16. Dropping the landing phase helps only when started at the truth. A shift changes one or two trajectories out of 20–50, which is below the noise. |
+| f0 scanned in 0.1-frame steps instead of Powell (the score is a step function of f0) | Each state fits better, but so do wrong ones: cmal04 blind 7 → 4. Kept as an option (`fit(f0_scan=True)`), off by default. |
+| Neighbours of the leaders (±1–3 draws) refit | cmal04 CH4's grey candidates are the truth +1, −3, +5 draws (a one-draw shift), so expansion adds the truth, but detection ranks it 24th. |
+
+**Two videos, blind, reverse term:**
+
+| Video | Dives (truth in grey shortlist) | Grey correct | Detection correct | Either correct | Grey and detection agree |
+|---|---|---|---|---|---|
+| cmal04 (Wii U) | 13 (10) | 9 | 7 | 11 | 7, of which 6 correct |
+| cmal13 (GC) | 14 (14) | 9 | 6 | 10 | 5, all correct |
+
+On cmal13 the grey reader gets 9 of all 27 dives right; the 14 in the table are those whose truth it
+shortlists. Detection's own margin is only partly calibrated (cmal13: 6 of 9 with margin ≥ 8%
+correct).
+
+**Verdict.** Detection is not better than the grey reader overall, but the two are complementary:
+- When they agree, the read is almost always right (11 of 12).
+- One or the other is right on 21 of 27 dives.
+- Detection's misses are mostly one-Pikmin shifts or dives with few Pikmin (CH6 1/1/1, CH11 5+5).
+  These need a layout check of the candidates on floor 1 rather than better tracking.
+
+Not done:
+- a geometry fit from the detections alone;
+- scale and v100 per video (sy wanders 0.54–0.71 between stages of one video);
+- the body-colour evaluation.
+
+### Anchored reading: the seed after the stage is known (`docs/challenge_dive/anchored_eval.py`)
+
+This is the case that matters in practice: the results roll after a stage gives an anchor state,
+and the dive's first state lies 18.8k–184k draws before it (median 54k; stage length does not
+predict the distance). The reader searches that window only.
+
+What changed against the pipeline above:
+- **Dive start frame from the "Pick one!" window.** The start frame is taken from the last frame
+  of the window closing (`closing_end`); the true start is 6.5–9.5 frames before it on 64 dives.
+  The old search locked onto the menu fade-in when the runner picked the stage at once; that was
+  the whole failure on cmal08 and cmal11 (0 correct before).
+- **One menu registration per video** from the pink flower grid (`register_grid`,
+  `video_registration`), language independent. Per-dive registration gave wrong stage IDs.
+- **Speed.** Coarse prune at quarter resolution over 5 start offsets, half-resolution pre-rank of
+  500, nearest 110k draws first with early exit on a clear margin (≥ 5%).
+- **Detection only on unclear grey reads**; it wins only with its own margin ≥ 10%.
+- **Stages with ≤ 15 Pikmin** are read over the whole window at once.
+
+Results on all six downloaded videos, 159 dives. "Truth" is the previous results roll's last
+state + 5.
+
+| Video | Dives | Exact | 1–2 draws late | Off by whole Pikmin (±4, ±8, ±12) | Other miss | Mean s/dive |
+|---|---|---|---|---|---|---|
+| cmal02 (Wii U, JPN) | 28 | 22 | 3 | 1 | 2 | 308 |
+| cmal04 (Wii U, USA) | 26 | 17 | 2 | 2 | 5 | 342 |
+| cmal08 (GC, JPN) | 26 | 16 | 2 | 2 | 6 | 392 |
+| cmal11 (GC, JPN) | 26 | 13 | 5 | 3 | 5 | 461 |
+| cmal13 (GC, USA) | 27 | 13 | 5 | 4 | 5 | 499 |
+| cmal26 (GC, USA) | 26 | 13 | 3 | 1 | 9 | 819 |
+| **All** | **159** | **94** | **20** | **13** | **32** | |
+
+Times are with two videos running in parallel on 8 cores.
+
+- **1–2 draws late (20 dives).** These land exactly 1 or 2 draws after the expected state, mostly
+  with a clear margin. A wrong read cannot land that close by chance (states 1–3 draws apart are
+  unrelated dives), so these are almost certainly correct reads and the game made 6 or 7 draws
+  between the roll and the dive instead of 5. The cause is not identified. Counting them, 114 of
+  159 (72%).
+- **Whole-Pikmin shifts (13).** The same dive shifted by one to three Pikmin; mostly single- or
+  two-colour stages (CH1, CH3, CH13, CH15, CH19). No reliable tie-breaker yet; detection fixes
+  some and breaks others.
+- **Other misses (32).** CH6 (1/1/1) is missed on every video, CH26 (4) on four, CH28 (25
+  bulbmin) on four; the whole-window rule for small stages did not rescue them. cmal26 has the
+  most misses and the slowest reads (17 of its 26 grey reads were unclear); not yet looked into.
+- **The margin is not a usable confidence yet.** 127 reads were "clear"; 80 exact, 20 late, 27
+  wrong. A layout check of the top candidates against floor 1 is the likely fix, as for the
+  detection reader.
+- Detection changed the answer for the better on 4 dives (cmal11 +1, cmal26 +3) and for the worse
+  on 2 (cmal04).
+
+### Floor-1 layout check (`docs/challenge_dive/floor_check.py`)
+
+Tested whether the floor-1 picture can confirm or correct a dive read. After
+the dive the game shows the first floor from overhead for about 25 frames
+under the floor title. The script takes the three stillest frames of that
+shot, subtracts the title-only frame before it, and scores candidate layout
+seeds (dive first state + 999 draws) by how much of the lit area lands on
+floor cells of the generated layout. Scoring uses `layoutmatch.exe floor2`
+from the layout-matcher branch (`claude/layout-matcher-f38181`, see
+`docs/layout-matcher.md`); the binary is not built on this branch
+(`P2SEEDS_LAYOUTMATCH` points at it).
+
+Each dive was scored at offsets −40…+40 draws around the true seed and against
+20,000 unrelated seeds. All 159 dives of the six videos:
+
+| outcome | dives |
+| --- | --- |
+| every seed scores the same (only the fixed start room is lit, or the floor fills the frame) | 73 |
+| overhead shot not found (too short) | 12 |
+| scores differ but do not pick out the true seed | 60 |
+| one seed stands out (first of the 81 neighbours and in the top 200 of 20,000) | 14 |
+
+The 14 are all on three stages: CH8 (5 of 6 videos), CH20 (6 of 6) and CH21
+(3 of 6; the other 3 are near misses, described below). On the
+other 27 stages the floor shape carries no usable information.
+
+What the three stages show:
+
+- The layout is at the expected seed in 12 of the 14, and one draw later in 2
+  (cmal02 CH8, cmal04 CH20). Both of those dives were read exactly, so the
+  extra draw came after the dive: a layout seed can sit one draw past what the
+  dive implies.
+- cmal08 CH21, where the dive was read one draw late: the seed one draw late
+  ties for first of the 81 (with an unrelated offset, −28) and is 297th of
+  20,000; the expected seed is 10th of 81. That favours the late read being
+  the real state (an extra draw before the dive), but it is weak evidence
+  from one dive.
+- cmal26 CH21, where the dive read is 4 draws off (a whole-Pikmin shift): the
+  floor scores the true seed 2nd of 81 (297th of 20,000) and the dive's pick
+  well below it, so that shift is a real misread.
+
+As a tie-breaker for the reader it is not worth wiring in: of the 45 wrong
+reads only one (cmal26 CH21) is on a stage where the check works. A general
+check would have to match objects (treasures, plants) in the overhead shot,
+which the layout matcher currently does only with per-stage readings.
 
 ### Running it
 

@@ -955,7 +955,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
               window=None, save_top: int = 200, refit: int = 6, iterations: int = 2, f0_search: float = 20.0,
               final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0),
               f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6,
-              setup_only: bool = False):
+              setup_only: bool = False, skip_if_clear: bool = False, prune_coarse=(2, 2), rank_mid: int = 0, hook=None,
+              use_closing: bool = True):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
@@ -1026,11 +1027,16 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
 
         trials = []
         videos = {}
-        loc = burst_locality(path, closes, g, lead, lead_delay) if closes else {}
-        if loc:
-            top = max(loc.values())
-            closes = [b for b in closes if loc.get(b, 0) >= 0.8 * top]
-            log(f"  burst locality {[(b, round(v, 2)) for b, v in loc.items()]} -> {closes}")
+        ce = closing_end(path, max(0, int(f0_lo) - 30), min(n_frames - 1, int(f0_hi) + 12)) if use_closing else None
+        if ce is not None:
+            closes = [ce - CLOSING_LAG]
+            log(f"  \"Pick one!\" window closed at {ce}")
+        else:
+            loc = burst_locality(path, closes, g, lead, lead_delay) if closes else {}
+            if loc:
+                top = max(loc.values())
+                closes = [b for b in closes if loc.get(b, 0) >= 0.8 * top]
+                log(f"  burst locality {[(b, round(v, 2)) for b, v in loc.items()]} -> {closes}")
         for b in closes or [int(f0_guess + 2)]:
             bgb = background_for(b)
             dvb = DiveVideo(path, max(0, b - 6), min(n_frames - 1, b + span), bgb, region, scale=scale)
@@ -1059,6 +1065,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         dv = DiveVideo(path, int(g.f0) + 2, min(n_frames - 1, int(g.f0) + span), bg, region, scale=scale)
         st, sc = search_all(dv, counts, g, first_pikmin=first_pikmin, keep=keep)
         log(f"  stage-1 search done {time.time() - t0:.0f}s")
+    if hook is not None:                    # benchmarking: hand over the prepared dive and stop
+        return hook(dv, counts, g, st)
     frames = sorted(dv.obs)
     flats = {}
 
@@ -1068,7 +1076,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         st2 = st[o]
         # the dive start (f0) is known to a frame or two; a look-alike at the wrong phase can beat the
         # truth at a fixed f0, so take each state's best over a few start offsets
-        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2) for d in offs], axis=0)
+        bl = np.min([batch_image_loss(dv, counts, geom.copy(f0=geom.f0 + d), st2, *prune_coarse) for d in offs], axis=0)
         o2 = np.argsort(bl)
         st3 = st2[o2[:20_000]]
         for x in probe_set:
@@ -1085,6 +1093,10 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         # exact loss (compiled, full resolution, every frame) on the pool's best by coarse loss, each
         # at its best start offset
         cand = pool[:rank_pool]
+        if rank_mid and len(cand) > rank_mid:
+            # half resolution, every other frame first (7x cheaper), the exact loss on its best only
+            pre = fast_loss(dv, counts, geom, cand, 2, 2, f0_offsets=offs)
+            cand = cand[np.argsort(pre)[:rank_mid]]
         bl = fast_loss(dv, counts, geom, cand, f0_offsets=offs)
         o = np.argsort(bl)[:final_exact]
         # ordered by the best offset's loss: the refits that follow fit f0, so a state that only lines up
@@ -1120,6 +1132,8 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
     # alternate: refit the geometry on the leader, prune and re-rank with it (a look-alike's geometry is
     # nearly right, so this converges on the true state, which lines up exactly)
     geo = g
+    if skip_if_clear and (res[1][0] - res[0][0]) / res[0][0] > 0.1:
+        iterations = 0                          # already a clear leader (small anchored windows)
     for it in range(iterations):
         lead = res[0][1]
         geo, _ = fit(lead, geo, False)
@@ -1661,6 +1675,112 @@ def burst_locality(path: str, bursts, g: Geometry, lead: str, lead_delay: float,
         before = rel(max(0, b - 10), 9)
         if after is not None and before is not None:
             out[b] = after / (before + 0.5)
+    return out
+
+
+def closing_end(path: str, first: int, last: int):
+    """Last frame of the "Pick one!" window closing: a run of whole-screen motion that drops to the
+    quiet of the dive itself, with the picture back at full, steady brightness. The dive starts
+    6-10 frames before it (median 8.7 over cmal04/08/13). Unlike a burst *start* this needs no quiet
+    stretch before the window closes, so it also works when the stage is picked the instant the menu
+    fades in. Returns the frame or None."""
+    cap = cv2.VideoCapture(path)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, first - 1))
+    prev, fr_, d, br = None, [], [], []
+    for fr in range(max(0, first - 1), last + 1):
+        ok, f = cap.read()
+        if not ok:
+            break
+        g = cv2.resize(cv2.cvtColor(f, cv2.COLOR_BGR2GRAY), (160, 90)).astype(np.float32)
+        if prev is not None:
+            fr_.append(fr)
+            d.append(float(np.abs(g - prev).mean()))
+            br.append(float(g.mean()))
+        prev = g
+    d, br = np.array(d), np.array(br)
+    if len(d) < 24:
+        return None
+    full = 0.85 * float(np.percentile(br, 90))
+    best = None
+    for i in range(6, len(d) - 14):
+        post, pre = d[i + 1:i + 11], d[i - 4:i + 1]
+        b = br[i + 1:i + 11]
+        if pre.mean() < 3 or b.std() > 2.5 or b.mean() < full or post.max() > max(2.5, 0.6 * pre.mean()):
+            continue
+        r = pre.mean() / (post.mean() + 0.3)
+        if best is None or r > best[0]:
+            best = (r, fr_[i])
+    return best[1] if best else None
+
+
+CLOSING_LAG = 6     # closing_end minus the burst-start frame the f0 trials are centred on
+
+
+def _lines(v, n, tol):
+    """n equally spaced cluster centres among values v (clusters = runs with gaps <= tol)."""
+    v = np.sort(v)
+    groups, cur = [], [v[0]]
+    for x in v[1:]:
+        if x - cur[-1] > tol:
+            groups.append(cur); cur = [x]
+        else:
+            cur.append(x)
+    groups.append(cur)
+    cs = [(float(np.median(g)), len(g)) for g in groups if len(g) >= 2]
+    best = None
+    for i in range(len(cs) - n + 1):
+        c = np.array([x for x, k in cs[i:i + n]]); k = sum(k for x, k in cs[i:i + n])
+        d, x0 = np.polyfit(np.arange(n), c, 1)
+        res = np.abs(c - (x0 + d * np.arange(n))).max()
+        if res < 0.12 * d and (best is None or k > best[0]):
+            best = (k, d, x0)
+    return best
+
+def register_grid(f):
+    """Menu registration from the 5x6 grid of stage flowers alone (no text, so any language):
+    pink blobs -> column and row lattice -> scale and offset. None when the grid is not found."""
+    R = load_reference(); gr = R['grid']
+    f = f.astype(np.int16); b,g,r = f[...,0],f[...,1],f[...,2]
+    pink = ((r>140)&(b>110)&(g<170)&(r-g>40)&(b-g>10)).astype(np.uint8)
+    pink = cv2.morphologyEx(pink, cv2.MORPH_OPEN, np.ones((3,3),np.uint8))
+    n, lab, stats, cen = cv2.connectedComponentsWithStats(pink)
+    ar = stats[1:, 4]; cen = cen[1:]
+    if len(ar) < 12: return None
+    med = np.median(np.sort(ar)[-30:])
+    keep = (ar > med/2.2) & (ar < med*2.2)
+    P = cen[keep]
+    if len(P) < 12: return None
+    w = np.sqrt(med)
+    bx = _lines(P[:,0], 5, w*0.6)
+    if bx is None: return None
+    _, dx, x0 = bx
+    P = P[(P[:,0] > x0 - dx/2) & (P[:,0] < x0 + 4.5*dx)]
+    by = _lines(P[:,1], 6, w*0.45)
+    if by is None: return None
+    _, dy, y0 = by
+    sx, sy = dx/gr['dx'], dy/gr['dy']
+    return dict(score=1.0, sx=float(sx), sy=float(sy), lx=float(x0-(gr['x0']-REF_R0[0])*sx), ly=float(y0-(gr['y0']-REF_R0[1])*sy), grid=int(len(P)))
+
+
+def video_registration(path: str, visits, n: int = 9):
+    """One registration for a whole video (the capture layout does not change): the median of the
+    flower-grid registration over frames just after the "Pick one!" window closes in up to n visits."""
+    cap = cv2.VideoCapture(path)
+    regs = []
+    step = max(1, len(visits) // n)
+    for v in list(visits)[::step]:
+        e = closing_end(path, max(0, v[0] - 75), v[1] + 14)
+        for fr in ((e + 3, e + 9) if e is not None else (v[0] + 3,)):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, fr)
+            ok, f = cap.read()
+            r = register_grid(f) if ok else None
+            if r is not None:
+                regs.append(r)
+    if len(regs) < 3:
+        return None
+    out = {k: float(np.median([r[k] for r in regs])) for k in ("sx", "sy", "lx", "ly")}
+    out.update(score=1.0, frames=len(regs),
+               spread={k: float(np.ptp([r[k] for r in regs])) for k in ("sx", "sy", "lx", "ly")})
     return out
 
 
