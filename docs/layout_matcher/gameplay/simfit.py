@@ -155,7 +155,7 @@ def main():
     scale = [float(v) for v in a.scale.split(",")]
     squashes = [float(v) for v in a.squash.split(",")]
     if a.seeds:
-        items = [(None, int(s, 16)) for s in a.seeds.split(",")]
+        items = [(None, int(s, 16)) for s in (open(a.seeds[1:]).read() if a.seeds.startswith("@") else a.seeds).strip().split(",")]
     else:
         end = int(a.end, 16)
         items = [(k, lm.seed_at(end, k)) for k in range(a.lo, a.hi)]
