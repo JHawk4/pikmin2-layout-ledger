@@ -1,0 +1,5 @@
+{"frame": "wr_21_r22.mp4 640 (floor-2 gameplay, overhead camera), 1280x720",
+ "pod": [415, 430],
+ "fit": {"names": ["kareooinu_l"], "px": [[760,360],[850,270],[715,60],[1200,190]]},
+ "test": {"names": ["kareooinu_s"], "px": [[775,600],[1090,650]]},
+ "tol": 40, "test_tol": 60}
