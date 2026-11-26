@@ -1,0 +1,5 @@
+{"frame": "wr_16_r22.mp4 640 (early gameplay, overhead camera), 1280x720",
+ "pod": [970, 630],
+ "fit": {"names": ["cookie", "cookie_m_l"], "px": [[715,275],[490,165],[215,165]]},
+ "test": {"names": ["panmodoki", "oopanmodoki"], "px": [[265,400],[490,90],[270,120],[1170,25]]},
+ "tol": 30, "test_tol": 70}
