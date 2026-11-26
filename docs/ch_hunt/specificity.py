@@ -4,7 +4,8 @@ pass each one alone and all together, and where the candidate (and seeds fitting
 
     python docs/ch_hunt/specificity.py SUB END COUNT OBS.json [--seed HEX]
 
-OBS.json: [{"names": [...], "ahead": a, "side": s, "tol": t, "what": "..."}, ...] (<= 32).
+OBS.json: [{"names": [...], "ahead": a, "side": s, "tol": t, "what": "...", "negate": false}, ...]
+(<= 32). With "negate": true the observation holds when no such object is there.
 """
 import argparse
 import json
@@ -27,6 +28,8 @@ def main():
     end = int(a.end, 16)
     out = a.out or os.path.splitext(a.obs)[0] + "_scan.bin"
     bits = lm.scan(a.sub, end, a.count, [dict(names=o["names"], ahead=o["ahead"], side=o["side"], tol=o["tol"]) for o in obs], out)
+    neg = sum(1 << j for j, o in enumerate(obs) if o.get("negate"))
+    bits = bits ^ np.uint32(neg)      # "negate": true observations hold when nothing matches there
     full = (1 << len(obs)) - 1
     alive = np.ones(a.count, bool)
     for j, o in enumerate(obs):
