@@ -21,3 +21,21 @@ The scripts that read the record videos (sheet, grab, dark) default to the judge
 Worked example (CH16 record, `obs/ch16_wr_*`): 7 cookies read off frame 770 -> scan k 0-1M -> the dive read +1
 (785B61C7, k = 23,692) is the only rate-plausible seed with 6/7, and fits at RMS 23 px against >= 40 px for
 every seed passing 7/7 (all at implausible draw rates).
+
+## simfit (free-camera fit, no calibration)
+
+`simfit.py SUB PTS.json (--seeds A,B | --end HEX --lo K --hi K) [--comedown ZOOM,TURN] [--scale lo,hi] [--tol px]`
+marks typed objects on one frame (1280x720 pixels; `gridf.py VIDEO FRAME OUT` draws a labelled grid; "pod" is a valid
+name). Per seed it tries every assignment of the two rarest marks, solves rotation/scale/shift, refines by least squares
+and counts marks within `--tol` of an object of their kind. With `--comedown` the marks are first unprojected through
+CaveGen3's comedown camera, so the fit only absorbs the comedown's zoom/turn/shift error. `--save` keeps every seed with
+`--min-save` inliers (to intersect with another frame via `--seeds`); `--overlay FRAME,OUT` draws the best seed.
+`where.py SUB PTS SEED X,Y...` says what a fitted seed has at other pixels.
+
+- Gorei's overhead camera is ~0.9 px per game unit at 1280x720 (CH12-1, CH12-3, CH18: 0.83-0.94), so `--scale 0.7,1.15`.
+- Checks: CH12-1's known seed wins on a gameplay frame (7/7 marks, next 4/7) and on its comedown (9/10, next 7/10).
+- Result: CH12-2 of the CH12 record = 661950CA, 35/35 comedown plant marks at 10.8 px RMS (next 15/35); verified.
+- Speed: ~60 seeds/s with 4 processes (`SIMFIT_PROCS`); dumping the layouts dominates. Use the Rust `scan.py` first
+  when the camera can be guessed (pod-facing, scale 0.9), then simfit the survivors.
+- Pitfalls: low-variation floors (CH12-3: 18 seeds share the pod room) need objects far from the pod; white balls in
+  CH18's pipe ends are not eggs.
