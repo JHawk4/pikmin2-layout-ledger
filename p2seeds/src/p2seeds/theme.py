@@ -64,7 +64,7 @@ def header(prefix: str = "", run: str | None = None, active: str = "runs") -> st
     else:
         links += [("layouts", "layouts.html", "Layouts"), ("detection", "detection.html", "Detection"),
                   ("timesave", "timesave.html", "Time saved"), ("pokos", "pokos.html", "Pokos"),
-                  ("accuracy", "accuracy.html", "Judge accuracy"), ("seeds", "seeds.html", "Seed check")]
+                  ("howjudge", "how-judge.html", "The judge"), ("accuracy", "accuracy.html", "Judge accuracy"), ("seeds", "seeds.html", "Seed check")]
     links.append(("suggest", f"{prefix}suggest.html", "Suggestion box"))
     nav = "".join(f'<a href="{href}"{" aria-current=page" if key == active else ""}'
                   f'{" class=nav-suggest" if key == "suggest" else ""}>{label}</a>' for key, href, label in links)

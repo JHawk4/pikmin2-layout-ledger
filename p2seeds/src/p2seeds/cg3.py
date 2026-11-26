@@ -16,6 +16,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from . import rng
+
 ROOT = Path(__file__).resolve().parents[3]
 EXE = ROOT / "data" / "build" / "cg3" / "release" / "p2seeds-cg3.exe"
 
@@ -39,8 +41,10 @@ def _ask(req: dict) -> dict:
 
 
 def layout(cave_id: str, sublevel: int, seed: int, kind: str = "pod") -> dict:
-    """{"score": judge score, "items": [{"name", "value", "carried_by"}]} for one layout."""
-    return _ask({"sub": f"{cave_id}-{sublevel}", "seed": f"0x{seed & 0xFFFFFFFF:08X}", "judge": kind})
+    """{"score": judge score, "items": [{"name", "value", "carried_by"}]} for one layout, made
+    with the active generator (rng.active(): 64-bit seeds on Switch)."""
+    return _ask({"sub": f"{cave_id}-{sublevel}", "seed": rng.seed_hex(seed & rng.seed_mask()), "judge": kind,
+                 "rng": rng.active()})
 
 
 def rank(score: float, breakpoints) -> float:

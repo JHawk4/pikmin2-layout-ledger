@@ -125,9 +125,10 @@ def calibrate(
                         best = (score, sy * pitch, sy, loc)
             return best
         base_w = compose(cave.name, 1.0, 1.0)[0].shape[1]
-        sx0 = min(sy0, text_w / max(1.0, base_w - 4))
+        # a 16:9 capture stretches English names as a whole (glyphs and spacing) by `wide`
+        sx0 = min(sy0 * wide, text_w / max(1.0, base_w - 4))
         for sy in sys:
-            for sx in np.unique(np.r_[sx0 * sx_factors, sy * extra_ratios]):
+            for sx in np.unique(np.r_[sx0 * sx_factors, sy * wide * extra_ratios]):
                 img, _ = compose(cave.name, sx, sy)
                 if img.shape[0] >= region.shape[0] or img.shape[1] >= region.shape[1]:
                     continue

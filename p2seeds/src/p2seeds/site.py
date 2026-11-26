@@ -1,6 +1,7 @@
 """Build the report site: a landing page over every judged run, and one page per run.
 
   data/output/index.html               runs table and how lucky each run's layouts were
+  data/output/how-judge.html           how the layout judge works, in plain words
   data/output/accuracy.html            does the judge predict real times (calibration)
   data/output/pokos.html               pokos per sublevel against the median run
   data/output/seeds.html               seed-order check
@@ -29,7 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import cavegen, charts, judge2, judge_report, luck, rng, run_page, treasures
+from . import cavegen, charts, judge2, judge_page, judge_report, luck, rng, run_page, treasures
 
 STORY_ORDER = ["EC", "HoB", "WFG", "SH", "BK", "SCx", "FC", "CoS", "GK", "SR", "SC", "CoC", "HoH", "DD"]
 
@@ -476,6 +477,17 @@ def layout_spread(runs: list[dict]) -> str:
             s["d"].append(luck.delta(e))
             if s["ref"] is None:
                 s["ref"] = luck.reference(e, r["kind"])
+    # one seconds scale for every row, so a wide spread looks wide: it covers the bulk of every
+    # sublevel's random layouts and runs; anything beyond it is drawn on the edge
+    keep = [s for s in subs.values() if s["ref"] is not None and len(s["ref"]) and len(s["d"]) >= 3
+            and float(np.ptp(s["ref"])) >= 1e-6]
+    if not keep:
+        return ""
+    LO = float(min(min(np.percentile(s["ref"], 1), np.percentile(s["d"], 10)) for s in keep))
+    HI = float(max(max(np.percentile(s["ref"], 99), np.percentile(s["d"], 90)) for s in keep))
+    ticks = [t for t in charts.nice_ticks(LO, HI, 6) if LO <= t <= HI]
+    W, H, mid = 320, 44, 22
+    sx = lambda v: 4 + (W - 8) * (min(HI, max(LO, v)) - LO) / ((HI - LO) or 1)
     rows, total = [], 0.0
     for (cave, sub), s in sorted(subs.items(), key=lambda kv: (order.get(kv[0][0], 99), kv[0][1])):
         ref, d = s["ref"], np.asarray(s["d"], dtype=float)
@@ -489,11 +501,9 @@ def layout_spread(runs: list[dict]) -> str:
         d25, d75 = np.percentile(d, [25, 75])
         # two half violins on one axis: random layouts above the line, these runs' layouts below,
         # each with equal area so the shapes compare; ticks mark each median
-        # the axis covers the bulk of both; a run beyond it is drawn as a dot on the edge
-        lo = min(np.percentile(ref, 1), np.percentile(d, 10))
-        hi = max(np.percentile(ref, 99), np.percentile(d, 90))
-        W, H, mid = 240, 44, 22
-        sx = lambda v: 4 + (W - 8) * (min(hi, max(lo, v)) - lo) / ((hi - lo) or 1)
+        # the shapes are drawn over this row's own range (fine detail for narrow ones) on the shared scale
+        lo = max(LO, min(np.percentile(ref, 0.5), d.min()))
+        hi = min(HI, max(np.percentile(ref, 99.5), d.max()))
         grid = [lo + (hi - lo) * k / 60 for k in range(61)]
         sample = list(ref[np.linspace(0, len(ref) - 1, min(len(ref), 300)).astype(int)])
         dr, dd = charts._density(sample, grid), charts._density([min(hi, max(lo, v)) for v in d], grid)
@@ -507,7 +517,9 @@ def layout_spread(runs: list[dict]) -> str:
                f'aria-label="{cave} {sub}: random layouts above, these runs\' layouts below">'
                f'<title>{cave} {sub}: random layouts above the line (median dashed), these runs\' layouts below '
                f'(median run dark, each run a dot)</title>'
-               f'<path d="{shape(dr, 1)}" fill="var(--ink-3)" fill-opacity=".45"/>'
+               + "".join(f'<line x1="{sx(t):.1f}" x2="{sx(t):.1f}" y1="0" y2="{H}" stroke="var(--grid)" stroke-width="1"/>'
+                         for t in ticks if t != 0)
+               + f'<path d="{shape(dr, 1)}" fill="var(--ink-3)" fill-opacity=".45"/>'
                f'<path d="{shape(dd, -1)}" fill="var(--series-1)" fill-opacity=".55"/>'
                f'<line x1="4" x2="{W - 4}" y1="{mid}" y2="{mid}" stroke="var(--ink-3)" stroke-width=".8"/>'
                f'<line x1="{sx(0):.1f}" x2="{sx(0):.1f}" y1="2" y2="{mid}" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="3 2"/>'
@@ -522,6 +534,9 @@ def layout_spread(runs: list[dict]) -> str:
             f'<td class="num" data-v="{beats:.1f}">{beats:.0f}%</td><td>{svg}</td></tr>')
     if not rows:
         return ""
+    axis = (f'<svg viewBox="0 0 {W} 14" width="{W}" height="14" aria-hidden="true">'
+            + "".join(f'<text x="{sx(t):.1f}" y="11" text-anchor="middle" style="font-size:10px;fill:var(--ink-2)">'
+                      f'{t:+g}</text>' for t in ticks) + '</svg>')
     return f'''
 <h2 id="spread">Do these runs get typical layouts?</h2>
 <p>No: they are personal bests, and a run with good layouts is more likely to become one. For each sublevel, how the layouts
@@ -534,10 +549,12 @@ layouts. That is why the runner numbers on this site take the layout out instead
 <th class="num" title="25th to 75th percentile of the runs' layouts">These runs<br><span class="muted">middle half</span></th>
 <th class="num" title="The median run's layout against the median random layout">Median run<br><span class="muted">vs median layout</span></th>
 <th class="num" title="Share of random layouts the median run's layout beats">Median run<br><span class="muted">beats</span></th>
-<th>Layouts <span class="muted">random ▲ · these runs ▼</span></th></tr></thead>
+<th>Layouts <span class="muted">random ▲ · these runs ▼, seconds</span><br>{axis}</th></tr></thead>
 <tbody>{"".join(rows)}</tbody></table></div>
 <p class="muted small">Layouts: above the line, how 1000 random layouts spread (grey, dashed at their median); below it, the
-layouts of the runs here (blue, a dot per run, the dark tick at the median run's). Both shapes have the same area, so a
+layouts of the runs here (blue, a dot per run, the dark tick at the median run's). Every row uses the same seconds scale (the
+labels at the top), so a wide shape is a sublevel where the layout matters a lot; each row's height is scaled to fit.
+The two shapes in a row have the same area, so a
 blue shape further left than the grey one means these runs got better layouts than chance. Fixed floors
 and sublevels with fewer than 3 confidently read layouts are left out.</p>
 '''
@@ -732,7 +749,8 @@ def build(root: str | Path = "data/output") -> Path:
                 judge2.add_to_run(d)          # only fills what is missing
     runs = _load(root)
     key0 = "judge2" if any(x.get("judge2_score") is not None for r in runs for x in r["entries"]) else "judge"
-    acts = actuals(runs, slope=calibration(runs, key0).get("slope", 1.0))
+    cal0 = calibration(runs, key0)
+    acts = actuals(runs, slope=cal0.get("slope", 1.0))
     for r, a in zip(runs, acts):
         if r["kind"] == "pod":
             run_page.write(r["dir"], actual=a)
@@ -1015,6 +1033,7 @@ seed. The RNG only moves forward, so every line should climb steadily; a point o
              ("detection.html", "detection", "Pikmin 2 Layout Ledger · seed detection by run", picker(picks, "detection"), ""),
              ("timesave.html", "timesave", "Pikmin 2 Layout Ledger · time saved by sublevel", timesave_page(runs, acts),
               f"<script>{TIMESAVE_JS}</script>"),
+             ("how-judge.html", "howjudge", "Pikmin 2 Layout Ledger · how the judge works", judge_page.page(runs, cal0), ""),
              ("accuracy.html", "accuracy", "Pikmin 2 Layout Ledger · does the judge predict real times?", accuracy,
               f"<script>{charts.BRUSH_JS}</script><script>{charts.SCATTER_JS}</script>"),
              ("pokos.html", "pokos", "Pikmin 2 Layout Ledger · pokos by sublevel", pokos_html.replace('<h2 id="pokos">', '<h1 id="pokos">', 1)
@@ -1042,7 +1061,7 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages") -> 
             func(path)
         shutil.rmtree(out, onexc=writable)
     out.mkdir(parents=True)
-    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "accuracy.html", "pokos.html",
+    for name in ("index.html", "layouts.html", "detection.html", "timesave.html", "how-judge.html", "accuracy.html", "pokos.html",
                  "seeds.html", "suggest.html"):
         if (root / name).exists():
             shutil.copy2(root / name, out / name)

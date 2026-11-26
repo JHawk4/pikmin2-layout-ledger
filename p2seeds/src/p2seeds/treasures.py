@@ -707,6 +707,7 @@ def sublevel_items(triples: list[tuple[str, int, int]]) -> dict[tuple[str, int, 
     if cg3.available() and cavegen.REGION == "us":
         return {(c, s, seed): [(i["name"].lower(), int(i["value"] or 0)) for i in cg3.layout(c, s, seed)["items"]]
                 for c, s, seed in triples}
+    cavegen._need_cavegen3("listing treasures")
     build = ensure_helper()
     args = [x for c, s, seed in triples for x in (c, str(s), f"0x{seed & 0xFFFFFFFF:08X}")]
     out = subprocess.run(["java", "-cp", str(build), "SublevelItems", *args], cwd=cavegen.CAVEGEN,

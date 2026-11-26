@@ -136,6 +136,8 @@ def search(v: np.ndarray, sigma: np.ndarray, k_tol: float = 4.0, max_bias: float
     measured = [i for i in range(len(v)) if np.isfinite(v[i]) and np.isfinite(sigma[i]) and i not in set(np.atleast_1d(leave_out).tolist())]
     if len(measured) < 3:
         raise ValueError("need at least 3 measured characters")
+    if rng.active() == "switch":
+        return _search64(v, sigma, measured, k_tol, max_bias, cap, top, max_nodes)
     pivot = min(measured, key=lambda i: sigma[i])
     others = [i for i in measured if i != pivot
               and k_tol * math.hypot(sigma[i], sigma[pivot]) / V_PER_RAND < (1 << 13)]   # else no constraint
@@ -165,6 +167,43 @@ def search(v: np.ndarray, sigma: np.ndarray, k_tol: float = 4.0, max_bias: float
     if not pts:
         return []
     states = np.array(sorted({p[0] % M for p in pts}), dtype=np.uint64)
+    best = _score(states, v, sigma, measured, jumps, pivot, cap, max_bias)
+    best.sort(key=lambda c: c.score)
+    return best[:top]
+
+
+SWITCH_MAX_DIM = 16
+
+
+def _search64(v, sigma, measured, k_tol, max_bias, cap, top, max_nodes) -> list[Candidate]:
+    """lattice.search for the Switch generator (64-bit musl LCG, speed = 5 * s / 2^64).
+
+    Same box as the GC search, with the full 64-bit state instead of bits 0..30: the pivot's
+    state is bounded by its speed (plus the allowed offset), every other letter's state
+    difference to the pivot by the speed difference (the offset cancels). A 64-bit state needs
+    more letters than a 31-bit one: about 12 good letters pin it; fewer usually leave too many
+    states to enumerate, and the entry is left to chain.py's search near its neighbours."""
+    m64 = rng.M64
+    pivot = min(measured, key=lambda i: sigma[i])
+    others = sorted((i for i in measured if i != pivot), key=lambda i: sigma[i])[:SWITCH_MAX_DIM - 1]
+    jumps = {i: rng.jump(i - pivot) for i in measured}
+    span = k_tol * sigma[pivot] + max_bias
+    lo = [max(0, math.floor((v[pivot] - span) / 5 * m64))]
+    hi = [min(m64 - 1, math.ceil((v[pivot] + span) / 5 * m64))]
+    row = [1]
+    for i in others:
+        a, c = jumps[i]
+        row.append((a - 1) % m64)
+        d = v[i] - v[pivot]
+        tol = k_tol * math.hypot(sigma[i], sigma[pivot]) + 1e-6
+        lo.append(math.floor((d - tol) / 5 * m64) - c)
+        hi.append(math.ceil((d + tol) / 5 * m64) - c)
+    n = len(row)
+    gens = [row] + [[m64 if j == t else 0 for j in range(n)] for t in range(1, n)]
+    pts = box_points(gens, lo, hi, max_nodes)
+    if not pts:
+        return []
+    states = np.array(sorted({p[0] % m64 for p in pts}), dtype=np.uint64)
     best = _score(states, v, sigma, measured, jumps, pivot, cap, max_bias)
     best.sort(key=lambda c: c.score)
     return best[:top]

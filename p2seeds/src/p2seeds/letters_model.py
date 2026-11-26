@@ -47,4 +47,4 @@ def landing_frame(v: float) -> float:
 
 
 def layout_seed(letter_seed: int, num_chars: int) -> int:
-    return rng.next_seed(letter_seed, num_chars) & rng.MASK31
+    return rng.next_seed(letter_seed, num_chars) & rng.seed_mask()
