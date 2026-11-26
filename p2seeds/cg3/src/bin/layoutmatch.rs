@@ -130,6 +130,8 @@ fn dump(data: &GameData, sub: &str, seed: u32) {
 enum Obs {
     Near { names: Vec<String>, ahead: f32, side: f32, tol: f32 },
     Absent { names: Vec<String>, r: f32 },
+    /// none of `names` within `tol` of (ahead, side); empty `names` = no object of any kind
+    AbsentAt { names: Vec<String>, ahead: f32, side: f32, tol: f32 },
     UnitSpawn(Vec<usize>),
 }
 
@@ -143,6 +145,13 @@ fn parse_obs(v: &Value) -> Vec<Obs> {
         .map(|o| {
             if let Some(a) = o["unit_spawn"].as_array() {
                 Obs::UnitSpawn(a.iter().map(|x| x.as_u64().unwrap() as usize).collect())
+            } else if o["absent"].as_bool() == Some(true) {
+                Obs::AbsentAt {
+                    names: names(o),
+                    ahead: o["ahead"].as_f64().expect("ahead") as f32,
+                    side: o["side"].as_f64().expect("side") as f32,
+                    tol: o["tol"].as_f64().unwrap_or(100.0) as f32,
+                }
             } else if let Some(r) = o["absent_within"].as_f64() {
                 Obs::Absent { names: names(o), r: r as f32 }
             } else {
@@ -171,6 +180,10 @@ fn check(layout: &Layout, obs: &[Obs]) -> u32 {
                 .iter()
                 .zip(&local)
                 .any(|(o, (a, s))| o.names.iter().any(|n| names.contains(n)) && (a * a + s * s).sqrt() <= *r),
+            Obs::AbsentAt { names, ahead, side, tol } => !objs.iter().zip(&local).any(|(o, (a, s))| {
+                (names.is_empty() || o.names.iter().any(|n| names.contains(n)))
+                    && ((a - ahead).powi(2) + (s - side).powi(2)).sqrt() <= *tol
+            }),
             Obs::UnitSpawn(v) => v.contains(&spi),
         };
         if ok {
