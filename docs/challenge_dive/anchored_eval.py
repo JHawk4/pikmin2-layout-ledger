@@ -71,14 +71,14 @@ def video_reg(video):
     return _REG[name]
 
 
-def _grey(video, v, truth, window, tag, log):
+def _grey(video, v, truth, window, tag, log, extra=()):
     name = os.path.basename(video)
     cache = os.path.join(ROOT, "data", "challenge", "crosscheck", "dives", f"{name}_{v[0]}_{tag}.json")
     if os.path.exists(cache):
         return json.load(open(cache))
     t = time.time()
     r = cd.read_dive(video, v, window=window, probe=[truth], log=log, skip_if_clear=True, reg=video_reg(video),
-                     prune_coarse=(4, 4), rank_mid=500)
+                     prune_coarse=(4, 4), rank_mid=500, extra_states=extra)
     r["seconds"] = time.time() - t
     r["window"] = list(window)
     os.makedirs(os.path.dirname(cache), exist_ok=True)
@@ -98,8 +98,10 @@ def grey_read(video, v, truth, end, span, log=lambda s: None, near=NEAR, tag="h"
         return r
     if span <= near or (r.get("margin") or 0) >= CLEAR or not r.get("candidates"):
         return r
-    r2 = _grey(video, v, truth, (end, span - near, near), f"{tag}r{near // 1000}k_{span // 1000}k", log)
-    best = r2 if (r2.get("margin") or 0) > (r.get("margin") or 0) else r
+    # the far part's final ranking includes the near read's leaders, so its result is the whole window's
+    near_lead = [c["state"] for c in r["candidates"][:12]] + [c["state"] for c in r.get("top", [])[:50]]
+    r2 = _grey(video, v, truth, (end, span - near, near), f"{tag}r{near // 1000}k_{span // 1000}k", log, extra=near_lead)
+    best = r2 if r2.get("candidates") else r
     best = dict(best, seconds=r.get("seconds", 0) + r2.get("seconds", 0), stages=2)
     return best
 
@@ -207,6 +209,7 @@ def main():
     ap.add_argument("--family", type=int, default=3, help="refit the leader's +-4j shifts, j <= this")
     ap.add_argument("--always-det", action="store_true", help="run the detection cross-check on clear grey reads too")
     ap.add_argument("--tag", default="h", help="cache tag for the grey reads")
+    ap.add_argument("--visits", type=int, nargs="*", help="only the menu visits starting at these frames")
     ap.add_argument("--out")
     a = ap.parse_args()
     sp = dr.load_sprites()
@@ -215,7 +218,7 @@ def main():
     for video in a.videos:
         name = os.path.basename(video)
         for v, truth, end in anchored_dives(video, a.span):
-            if (name, v[0]) in done:
+            if (name, v[0]) in done or (a.visits and v[0] not in a.visits):
                 continue
             t0 = time.time()
             try:

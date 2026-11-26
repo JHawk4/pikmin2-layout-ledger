@@ -956,7 +956,7 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
               final_exact: int = 300, probe=(), f0_offsets=(-3.0, -1.5, 0.0, 1.5, 3.0),
               f0_offsets_refit=(-1.5, 0.0, 1.5), rank_pool: int = 5000, threads: int = 6,
               setup_only: bool = False, skip_if_clear: bool = False, prune_coarse=(2, 2), rank_mid: int = 0, hook=None,
-              use_closing: bool = True):
+              use_closing: bool = True, cross: bool = True, extra_states=()):
     """Recover the dive's first state for one menu visit (first, last). Returns a dict with the
     best candidates (state, image loss), the stage, the geometry used and timings. `probe` states
     (e.g. a known truth) are scored at the end with the final geometry and reported under "probes",
@@ -1144,34 +1144,61 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
         if (res[1][0] - res[0][0]) / res[0][0] > 0.1:
             break                               # a clear leader: the geometry has converged
     refined = []
-    fits = list(pool_ex.map(lambda ls: fit(ls[1], geo, True), res[:refit]))
-    for (l, s), (g3, l3) in zip(res[:refit], fits):
-        refined.append((min(l, l3), s, (g3 if l3 < l else geo).f0, l, geometry_vector(g3 if l3 < l else geo)))
-    refined.sort()
-    # a whole-dive shift by 4 draws hands every Pikmin its neighbour's values: nearly the same
-    # picture (the frame phase absorbs the timing). The true start is a minimum against its shifts.
-    best_s = refined[0][1]
-    best_l = refined[0][0]
-    for _ in range(4):                      # walk to the best shift (a shift can fit better)
-        shifts = []
-        ss = [rng.next_seed(best_s, k) & 0xFFFFFFFF for k in (-8, -4, 4, 8)]
-        fx = list(pool_ex.map(lambda x: fit(x, geo, True), ss))
-        plain = fast_loss(dv, counts, geo, ss)
-        for k, s2, (g4, l4), l0 in zip((-8, -4, 4, 8), ss, fx, plain):
-            shifts.append(dict(shift=k, state=s2, loss=min(l4, float(l0)), f0=g4.f0, geometry=geometry_vector(g4)))
-        better = min(shifts, key=lambda x: x["loss"])
-        if better["loss"] >= best_l:
-            break
-        log(f"  shift {better['shift']:+d} fits better ({better['loss']:.1f} < {best_l:.1f}): moving")
-        refined.insert(0, (better["loss"], better["state"], better["f0"], better["loss"], better["geometry"]))
-        best_s, best_l = better["state"], better["loss"]
-    refined.sort()
-    shift_margin = (min(x["loss"] for x in shifts) - refined[0][0]) / refined[0][0]
-    log(f"  shifts: {[(x['shift'], round(x['loss'], 1)) for x in shifts]} (margin {shift_margin:+.3f})")
+    if cross:
+        # every fitted geometry is offered to every candidate (see cross_rank): the search's leaders,
+        # the leaders of an earlier read of the same dive (`extra_states`, e.g. the other half of the
+        # window), the leader's one-Pikmin shifts; the rest of the search's top is screened
+        extra = [int(x) & 0xFFFFFFFF for x in extra_states]
+        lead = [s for l, s in res[:max(refit, 12)]] + extra[:12]
+        lead += [(rng.next_seed(res[0][1], 4 * j) if j > 0 else rng.prev_seed(res[0][1], -4 * j)) & 0xFFFFFFFF
+                 for j in (-3, -2, -1, 1, 2, 3)]
+        few = sum(counts) <= 15         # few Pikmin: fits are cheap and the fixed-geometry order is poor
+        S, losses, G, gi = cross_rank(dv, counts, g, lead, [s for l, s in res[:save_top]] + extra, threads=threads,
+                                      add=150 if few else 8, log=log)
+        fixed = dict((s, l) for l, s in res)
+        for s, l, k in zip(S, losses, gi):
+            refined.append((l, s, G[k].f0, fixed.get(s, l), geometry_vector(G[k])))
+        fam = {(rng.next_seed(S[0], 4 * j) if j >= 0 else rng.prev_seed(S[0], -4 * j)) & 0x7FFFFFFF
+               for j in range(-3, 4)}
+        shifts = [dict(shift=k, state=s, loss=l, f0=f, geometry=gv)
+                  for l, s, f, lf, gv in refined[1:]
+                  for k in (-12, -8, -4, 4, 8, 12)
+                  if (s & 0x7FFFFFFF) == ((rng.next_seed(S[0], k) if k > 0 else rng.prev_seed(S[0], -k)) & 0x7FFFFFFF)]
+        shift_margin = (min(x["loss"] for x in shifts) - refined[0][0]) / refined[0][0] if shifts else None
+        geo = geometry_from_vector(refined[0][4])
+        log(f"  cross-ranked {len(S)}: leader 0x{S[0]:08X} {losses[0]:.1f}, next {losses[1]:.1f}; "
+            f"shifts {[(x['shift'], round(x['loss'], 1)) for x in shifts]}")
+    else:
+        fits = list(pool_ex.map(lambda ls: fit(ls[1], geo, True), res[:refit]))
+        for (l, s), (g3, l3) in zip(res[:refit], fits):
+            refined.append((min(l, l3), s, (g3 if l3 < l else geo).f0, l, geometry_vector(g3 if l3 < l else geo)))
+        refined.sort()
+        # a whole-dive shift by 4 draws hands every Pikmin its neighbour's values: nearly the same
+        # picture (the frame phase absorbs the timing). The true start is a minimum against its shifts.
+        best_s = refined[0][1]
+        best_l = refined[0][0]
+        for _ in range(4):                      # walk to the best shift (a shift can fit better)
+            shifts = []
+            ss = [rng.next_seed(best_s, k) & 0xFFFFFFFF for k in (-8, -4, 4, 8)]
+            fx = list(pool_ex.map(lambda x: fit(x, geo, True), ss))
+            plain = fast_loss(dv, counts, geo, ss)
+            for k, s2, (g4, l4), l0 in zip((-8, -4, 4, 8), ss, fx, plain):
+                shifts.append(dict(shift=k, state=s2, loss=min(l4, float(l0)), f0=g4.f0, geometry=geometry_vector(g4)))
+            better = min(shifts, key=lambda x: x["loss"])
+            if better["loss"] >= best_l:
+                break
+            log(f"  shift {better['shift']:+d} fits better ({better['loss']:.1f} < {best_l:.1f}): moving")
+            refined.insert(0, (better["loss"], better["state"], better["f0"], better["loss"], better["geometry"]))
+            best_s, best_l = better["state"], better["loss"]
+        refined.sort()
+        shift_margin = (min(x["loss"] for x in shifts) - refined[0][0]) / refined[0][0]
+        log(f"  shifts: {[(x['shift'], round(x['loss'], 1)) for x in shifts]} (margin {shift_margin:+.3f})")
     probes = []
     for x in probe:
         gx, lx = fit(x, geo, True)
         lx = min(lx, float(fast_loss(dv, counts, geo, [x])[0]))
+        if cross:
+            lx = min([lx] + [float(fast_loss(dv, counts, gj, [x], f0_offsets=(-2 * PIKMIN_STEP, -PIKMIN_STEP, 0.0, PIKMIN_STEP, 2 * PIKMIN_STEP))[0]) for gj in G])
         log(f"  probe 0x{x:08X}: refit f0 {gx.f0:.2f} vs {geo.f0:.2f}, sx {gx.sx:.3f}/{geo.sx:.3f}, sy {gx.sy:.3f}/{geo.sy:.3f}")
         probes.append(dict(state=x, loss=lx, in_stage1=probe_stage1[x], in_pool=probe_pool[x],
                            rel=(lx - refined[0][0]) / refined[0][0]))
@@ -1186,6 +1213,83 @@ def read_dive(path: str, visit, ch: int | None = None, reg=None, geometry: Geome
                 margin=(refined[1][0] - refined[0][0]) / refined[0][0] if len(refined) > 1 else None,
                 shifts=shifts, shift_margin=shift_margin, probes=probes,
                 seconds=time.time() - t0)
+
+
+PIKMIN_STEP = 0.1 / TIMER_SPEED     # frames between two Pikmin of one colour starting
+
+
+def cross_rank(dv: DiveVideo, counts, g: Geometry, states, pool=(), threads: int = 6, add: int = 8, polish: int = 8,
+               shifts_of: int = 3, log=None):
+    """Final ranking of dive candidates that does not depend on optimiser luck.
+
+    A geometry fit per candidate does not reach the same optimum from different starts (losses 5-10%
+    apart), so comparing each candidate's own fitted loss favours whichever was fitted more often, in
+    particular the one-Pikmin shifts (+-4 draws) of the leader. Here every geometry fitted to any
+    candidate is offered to all of them: a candidate's loss is its best over all fitted geometries
+    and a few start offsets (whole Pikmin delays, which is what a shift needs).
+
+    states: the candidates to fit (leaders of the search). pool: more states from the search (its
+    top few hundred); they are screened at half resolution under the leaders' geometries and the
+    best `add` join the candidates. The +-4 and +-8 draw shifts of the `shifts_of` leaders join too.
+    Returns (states, losses, geometries, best geometry index per state), sorted by loss."""
+    from concurrent.futures import ThreadPoolExecutor
+    M = 0x7FFFFFFF
+    frames = sorted(dv.obs)
+    _inputs(dv, 1, 1)
+    offs = (-2 * PIKMIN_STEP, -PIKMIN_STEP, 0.0, PIKMIN_STEP, 2 * PIKMIN_STEP)
+    S, seen = [], set()
+
+    def push(xs):
+        new = []
+        for x in xs:
+            x = int(x) & 0xFFFFFFFF
+            if x & M not in seen:
+                seen.add(x & M)
+                S.append(x)
+                new.append(x)
+        return new
+
+    def fit(args):
+        x, g0 = args
+        return fit_geometry(dv, flatten(dive_params(x, counts)), g0, frames, fast=True, anchor=g, state=x,
+                            counts=counts)[0]
+
+    def rows(gs, xs):
+        return np.array([fast_loss(dv, counts, gj, xs, f0_offsets=offs) for gj in gs]).reshape(len(gs), len(xs))
+
+    push(states)
+    with ThreadPoolExecutor(max(1, threads)) as ex:
+        G = [g] + list(ex.map(fit, [(x, g) for x in S]))
+        L = rows(G, S)
+        for rnd in range(2):
+            best = L.min(axis=0)
+            order = np.argsort(best)
+            lead_g = [G[int(L[:, i].argmin())] for i in order[:polish]]
+            extra = []
+            if rnd == 0 and len(pool):
+                rest = np.array([x for x in pool if int(x) & M not in seen], np.uint64)
+                if len(rest):
+                    pre = np.min([fast_loss(dv, counts, gj, rest, 2, 2, f0_offsets=offs) for gj in lead_g[:4]], axis=0)
+                    extra += [int(x) for x in rest[np.argsort(pre)[:add]]]
+            for i in order[:shifts_of]:
+                extra += [(rng.next_seed(S[i], k) if k > 0 else rng.prev_seed(S[i], -k)) for k in (-8, -4, 4, 8)]
+            n0 = len(S)
+            newx = push(extra)
+            # new candidates from the leader's geometry; the leaders again from their own best one
+            jobs = [(x, lead_g[0]) for x in newx] + [(S[i], lead_g[k]) for k, i in enumerate(order[:polish])]
+            Gn = list(ex.map(fit, jobs))
+            if newx:
+                L = np.hstack([L, rows(G, newx)])
+            L = np.vstack([L, rows(Gn, S)])
+            G += Gn
+            if log:
+                b = L.min(axis=0)
+                o = np.argsort(b)
+                log(f"  cross-rank round {rnd + 1}: {len(S)} states (+{len(S) - n0}), {len(G)} geometries, leader "
+                    f"0x{S[o[0]]:08X} {b[o[0]]:.1f}, next {b[o[1]]:.1f}")
+    best = L.min(axis=0)
+    order = np.argsort(best)
+    return [S[i] for i in order], [float(best[i]) for i in order], G, [int(L[:, i].argmin()) for i in order]
 
 
 # ---------------------------------------------------------------- compiled batch image loss
