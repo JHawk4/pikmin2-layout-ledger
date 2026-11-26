@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::capture::{Crop, SourceSpec};
+use crate::rng::Gen;
 use crate::manip::{ChMode, ManipSettings};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +110,9 @@ pub struct Profile {
     /// Challenge Mode manip settings (CaveGen's config.txt)
     #[serde(default)]
     pub manip: ManipSettings,
+    /// The console: its `rand()` decides seeds and layouts (Switch: Pikmin 2 HD)
+    #[serde(default)]
+    pub console: Gen,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

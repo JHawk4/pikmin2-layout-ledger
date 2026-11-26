@@ -9,6 +9,7 @@ use eframe::egui::{self, Color32, ColorImage, Pos2, Rect, RichText, Sense, Strok
 
 use crate::capture::{cameras, Crop, SourceSpec};
 use crate::engine::{Cmd, DetectCfg, Engine, Entry};
+use crate::rng::Gen;
 use crate::server::{self, Overlay};
 use crate::settings::{Category, Language, LayoutView, Profile, Settings};
 
@@ -29,6 +30,8 @@ pub struct App {
     show_log: bool,
     /// the hint last saved to the profile
     saved_hint: Option<(f64, f64)>,
+    /// the anchor / seed text box
+    anchor_text: String,
 }
 
 enum Screen {
@@ -47,6 +50,7 @@ struct Wizard {
     frame_size: (usize, usize),
     category: Category,
     language: Language,
+    console: Gen,
     name: String,
     /// editing this profile (else a new one)
     editing: Option<usize>,
@@ -61,7 +65,7 @@ enum Handle {
 }
 
 fn detect_cfg(p: &Profile) -> DetectCfg {
-    DetectCfg { category: p.category, language: p.language, hint: p.hint, view: p.view.clone(), manip: p.manip.clone() }
+    DetectCfg { category: p.category, language: p.language, hint: p.hint, view: p.view.clone(), manip: p.manip.clone(), console: p.console }
 }
 
 impl App {
@@ -70,7 +74,7 @@ impl App {
         let engine = Engine::start(Box::new(move || ctx.request_repaint()));
         let settings = Settings::load();
         let overlay = server::start(engine.shared.clone(), settings.port);
-        let mut app = App { engine, settings, overlay, screen: Screen::Main, preview: None, layout: None, selected: None, toast: None, show_log: false, saved_hint: None };
+        let mut app = App { engine, settings, overlay, screen: Screen::Main, preview: None, layout: None, selected: None, toast: None, show_log: false, saved_hint: None, anchor_text: String::new() };
         match app.settings.profile().cloned() {
             Some(p) => app.start_profile(&p),
             None => app.screen = Screen::Wizard(app.new_wizard(None)),
@@ -100,6 +104,7 @@ impl App {
             frame_size: p.map(|p| p.frame_size).unwrap_or((0, 0)),
             category: p.map(|p| p.category).unwrap_or(Category::Pod),
             language: p.map(|p| p.language).unwrap_or(Language::Auto),
+            console: p.map(|p| p.console).unwrap_or_default(),
             name: p.map(|p| p.name.clone()).unwrap_or_default(),
             editing,
             drag: None,
@@ -304,7 +309,7 @@ impl App {
                             2 => {
                                 self.engine.send(Cmd::Crop(w.crop));
                                 self.engine.send(Cmd::NewRun);
-                                self.engine.send(Cmd::Detect(Some(DetectCfg { category: w.category, language: w.language, hint: None, view: LayoutView::default(), manip: self.settings.profiles.get(w.editing.unwrap_or(usize::MAX)).map(|p| p.manip.clone()).unwrap_or_default() })));
+                                self.engine.send(Cmd::Detect(Some(DetectCfg { category: w.category, language: w.language, hint: None, view: LayoutView::default(), manip: self.settings.profiles.get(w.editing.unwrap_or(usize::MAX)).map(|p| p.manip.clone()).unwrap_or_default(), console: w.console })));
                                 w.seen_screens = 0;
                                 w.step = 3;
                             }
@@ -599,6 +604,7 @@ impl App {
             hint: hint.or(old.filter(|o| o.crop == crop && o.frame_size == w.frame_size).and_then(|o| o.hint)),
             view: old.map(|o| o.view.clone()).unwrap_or_default(),
             manip: old.map(|o| o.manip.clone()).unwrap_or_default(),
+            console: w.console,
         };
         let i = match w.editing {
             Some(i) if i < self.settings.profiles.len() => {
@@ -627,9 +633,22 @@ impl App {
             ui.label(RichText::new(e.title()).size(24.0).strong());
             let sure = e.confidence == "high" || e.chained;
             ui.label(RichText::new(e.seed_text()).monospace().size(20.0).color(if sure { GOOD } else { WARN }));
-            ui.label(RichText::new(format!("{}{}", e.confidence, if e.chained { ", chained" } else { "" })).weak());
+            ui.label(RichText::new(format!("{}{}{}", e.confidence, if e.chained { ", chained" } else { "" }, if e.anchored { ", near the anchor" } else { "" })).weak());
             if let Some(s) = e.score {
                 ui.label(RichText::new(format!("judge {s:.0}")).weak());
+            }
+            if let Some(seed) = e.layout_seed {
+                if !e.cave.starts_with("CH") {
+                    let is_anchor = *self.engine.shared.anchor.lock().unwrap() == Some(seed);
+                    if !is_anchor
+                        && ui
+                            .small_button("✔ Right seed: anchor")
+                            .on_hover_text("Mark this seed as right. The next sublevels are searched just after it first: faster, and fewer letters are needed.")
+                            .clicked()
+                    {
+                        self.engine.send(Cmd::Anchor(Some(seed)));
+                    }
+                }
             }
             if let Some(err) = &e.render_error {
                 ui.colored_label(WARN, err);
@@ -731,6 +750,8 @@ impl App {
                 }
             });
             ui.separator();
+            self.story_anchor_ui(ui, profile.as_ref().map(|p| p.console).unwrap_or_default());
+            ui.separator();
             if let Some(i) = self.settings.active {
                 let mut view = self.settings.profiles[i].view.clone();
                 ui.checkbox(&mut view.quick_glance, "QuickGlance (discs behind what matters)");
@@ -801,6 +822,34 @@ impl App {
 }
 
 impl App {
+    fn story_anchor_ui(&mut self, ui: &mut egui::Ui, rng: Gen) {
+        let anchor = *self.engine.shared.anchor.lock().unwrap();
+        ui.horizontal_wrapped(|ui| {
+            ui.label(RichText::new("Anchor").strong());
+            match anchor {
+                Some(a) => {
+                    ui.label(RichText::new(rng.hex(a)).monospace().color(GOOD));
+                    if ui.small_button("clear").clicked() {
+                        self.engine.send(Cmd::Anchor(None));
+                    }
+                }
+                None => {
+                    ui.label(RichText::new("none").weak());
+                }
+            }
+        })
+        .response
+        .on_hover_text("A layout seed you know is right. Seeds are searched just after it first, and it moves along with each sure seed.");
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.anchor_text).hint_text("layout seed (hex)").desired_width(140.0).font(egui::TextStyle::Monospace));
+            let parsed = rng.parse(&self.anchor_text);
+            if ui.add_enabled(parsed.is_some(), egui::Button::new("Set")).clicked() {
+                self.engine.send(Cmd::Anchor(parsed));
+                self.anchor_text.clear();
+            }
+        });
+    }
+
     /// Challenge Mode: the level grid, the plan (levels, seeds, when to press A) and the layout.
     fn challenge_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, status: &crate::engine::Status) {
         let shared = self.engine.shared.clone();
@@ -869,7 +918,7 @@ impl App {
                     ui.add(egui::Slider::new(&mut manip.first_level_wait_s, 10.0..=600.0).text("first level: seconds ahead"));
                     let kind = ch.mode.kind().to_string();
                     let mut path = manip.times_tables.get(&kind).cloned().unwrap_or_default();
-                    ui.label(format!("CaveGen times table ({kind}), optional:"));
+                    ui.label(format!("CaveGen's own times table ({kind}), optional (else the built-in one):"));
                     if ui.add(egui::TextEdit::singleline(&mut path).hint_text("…\\files\\times_table_key.txt")).changed() {
                         if path.trim().is_empty() {
                             manip.times_tables.remove(&kind);
@@ -881,6 +930,22 @@ impl App {
                 ui.add(egui::Slider::new(&mut manip.seconds_of_delay, 0.0..=5.0).text("seconds of delay"))
                     .on_hover_text("Frame 0 (\"Don't Save\") is this long before the last black frame after the results.\nGetting the seed before the target: lower it; after: raise it.");
                 ui.add(egui::Slider::new(&mut manip.frames_to_scroll_level, 5..=60).text("frames per menu move"));
+                ui.checkbox(&mut manip.detect_title_loops, "Detect title-screen loops (+4505)")
+                    .on_hover_text("With no level entered, an even number of fades on the level select is a loop through the title demo: the plan is made again 4505 draws on.");
+                ui.label("Special targets (CaveGen's @CH lines):");
+                ui.add(egui::TextEdit::multiline(&mut manip.special_targets).hint_text("@CH18,151AC72B,195B5B5E").desired_rows(2).font(egui::TextStyle::Monospace));
+                let mut far = manip.max_dist_to_consider as f64;
+                if ui.add(egui::Slider::new(&mut far, 1e3..=1e9).logarithmic(true).text("draws ahead at most")).changed() {
+                    manip.max_dist_to_consider = far as u64;
+                }
+                ui.label("Splits, CH1..CH30 (m.ss, for the delta):");
+                let mut text = manip.splits.iter().map(|v| format!("{v:.2}")).collect::<Vec<_>>().join(",");
+                if ui.add(egui::TextEdit::multiline(&mut text).desired_rows(2).font(egui::TextStyle::Monospace)).changed() {
+                    let v: Vec<f64> = text.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                    if v.len() == 30 {
+                        manip.splits = v;
+                    }
+                }
             });
             if manip != self.settings.profiles[pi].manip {
                 self.settings.profiles[pi].manip = manip.clone();
@@ -905,11 +970,17 @@ impl App {
         egui::CentralPanel::default().show(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.label(RichText::new(ch.mode.label()).strong());
+                if ch.rng == Gen::Switch {
+                    ui.label(RichText::new("Switch").weak());
+                }
                 if let Some(r) = &ch.roll {
                     match r.end_state {
-                        Some(e) => ui.label(RichText::new(format!("roll ended on 0x{e:08X}")).monospace()),
+                        Some(e) => ui.label(RichText::new(format!("roll ended on {}", ch.rng.hex(e))).monospace()),
                         None => ui.colored_label(WARN, "roll not read"),
                     };
+                    if r.found_by_anchor {
+                        ui.label(RichText::new(format!("found near the anchor (+{})", r.from_anchor.unwrap_or(0))).weak());
+                    }
                     if r.note != "ok" {
                         ui.colored_label(WARN, &r.note);
                     }
@@ -924,6 +995,7 @@ impl App {
                     ui.colored_label(WARN, e);
                 }
             });
+            self.challenge_status_ui(ui, &ch, status);
             let Some(plan) = ch.plan.clone() else {
                 ui.vertical_centered(|ui| {
                     ui.add_space(ui.available_height() * 0.3);
@@ -931,8 +1003,20 @@ impl App {
                 });
                 return;
             };
-            if plan.greedy {
-                ui.colored_label(WARN, "No times table for this category: levels are ranked by this layout alone (set CaveGen's table in Manip settings).");
+            if plan.greedy() {
+                ui.colored_label(WARN, "No times table for this category: levels are ranked by this layout alone.");
+            }
+            if let Some(sp) = &plan.special {
+                let e = ch.frame0.map(|f0| (status.idx.saturating_sub(f0)) as f64 / status.fps.max(1.0) * 30.0);
+                let mut t = format!("Special target: CH{} {}  {}  {} draws ahead ({} title loops + {})", sp.level, crate::chengine::level_name(sp.level), plan.rng.hex(sp.seed), sp.dist, sp.dist / 4505, sp.dist % 4505);
+                if sp.window > 0 {
+                    let start = (sp.target_frame - sp.window / 2) as f64;
+                    match e {
+                        Some(e) => t += &format!(", press A in {:.1} s (window {:.1} s)", ((start - e) / 30.0).max(0.0), sp.window as f64 / 30.0),
+                        None => t += &format!(", A at {:.1} s (window {:.1} s)", start / 30.0, sp.window as f64 / 30.0),
+                    }
+                }
+                ui.colored_label(ACCENT, t);
             }
             if plan.options.is_empty() {
                 ui.colored_label(WARN, "No level and seed passes the settings (rank, levels, timing).");
@@ -998,10 +1082,10 @@ impl App {
                                 (Some(t), Some(w)) if t <= 0.0 => format!("{:.1}", w.max(0.0)),
                                 _ => format!("{:.1}", o.window as f64 / 30.0),
                             }));
-                            ui.label(txt(format!("{:08X}", o.seed)));
+                            ui.label(txt(plan.rng.hex(o.seed)));
                             ui.label(txt(format!("{}", o.advances)));
                             ui.label(txt(format!("{:.1}%", o.rank)));
-                            ui.label(txt(format!("{:.0}", o.delta)));
+                            ui.label(txt(if o.no_key { format!("{:.0} no key", o.delta) } else { format!("{:.0}", o.delta) }));
                             ui.end_row();
                         }
                     });
@@ -1043,6 +1127,90 @@ impl App {
     }
 }
 
+impl App {
+    /// Challenge Mode: the anchor / a seed typed in, title loops, level enters and the run's
+    /// time against the splits.
+    fn challenge_status_ui(&mut self, ui: &mut egui::Ui, ch: &crate::chengine::ChState, status: &crate::engine::Status) {
+        let shared = self.engine.shared.clone();
+        let repaint: Arc<dyn Fn() + Send + Sync> = {
+            let ctx = ui.ctx().clone();
+            Arc::new(move || ctx.request_repaint())
+        };
+        ui.horizontal_wrapped(|ui| {
+            match ch.anchor.or(ch.last_end) {
+                Some(a) => {
+                    ui.label(RichText::new(format!("anchor {}{}", ch.rng.hex(a), if ch.anchor.is_some() { " (yours)" } else { " (last roll)" })).monospace().weak())
+                        .on_hover_text("The next roll is searched near this state, so a roll with few readable digits still gives its seed.");
+                }
+                None => {
+                    ui.label(RichText::new("no anchor").weak());
+                }
+            }
+            ui.add(egui::TextEdit::singleline(&mut self.anchor_text).hint_text("seed (hex)").desired_width(150.0).font(egui::TextStyle::Monospace));
+            let parsed = ch.rng.parse(&self.anchor_text);
+            if ui
+                .add_enabled(parsed.is_some(), egui::Button::new("Anchor"))
+                .on_hover_text("A state you know is right (e.g. a roll end you read yourself): the next rolls are searched near it.")
+                .clicked()
+            {
+                shared.ch.lock().unwrap().anchor = parsed;
+                self.anchor_text.clear();
+            }
+            if ui
+                .add_enabled(parsed.is_some(), egui::Button::new("Plan from it"))
+                .on_hover_text("Plan as if a roll had ended on this state (CaveGen's last known seed), and anchor on it.")
+                .clicked()
+            {
+                if let Some(e) = parsed {
+                    {
+                        let mut s = shared.ch.lock().unwrap();
+                        s.anchor = Some(e);
+                        s.last_end = Some(e);
+                    }
+                    crate::chengine::spawn_plan(&shared.ch, e, 0, &repaint);
+                    self.anchor_text.clear();
+                }
+            }
+            if ch.anchor.is_some() && ui.small_button("forget anchor").clicked() {
+                shared.ch.lock().unwrap().anchor = None;
+            }
+            ui.separator();
+            if ui
+                .add_enabled(ch.plan.is_some(), egui::Button::new("Title loop +1"))
+                .on_hover_text("The game went through the title demo (4505 draws): plan again from the level select's state now, timed from the next fade.")
+                .clicked()
+            {
+                let mut s = shared.ch.lock().unwrap();
+                let g = s.rng;
+                let m = s.menu_state(status.idx).map(|m| m.0).or_else(|| s.plan.as_ref().map(|p| p.start()));
+                let loops = s.title_loops + 1;
+                s.frame0 = None;
+                s.want_fade = true;
+                drop(s);
+                if let Some(m) = m {
+                    crate::chengine::spawn_plan(&shared.ch, g.next(m, crate::manip::TITLE_LOOP - crate::manip::ROLL_TO_MENU), loops, &repaint);
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            let mut parts = vec![format!("fades {}", ch.fades), format!("level enters {}", ch.level_enters)];
+            if ch.title_loops > 0 {
+                parts.push(format!("title loops {}", ch.title_loops));
+            }
+            if let Some((m, n)) = ch.menu_state(status.idx) {
+                parts.push(format!("menu {} (+{n})", ch.rng.hex(m)));
+            }
+            ui.label(RichText::new(parts.join(" · ")).weak().size(12.0));
+            if let Some((elapsed, delta)) = ch.delta(status.idx) {
+                let (m, sec) = ((elapsed / 60.0) as u64, elapsed % 60.0);
+                ui.label(RichText::new(format!("run {m}:{sec:04.1}")).monospace());
+                ui.label(RichText::new(format!("{delta:+.0} s vs splits")).monospace().color(if delta <= 0.0 { GOOD } else { WARN }))
+                    .on_hover_text("Time since the run's first level enter, against the summed splits of the levels played.");
+            }
+        });
+    }
+}
+
 fn step_category(ui: &mut egui::Ui, w: &mut Wizard) {
     ui.label(RichText::new("What are you running?").size(18.0));
     ui.add_space(6.0);
@@ -1051,9 +1219,17 @@ fn step_category(ui: &mut egui::Ui, w: &mut Wizard) {
     }
     if w.category.challenge().is_some() {
         ui.label(
-            RichText::new("Challenge Mode reads the score roll on each results screen and lists the levels and seeds to aim for, with when to press A. Menu timing is CaveGen's (GameCube, 30 fps).")
+            RichText::new("Challenge Mode reads the score roll on each results screen and lists the levels and seeds to aim for, with when to press A. Menu timing is CaveGen's (30 fps).")
                 .weak(),
         );
+    }
+    ui.add_space(12.0);
+    ui.label(RichText::new("Console").size(16.0));
+    for g in [Gen::Gc, Gen::Switch] {
+        ui.radio_value(&mut w.console, g, g.label());
+    }
+    if w.console == Gen::Switch {
+        ui.label(RichText::new("Pikmin 2 HD uses another random number generator (musl's, 64-bit seeds). Layouts follow CaveGen3's Switch mode; menu timing is assumed the same as GameCube's.").weak());
     }
     ui.add_space(12.0);
     ui.label(RichText::new("Game language").size(16.0));

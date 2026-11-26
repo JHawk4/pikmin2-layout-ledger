@@ -117,7 +117,18 @@ exe) is a good fit: the Browser Source overlay is a web page anyway, so the two 
      - **Roll reader:** a Rust port of the score-roll reader. It equals the Python reader on all
        60 screens of two CMAL runs.
      - **Planning:** CaveGen's manip planning and A-press timing, synced to the captured frames.
-   - **Still to do:** frames from a running OBS Virtual Camera.
+     - **Times tables:** 900 numbers per mode, built from 200,000 CaveGen3 layouts per level,
+       replace CaveGen's 4 GiB files. Simulated over 1,000 full runs, they save 260.1 s per
+       run against average layouts, and CaveGen's table 261.0 s. A floor with no key counts
+       as the level's average + 120 s.
+     - **CaveGen extras:** special targets, level enters (the floor card), title-loop
+       detection, splits and the run's delta.
+   - **Anchors:** in story mode, a seed marked right is searched near first. In Challenge Mode,
+     the last roll (or a state typed in) anchors the next one, so poorly read rolls are found
+     near it (cmal09: 16 of 16 unreadable roll starts found, 5 ends).
+   - **Switch (Pikmin 2 HD):** musl's 64-bit generator for letters, rolls, layouts and menu
+     timing. All 30 cmal01 rolls decode; Switch story mode is checked only on saved fits.
+   - **Still to do:** frames from a running OBS Virtual Camera; the window tested by a person.
 4. **Packaging.** A Windows exe first, then macOS. One test with real OBS and its virtual camera
    (needs OBS installed on the dev machine).
 

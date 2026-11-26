@@ -5,9 +5,12 @@
 //!   p2live-app --cameras       list the cameras DirectShow sees
 //!   p2live-app --grab NAME|VIDEO SECONDS [out.png]   read frames, report the rate
 //!   p2live-app --layout SCx-3 0x1234ABCD out.png     draw one layout
-//!   p2live-app --headless NAME|VIDEO [--find S] [--run S] [--category pod|at] [--port P]
+//!   p2live-app --headless NAME|VIDEO [--find S] [--run S] [--category pod|at|attk|key|cmat|700k]
+//!              [--console gc|switch] [--port P]
 //!              the engine and the Browser Source without the window: find the game picture
 //!              for --find seconds, then detect for --run seconds, printing the log
+//!   p2live-app --build-times OUT_DIR [--samples N] [--kinds key,cmat,attk]
+//!              the Challenge Mode times tables (times.rs), from N random layouts per level
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -18,10 +21,12 @@ mod chengine;
 mod dshow;
 mod engine;
 mod feed;
+mod rng;
 mod gui;
 mod manip;
 mod server;
 mod settings;
+mod times;
 
 use std::time::{Duration, Instant};
 
@@ -116,6 +121,41 @@ fn main() {
             }
             println!("{} samples: {:?}", f.samples, f.find());
         }
+        Some("--probe-card") => {
+            // --probe-card VIDEO FROM TO: the Challenge Mode screen tests, frame by frame
+            attach_console();
+            let path = &args[2];
+            let (from, to): (usize, usize) = (args[3].parse().unwrap(), args[4].parse().unwrap());
+            let info = p2live::video::probe(path).expect("ffprobe");
+            let mut child = std::process::Command::new("ffmpeg")
+                .args(["-v", "error", "-ss", &format!("{}", from as f64 / info.fps), "-i", path, "-frames:v", &(to - from).to_string(), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])
+                .stdout(std::process::Stdio::piped())
+                .spawn()
+                .expect("ffmpeg");
+            let mut out = child.stdout.take().unwrap();
+            let mut buf = vec![0u8; info.w * info.h * 3];
+            let mut i = from;
+            while std::io::Read::read_exact(&mut out, &mut buf).is_ok() {
+                let f = capture::Frame::from_rgb(info.w, info.h, buf.clone());
+                println!("{i} {}", chengine::probe(&f, capture::Crop::full(info.w, info.h)));
+                i += 1;
+            }
+        }
+        Some("--build-times") => {
+            // --build-times OUT_DIR [--samples N] [--kinds key,cmat,attk]
+            attach_console();
+            let out = std::path::PathBuf::from(args.get(2).cloned().unwrap_or_else(|| ".".into()));
+            let samples: usize = opt(&args, "--samples", 20000);
+            let kinds: String = opt(&args, "--kinds", String::from("key,cmat,attk"));
+            let data = cavegen3::GameData::from_dir(engine::cavegen_data()).expect("cavegen3 data");
+            for kind in kinds.split(',') {
+                let t0 = Instant::now();
+                let t = times::build(&data, kind, samples, &|s| println!("{s}")).expect("build");
+                let path = out.join(format!("times_{kind}.json"));
+                std::fs::write(&path, serde_json::to_string(&t).unwrap()).unwrap();
+                println!("wrote {} in {:.0} s", path.display(), t0.elapsed().as_secs_f64());
+            }
+        }
         Some("--headless") => {
             attach_console();
             headless(&args[2..]);
@@ -147,6 +187,10 @@ fn headless(args: &[String]) {
         "700k" => Category::K700,
         _ => Category::Pod,
     };
+    let console = match opt(args, "--console", String::from("gc")).as_str() {
+        "switch" => rng::Gen::Switch,
+        _ => rng::Gen::Gc,
+    };
     let engine = Engine::start(Box::new(|| {}));
     let overlay = server::start(engine.shared.clone(), port);
     println!("Browser Source: {} {}", overlay.url(), overlay.error.clone().unwrap_or_default());
@@ -171,7 +215,7 @@ fn headless(args: &[String]) {
     let crop = crop.unwrap_or(capture::Crop::full(st.w, st.h));
     engine.send(Cmd::FindFeed(false));
     engine.send(Cmd::Crop(Some(crop)));
-    engine.send(Cmd::Detect(Some(DetectCfg { category, language: Language::Auto, hint: None, view: LayoutView::default(), manip: Default::default() })));
+    engine.send(Cmd::Detect(Some(DetectCfg { category, language: Language::Auto, hint: None, view: LayoutView::default(), manip: Default::default(), console })));
     let t1 = Instant::now();
     while t1.elapsed().as_secs_f64() < run {
         std::thread::sleep(Duration::from_millis(500));
@@ -193,22 +237,25 @@ fn headless(args: &[String]) {
     let ch = engine.shared.ch.lock().unwrap().clone();
     if category.challenge().is_some() {
         println!("results screens {}, frame0 {:?}, played {:?}, busy {:?}, error {:?}", ch.screens, ch.frame0, ch.run.played, ch.busy, ch.error);
+        println!("fades {}, level enters {}, title loops {}, run start {:?}, delta {:?}", ch.fades, ch.level_enters, ch.title_loops, ch.run_start, ch.delta(engine.shared.status.lock().unwrap().idx));
         if let Some(r) = &ch.roll {
-            println!("last roll: {} end {:?} at {:?} ({})", r.final_display, r.end_state.map(|e| format!("0x{e:08X}")), r.end_frame, r.note);
+            println!("last roll: {} end {:?} at {:?} ({})", r.final_display, r.end_state.map(|e| ch.rng.hex(e)), r.end_frame, r.note);
         }
         if let Some(p) = &ch.plan {
+            println!("table {:?}, special {:?}", p.table, p.special);
             for o in p.options.iter().take(8) {
                 println!(
-                    "  CH{:<2} {:<22} {:>6} A at {:>5.1} s ±{:.1}  seed {:08X} +{}  rank {:>4.1}%  delta {:>8.1}",
+                    "  CH{:<2} {:<22} {:>6} A at {:>5.1} s ±{:.1}  seed {} +{}  rank {:>4.1}%  delta {:>8.1}{}",
                     o.level,
                     chengine::level_name(o.level),
                     o.scroll,
                     o.target_frame as f64 / 30.0,
                     o.window as f64 / 60.0,
-                    o.seed,
+                    p.rng.hex(o.seed),
                     o.advances,
                     o.rank,
-                    o.delta
+                    o.delta,
+                    if o.no_key { " no key" } else { "" }
                 );
             }
         }

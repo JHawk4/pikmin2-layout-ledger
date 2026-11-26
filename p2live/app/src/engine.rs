@@ -16,6 +16,7 @@ use p2live::templates::{caves, Cave, POD_CAVES};
 use crate::capture::{Crop, Frame, Source, SourceSpec};
 use crate::feed::FeedFinder;
 use crate::chengine::{level_name, ChPipe, ChState};
+use crate::rng::Gen;
 use crate::manip::{ChMode, ManipSettings};
 use crate::settings::{Category, Language, LayoutView};
 
@@ -27,6 +28,8 @@ pub struct DetectCfg {
     pub hint: Option<(f64, f64)>,
     pub view: LayoutView,
     pub manip: ManipSettings,
+    /// GameCube/Wii/Wii U or Switch: the game's rand()
+    pub console: Gen,
 }
 
 pub enum Cmd {
@@ -43,6 +46,9 @@ pub enum Cmd {
     View(LayoutView),
     /// Challenge Mode: show this level's floor 1 with this seed (the picked option).
     ChShow(usize, u64),
+    /// Story: a layout seed the user marked as right (the next seeds are searched near it), or
+    /// none to forget it.
+    Anchor(Option<u64>),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -75,6 +81,9 @@ pub struct Entry {
     pub layout_seed: Option<u64>,
     pub confidence: String,
     pub chained: bool,
+    /// found near the user's anchor
+    pub anchored: bool,
+    pub rng: Gen,
     pub ready_s: f64,
     pub png: Option<Arc<Vec<u8>>>,
     pub score: Option<f64>,
@@ -94,7 +103,7 @@ impl Entry {
         }
     }
     pub fn seed_text(&self) -> String {
-        self.layout_seed.map(|s| format!("{s:08X}")).unwrap_or_else(|| "no seed".into())
+        self.layout_seed.map(|s| self.rng.hex(s)).unwrap_or_else(|| "no seed".into())
     }
 }
 
@@ -111,6 +120,8 @@ pub struct Shared {
     pub cavegen: Mutex<Result<(), String>>,
     /// Challenge Mode state (the plan, the run's levels)
     pub ch: Arc<Mutex<ChState>>,
+    /// Story: the anchor the detector searches near (the user's, moved along by trusted seeds)
+    pub anchor: Mutex<Option<u64>>,
 }
 
 impl Shared {
@@ -146,7 +157,8 @@ impl Engine {
             hint: Mutex::new(None),
             log: Mutex::new(VecDeque::new()),
             cavegen: Mutex::new(Ok(())),
-            ch: Arc::new(Mutex::new(ChState::new(ChMode::Attk, ManipSettings::default()))),
+            ch: Arc::new(Mutex::new(ChState::new(ChMode::Attk, Gen::Gc, ManipSettings::default()))),
+            anchor: Mutex::new(None),
         });
         let (tx, rx) = channel();
         let stop = Arc::new(AtomicBool::new(false));
@@ -189,6 +201,7 @@ struct RenderJob {
     seed: u64,
     judge: &'static str,
     view: LayoutView,
+    rng: Gen,
 }
 
 pub fn cavegen_data() -> std::path::PathBuf {
@@ -205,7 +218,7 @@ pub fn cavegen_data() -> std::path::PathBuf {
 
 /// CaveGen3 on its own thread: draws the layouts and judges them.
 fn render_thread(shared: Arc<Shared>, rx: Receiver<RenderJob>, repaint: Arc<dyn Fn() + Send + Sync>) {
-    let painter = match cavegen3_cli::Painter::new(&cavegen_data()) {
+    let mut painter = match cavegen3_cli::Painter::new(&cavegen_data()) {
         Ok(p) => p,
         Err(e) => {
             *shared.cavegen.lock().unwrap() = Err(format!("CaveGen3 data not found ({e}); layouts will not be drawn"));
@@ -221,9 +234,10 @@ fn render_thread(shared: Arc<Shared>, rx: Receiver<RenderJob>, repaint: Arc<dyn 
         }
         let t0 = Instant::now();
         let opts = cavegen3_cli::render::Options { quick_glance: job.view.quick_glance, pretty: job.view.pretty, ..Default::default() };
+        painter.generator = job.rng.cavegen();
         let res = painter.png(&job.sublevel, job.seed, &opts);
         let score = painter
-            .query(&["judge", &job.sublevel, job.judge, &job.seed.to_string()])
+            .query(&["judge", &job.sublevel, job.judge, &job.seed.to_string(), job.rng.name()])
             .ok()
             .and_then(|v| v["score"].as_f64());
         let took = t0.elapsed().as_secs_f64();
@@ -240,7 +254,7 @@ fn render_thread(shared: Arc<Shared>, rx: Receiver<RenderJob>, repaint: Arc<dyn 
             e.version += 1;
             drop(entries);
             shared.version.fetch_add(1, Ordering::SeqCst);
-            shared.log(format!("drew {} {:08X} in {:.2} s", job.sublevel, job.seed, took));
+            shared.log(format!("drew {} {} in {:.2} s", job.sublevel, job.rng.hex(job.seed), took));
             repaint();
         }
     }
@@ -266,8 +280,11 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
     let new_live = |shared: &Arc<Shared>, d: &DetectCfg, fps: f64| -> (Live, Receiver<LiveResult>) {
         let mut cfg = LiveConfig::new(fps, cave_list(d.category, d.language));
         cfg.hint = shared.hint.lock().unwrap().or(d.hint).map(|(sy, ratio)| ScaleHint { sy, ratio });
+        set_rng(&mut cfg, d.console);
         let sh = shared.clone();
-        Live::new(cfg, Box::new(move |s| sh.log(s.trim().to_string())))
+        let (lv, rx) = Live::new(cfg, Box::new(move |s| sh.log(s.trim().to_string())));
+        live_set_anchor(&lv, *shared.anchor.lock().unwrap());
+        (lv, rx)
     };
 
     while !stop.load(Ordering::SeqCst) {
@@ -305,8 +322,8 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
                         *shared.hint.lock().unwrap() = d.hint;
                         if let Some(m) = d.category.challenge() {
                             let mut ch = shared.ch.lock().unwrap();
-                            if ch.mode != m {
-                                *ch = ChState::new(m, d.manip.clone());
+                            if ch.mode != m || ch.rng != d.console {
+                                *ch = ChState::new(m, d.console, d.manip.clone());
                             }
                             ch.settings = d.manip.clone();
                             chpipe = Some(ChPipe::new());
@@ -319,9 +336,10 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
                     live = None; // a fresh detector: no previous seed to chain from
                     {
                         let mut ch = shared.ch.lock().unwrap();
-                        let (m, s) = (ch.mode, ch.settings.clone());
-                        *ch = ChState::new(m, s);
+                        let (m, g, s) = (ch.mode, ch.rng, ch.settings.clone());
+                        *ch = ChState::new(m, g, s);
                     }
+                    *shared.anchor.lock().unwrap() = None;
                     if chpipe.is_some() {
                         chpipe = Some(ChPipe::new());
                     }
@@ -341,7 +359,7 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
                     let entries = shared.entries.lock().unwrap();
                     for e in entries.iter() {
                         if let (Some(sub), Some(seed), Some(d)) = (e.sublevel_id(), e.layout_seed, detect.as_ref()) {
-                            let _ = rtx.send(RenderJob { key: e.key, sublevel: sub, seed, judge: d.category.judge(), view: v.clone() });
+                            let _ = rtx.send(RenderJob { key: e.key, sublevel: sub, seed, judge: d.category.judge(), view: v.clone(), rng: d.console });
                         }
                     }
                 }
@@ -360,6 +378,8 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
                             layout_seed: Some(seed),
                             confidence: "high".into(),
                             chained: false,
+                            anchored: false,
+                            rng: detect.as_ref().map(|d| d.console).unwrap_or_default(),
                             ready_s: 0.0,
                             png: None,
                             score: None,
@@ -368,10 +388,22 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
                         });
                         let judge = detect.as_ref().map(|d| d.category.judge()).unwrap_or("attk");
                         let view = detect.as_ref().map(|d| d.view.clone()).unwrap_or_default();
-                        let _ = rtx.send(RenderJob { key, sublevel: format!("CH{level}-1"), seed, judge, view });
+                        let rng = detect.as_ref().map(|d| d.console).unwrap_or_default();
+                        let _ = rtx.send(RenderJob { key, sublevel: format!("CH{level}-1"), seed, judge, view, rng });
                         drop(entries);
                         shared.version.fetch_add(1, Ordering::SeqCst);
                     }
+                }
+                Ok(Cmd::Anchor(a)) => {
+                    *shared.anchor.lock().unwrap() = a;
+                    if let Some((lv, _)) = live.as_ref() {
+                        live_set_anchor(lv, a);
+                    }
+                    shared.log(match a {
+                        Some(s) => format!("anchor set: seeds are searched near {s:X} first"),
+                        None => "anchor cleared".to_string(),
+                    });
+                    repaint();
                 }
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => return,
@@ -436,10 +468,12 @@ fn run(shared: Arc<Shared>, rx: Receiver<Cmd>, stop: Arc<AtomicBool>, repaint: A
             let mut changed = false;
             while let Ok(r) = results.try_recv() {
                 changed = true;
-                let entry = apply(&shared, &r);
+                let entry = apply(&shared, &r, d.console);
+                let a = live_anchor(lv);
+                *shared.anchor.lock().unwrap() = a;
                 if let (Some(sub), Some(seed)) = (entry.sublevel_id(), entry.layout_seed) {
                     if entry.png.is_none() {
-                        let _ = rtx.send(RenderJob { key: entry.key, sublevel: sub, seed, judge: d.category.judge(), view: d.view.clone() });
+                        let _ = rtx.send(RenderJob { key: entry.key, sublevel: sub, seed, judge: d.category.judge(), view: d.view.clone(), rng: d.console });
                     }
                 }
                 if let Some(h) = lv.hint() {
@@ -472,7 +506,7 @@ fn parse_hex(s: &Option<String>) -> Option<u64> {
 }
 
 /// Fold a detector result into the run; returns the entry as it now is.
-fn apply(shared: &Shared, r: &LiveResult) -> Entry {
+fn apply(shared: &Shared, r: &LiveResult, rng: Gen) -> Entry {
     let mut entries = shared.entries.lock().unwrap();
     let seed = parse_hex(&r.layout_seed);
     let guess = r.sublevel_source != "digit";
@@ -488,6 +522,8 @@ fn apply(shared: &Shared, r: &LiveResult) -> Entry {
                 layout_seed: None,
                 confidence: String::new(),
                 chained: false,
+                anchored: false,
+                rng,
                 ready_s: r.ready_after_s,
                 png: None,
                 score: None,
@@ -504,6 +540,7 @@ fn apply(shared: &Shared, r: &LiveResult) -> Entry {
     e.layout_seed = seed;
     e.confidence = format!("{:?}", r.confidence).to_lowercase();
     e.chained = r.chained.is_some();
+    e.anchored = live_anchored(r);
     if !r.update {
         e.ready_s = r.ready_after_s;
     }
@@ -521,4 +558,18 @@ fn apply(shared: &Shared, r: &LiveResult) -> Entry {
         if e.chained { ", chained" } else { "" }
     ));
     e.clone()
+}
+
+// the core detector's console and anchor (p2live::live)
+fn set_rng(cfg: &mut LiveConfig, g: Gen) {
+    cfg.rng = g.core();
+}
+fn live_set_anchor(lv: &Live, a: Option<u64>) {
+    lv.set_anchor(a);
+}
+fn live_anchor(lv: &Live) -> Option<u64> {
+    lv.anchor()
+}
+fn live_anchored(r: &LiveResult) -> bool {
+    r.anchored
 }
