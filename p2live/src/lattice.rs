@@ -2,7 +2,7 @@
 //! search near a known seed (search.search_near).
 
 use crate::img::{median, pyround};
-use crate::rng;
+use crate::rng::{self, Gen};
 
 pub const V_PER_RAND: f64 = 5.0 / 32768.0;
 const M: i128 = 1 << 31;
@@ -151,12 +151,29 @@ pub fn box_points(gens: &[Vec<i128>], lo: &[i128], hi: &[i128], max_nodes: usize
 
 pub struct SearchError;
 
-/// lattice.search (k_tol 4, max_bias 0.5, cap 16, top 5, max_dim 8).
+/// lattice.search (k_tol 4, max_bias 0.5, cap 16, top 5, max_dim 8), GC generator.
 pub fn search(v: &[f64], sigma: &[f64], leave_out: &[usize], max_nodes: usize) -> Result<Vec<Candidate>, SearchError> {
+    search_gen(Gen::Gc, v, sigma, leave_out, max_nodes)
+}
+
+/// Letter speed of the draw that left state `s` (5 * randFloat).
+#[inline]
+pub fn speed(g: Gen, s: u64) -> f64 {
+    match g {
+        Gen::Gc => rng::rand_of_state(s) as f64 * V_PER_RAND,
+        Gen::Switch => 5.0 * g.frac(s),
+    }
+}
+
+/// lattice.search for either generator.
+pub fn search_gen(g: Gen, v: &[f64], sigma: &[f64], leave_out: &[usize], max_nodes: usize) -> Result<Vec<Candidate>, SearchError> {
     let (k_tol, max_bias, cap, top, max_dim) = (4.0, 0.5, 16.0, 5, 8);
     let measured: Vec<usize> = (0..v.len()).filter(|&i| v[i].is_finite() && sigma[i].is_finite() && !leave_out.contains(&i)).collect();
     if measured.len() < 3 {
         return Err(SearchError);
+    }
+    if g == Gen::Switch {
+        return search64(v, sigma, &measured, k_tol, max_bias, cap, top, max_nodes);
     }
     let mut pivot = measured[0];
     for &i in &measured {
@@ -209,15 +226,72 @@ pub fn search(v: &[f64], sigma: &[f64], leave_out: &[usize], max_nodes: usize) -
     Ok(best)
 }
 
+/// Switch letters per search (lattice._search64's SWITCH_MAX_DIM).
+pub const SWITCH_MAX_DIM: usize = 16;
+
+/// lattice._search64: the same box as the GC search over the full 64-bit musl state.
+#[allow(clippy::too_many_arguments)]
+fn search64(v: &[f64], sigma: &[f64], measured: &[usize], k_tol: f64, max_bias: f64, cap: f64, top: usize, max_nodes: usize) -> Result<Vec<Candidate>, SearchError> {
+    let g = Gen::Switch;
+    let m64: i128 = 1 << 64;
+    let mf = 18446744073709551616.0f64;
+    let mut pivot = measured[0];
+    for &i in measured {
+        if sigma[i] < sigma[pivot] {
+            pivot = i;
+        }
+    }
+    let mut others: Vec<usize> = measured.iter().cloned().filter(|&i| i != pivot).collect();
+    others.sort_by(|&a, &b| sigma[a].partial_cmp(&sigma[b]).unwrap());
+    others.truncate(SWITCH_MAX_DIM - 1);
+    let jumps: Vec<(u64, u64)> = (0..v.len()).map(|i| g.jump(i as i64 - pivot as i64)).collect();
+    let span = k_tol * sigma[pivot] + max_bias;
+    let mut lo: Vec<i128> = vec![(((v[pivot] - span) / 5.0 * mf).floor() as i128).max(0)];
+    let mut hi: Vec<i128> = vec![(((v[pivot] + span) / 5.0 * mf).ceil() as i128).min(m64 - 1)];
+    let mut row = vec![1i128];
+    for &i in &others {
+        let (a, c) = jumps[i];
+        row.push((a as i128 - 1).rem_euclid(m64));
+        let d = v[i] - v[pivot];
+        let tol = k_tol * sigma[i].hypot(sigma[pivot]) + 1e-6;
+        lo.push(((d - tol) / 5.0 * mf).floor() as i128 - c as i128);
+        hi.push(((d + tol) / 5.0 * mf).ceil() as i128 - c as i128);
+    }
+    let n = row.len();
+    let mut gens = vec![row];
+    for t in 1..n {
+        let mut r = vec![0i128; n];
+        r[t] = m64;
+        gens.push(r);
+    }
+    let pts = match box_points(&gens, &lo, &hi, max_nodes) {
+        Some(p) if !p.is_empty() => p,
+        _ => return Ok(Vec::new()),
+    };
+    let mut states: Vec<u64> = pts.iter().map(|p| p[0].rem_euclid(m64) as u64).collect();
+    states.sort();
+    states.dedup();
+    let mut best = score_gen(g, &states, v, sigma, measured, &jumps, pivot, cap, max_bias);
+    best.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
+    best.truncate(top);
+    Ok(best)
+}
+
 /// search._score: robust chi-square of each state (the state after the pivot's rand).
 pub fn score(states: &[u64], v: &[f64], sigma: &[f64], measured: &[usize], jumps: &[(u64, u64)], pivot: usize, cap: f64, max_bias: f64) -> Vec<Candidate> {
+    score_gen(Gen::Gc, states, v, sigma, measured, jumps, pivot, cap, max_bias)
+}
+
+/// search._score for either generator (`jumps` from that generator).
+#[allow(clippy::too_many_arguments)]
+pub fn score_gen(g: Gen, states: &[u64], v: &[f64], sigma: &[f64], measured: &[usize], jumps: &[(u64, u64)], pivot: usize, cap: f64, max_bias: f64) -> Vec<Candidate> {
     let w: Vec<f64> = measured.iter().map(|&i| 1.0 / sigma[i].powi(2)).collect();
     let mut rows: Vec<(f64, f64, Vec<f64>, u64)> = states
         .iter()
         .map(|&st| {
             let dm: Vec<f64> = measured
                 .iter()
-                .map(|&i| rng::rand_of_state(rng::apply(jumps[i], st)) as f64 * V_PER_RAND - v[i])
+                .map(|&i| speed(g, g.apply(jumps[i], st)) - v[i])
                 .collect();
             let bias = median(&dm).clamp(-max_bias, max_bias);
             let res: Vec<f64> = dm.iter().map(|x| x - bias).collect();
@@ -227,20 +301,25 @@ pub fn score(states: &[u64], v: &[f64], sigma: &[f64], measured: &[usize], jumps
         .collect();
     rows.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     rows.truncate(10);
-    let back = rng::jump(-(pivot as i64 + 1));
+    let back = g.jump(-(pivot as i64 + 1));
     rows.into_iter()
         .map(|(total, bias, res, st)| {
             let mut r = vec![f64::NAN; v.len()];
             for (k, &i) in measured.iter().enumerate() {
                 r[i] = res[k];
             }
-            Candidate { letter_seed: rng::apply(back, st) & rng::MASK31, score: total, bias, residuals: r, distance: None }
+            Candidate { letter_seed: g.apply(back, st) & g.seed_mask(), score: total, bias, residuals: r, distance: None }
         })
         .collect()
 }
 
-/// search.search_near: letter seeds within `max_dist` steps after `anchor`, all scored.
+/// search.search_near: letter seeds within `max_dist` steps after `anchor`, all scored (GC).
 pub fn search_near(v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: usize) -> Result<Vec<Candidate>, SearchError> {
+    search_near_gen(Gen::Gc, v, sigma, anchor, max_dist, top)
+}
+
+/// search.search_near for either generator.
+pub fn search_near_gen(g: Gen, v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: usize) -> Result<Vec<Candidate>, SearchError> {
     let (max_bias, cap) = (0.5, 16.0);
     let m: Vec<usize> = (0..v.len()).filter(|&i| v[i].is_finite() && sigma[i].is_finite()).collect();
     if m.len() < 2 {
@@ -249,20 +328,45 @@ pub fn search_near(v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: us
     let n = v.len();
     let w: Vec<f64> = m.iter().map(|&i| 1.0 / sigma[i].powi(2)).collect();
     // rolling window of the next n rands after each candidate letter seed
-    let mut s = rng::step(anchor & rng::MASK32);
+    let anchor = if g == Gen::Gc { anchor & rng::MASK32 } else { anchor };
+    let mut s = g.step(anchor);
     let mut window: std::collections::VecDeque<(u64, f64)> = std::collections::VecDeque::new();
     let mut t = s;
     for _ in 0..=n {
-        window.push_back((t, rng::rand_of_state(t) as f64 * V_PER_RAND));
-        t = rng::step(t);
+        window.push_back((t, speed(g, t)));
+        t = g.step(t);
     }
     let mut best: Vec<Candidate> = Vec::new();
     let mut worst_kept = f64::INFINITY;
     let mut dm = vec![0.0; m.len()];
+    // the 5 best-measured letters for the quick reject (only with 7+ letters, so 2 bad ones
+    // among them still leave a fitting seed 3 close pairs)
+    let mut pre: Vec<usize> = (0..m.len()).collect();
+    pre.sort_by(|&a, &b| sigma[m[a]].partial_cmp(&sigma[m[b]]).unwrap());
+    pre.truncate(if m.len() >= 7 { 5 } else { 0 });
+    let pre_tol = pre.iter().map(|&k| sigma[m[k]]).fold(0.0f64, f64::max) * 2.0 * 4.0 + 0.02;
     for d in 0..max_dist {
         // letter seed = anchor advanced d+1 = window[0].0; character i reads window[1+i]
         for (k, &i) in m.iter().enumerate() {
             dm[k] = window[1 + i].1 - v[i];
+        }
+        // quick reject: a fitting seed has nearly equal offsets on most letters (any 3 good ones
+        // among the first 5 give 3 close pairs); a random one rarely does (about 2%)
+        if pre.len() == 5 {
+            let mut close = 0;
+            for a in 0..5 {
+                for b in a + 1..5 {
+                    if (dm[pre[a]] - dm[pre[b]]).abs() < pre_tol {
+                        close += 1;
+                    }
+                }
+            }
+            if close < 3 {
+                window.pop_front();
+                window.push_back((t, speed(g, t)));
+                t = g.step(t);
+                continue;
+            }
         }
         let bias = median(&dm).clamp(-max_bias, max_bias);
         let mut total = 0.0;
@@ -274,16 +378,90 @@ pub fn search_near(v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: us
             for (k, &i) in m.iter().enumerate() {
                 rr[i] = dm[k] - bias;
             }
-            best.push(Candidate { letter_seed: window[0].0 & rng::MASK31, score: total, bias, residuals: rr, distance: Some(d + 1) });
+            best.push(Candidate { letter_seed: window[0].0 & g.seed_mask(), score: total, bias, residuals: rr, distance: Some(d + 1) });
             best.sort_by(|a, b| a.score.partial_cmp(&b.score).unwrap());
             best.truncate(top);
             worst_kept = if best.len() < top { f64::INFINITY } else { best[best.len() - 1].score };
         }
         window.pop_front();
-        window.push_back((t, rng::rand_of_state(t) as f64 * V_PER_RAND));
-        t = rng::step(t);
+        window.push_back((t, speed(g, t)));
+        t = g.step(t);
         s = window[0].0;
     }
     let _ = s;
     Ok(best)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn arr(x: &[Option<f64>]) -> Vec<f64> {
+        x.iter().map(|y| y.unwrap_or(f64::NAN)).collect()
+    }
+
+    // Two real Switch entries (tcbtrio, USA: Emergence Cave 1 and 2), from p2seeds'
+    // test_switch_rng.py: their seeds come from the letters alone and lie 16,424 draws apart.
+    const EC1V: [Option<f64>; 14] = [Some(1.0396), Some(1.3043), Some(3.6543), Some(4.578), Some(0.6658), Some(2.4096), Some(3.282), Some(3.3495), Some(0.495), None, Some(0.4458), Some(4.8133), Some(1.8767), Some(0.8149)];
+    const EC1S: [Option<f64>; 14] = [Some(0.0175), Some(0.0175), Some(0.0148), Some(0.0144), Some(0.0172), Some(0.0165), Some(0.016), Some(0.0156), Some(0.0187), None, Some(0.0187), Some(0.014), Some(0.0165), Some(0.0175)];
+    const EC2V: [Option<f64>; 14] = [Some(0.872), Some(0.0331), Some(3.7353), Some(3.0966), Some(3.9416), Some(3.7342), Some(1.4785), Some(4.6278), Some(-0.0495), None, Some(1.9459), Some(1.7237), Some(3.842), Some(1.2074)];
+    const EC2S: [Option<f64>; 14] = [Some(0.0182), Some(0.0189), Some(0.0149), Some(0.0162), Some(0.0149), Some(0.0149), Some(0.0167), Some(0.0141), Some(0.0189), None, Some(0.0167), Some(0.0163), Some(0.0149), Some(0.0177)];
+
+    #[test]
+    fn real_switch_entries_chain() {
+        let g = Gen::Switch;
+        let a = search_gen(g, &arr(&EC1V), &arr(&EC1S), &[], 2_000_000).ok().unwrap();
+        let b = search_gen(g, &arr(&EC2V), &arr(&EC2S), &[], 2_000_000).ok().unwrap();
+        assert!(a[0].score < 30.0 && b[0].score < 30.0, "{} {}", a[0].score, b[0].score);
+        assert_eq!(a[0].letter_seed, g.next(0x306306F66F0443C4, -1));
+        assert_eq!(g.distance(a[0].letter_seed, b[0].letter_seed), 16_424);
+        // and EC2 from EC1 by the near search
+        let c = search_near_gen(g, &arr(&EC2V), &arr(&EC2S), a[0].letter_seed, 100_000, 2).ok().unwrap();
+        assert_eq!(c[0].letter_seed, b[0].letter_seed);
+        assert_eq!(c[0].distance, Some(16_424));
+    }
+
+    #[test]
+    fn near_search_with_quick_reject_finds_noisy_seed() {
+        // 9 letters, one badly measured, offset 0.3: found 1,234,567 draws after the anchor
+        for g in [Gen::Gc, Gen::Switch] {
+            let anchor = 0x1357_9BDF_2468_ACE0u64 & if g == Gen::Gc { 0xFFFF_FFFF } else { u64::MAX };
+            let seed = g.next(anchor, 1_234_567);
+            let mut s = seed;
+            let mut v = Vec::new();
+            for i in 0..9 {
+                s = g.step(s);
+                let noise = [0.01, -0.02, 0.005, 0.015, -0.01, 0.0, 0.02, -0.005, 0.01][i];
+                v.push(speed(g, s) + 0.3 + noise);
+            }
+            v[4] += 1.7; // a mistracked letter
+            let sig = vec![0.015; 9];
+            let c = search_near_gen(g, &v, &sig, anchor, 2_000_000, 2).ok().unwrap();
+            assert_eq!(c[0].letter_seed, seed & g.seed_mask(), "{g:?}");
+            assert_eq!(c[0].distance, Some(1_234_567));
+            assert!(c[1].score - c[0].score > 15.0);
+        }
+    }
+
+    #[test]
+    fn switch_lattice_finds_synthetic_seed() {
+        let g = Gen::Switch;
+        let mut x: u64 = 0x9E37_79B9_7F4A_7C15;
+        for trial in 0..5 {
+            x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            let seed = x;
+            let mut s = seed;
+            let off = ((x >> 20) % 400) as f64 / 1000.0 - 0.2;
+            let mut v = Vec::new();
+            for i in 0..14 {
+                s = g.step(s);
+                let noise = (((x >> (i * 3)) & 15) as f64 - 7.5) / 7.5 * 0.015;
+                v.push(speed(g, s) - off + noise);
+            }
+            v[9] = f64::NAN;
+            let sig: Vec<f64> = v.iter().map(|x| if x.is_nan() { f64::NAN } else { 0.015 }).collect();
+            let c = search_gen(g, &v, &sig, &[], 2_000_000).ok().unwrap();
+            assert_eq!(c[0].letter_seed, seed, "trial {trial}");
+        }
+    }
 }

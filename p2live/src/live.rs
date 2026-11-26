@@ -24,6 +24,14 @@
 //!    update if it differs.
 //!
 //! Nothing looks ahead: every decision uses frames already received.
+//!
+//! **Anchor.** The runner can confirm a seed ([`AnchorHandle::set`], from any thread). While an
+//! anchor is set, every seed attempt first searches just after it (`NEAR` RNG steps, then
+//! `ANCHOR_WIDE`), which needs far fewer letters than the lattice search; a clear hit there is
+//! reported as trusted (`anchored`), and each trusted seed moves the anchor forward.
+//!
+//! **Switch.** `LiveConfig::rng = Gen::Switch` searches musl's 64-bit generator (Pikmin 2 HD);
+//! seeds are then 16 hex digits.
 
 use std::collections::VecDeque;
 use std::sync::mpsc::{channel, Receiver, Sender};
@@ -37,9 +45,10 @@ use crate::analyze::{analyze_entry_with, Conf, Frames, FALL_LEAD, MIN_CAVE_MARGI
 use crate::calibrate::{calibrate, calibrate_hinted, is_entry_screen, Calibration, ScaleHint};
 use crate::digits::read_sublevel;
 use crate::img::{resize_area, Gray, Img};
-use crate::lattice::search_near;
+use crate::lattice::search_near_gen;
+use crate::rng::Gen;
 use crate::track::{prefill, MatchCache};
-use crate::templates::{layout_seed, Cave};
+use crate::templates::{layout_seed_gen, Cave};
 
 /// Frames kept, in game frames (13 s at 30 fps): the fall lead plus a long title.
 pub const RING: usize = 400;
@@ -55,6 +64,8 @@ pub const NAME_UNTIL: usize = 40;
 pub const DIGITS_AT: usize = 45;
 /// RNG steps searched after the previous layout seed when chaining (live.py's NEAR).
 pub const NEAR: u64 = 2_000_000;
+/// The wider search after a user-confirmed anchor when nothing is clear within NEAR.
+pub const ANCHOR_WIDE: u64 = 20_000_000;
 /// The same cave again within this many seconds is a flicker splitting one screen.
 pub const FLICKER_S: f64 = 5.0;
 /// The detector is tuned for captures of at most this many lines; taller ones are scaled down.
@@ -75,11 +86,13 @@ pub struct LiveConfig {
     pub hint: Option<ScaleHint>,
     /// Chain from the previous sublevel when a fit alone is not high confidence.
     pub chain: bool,
+    /// The game's generator: GC/Wii/Wii U, or Switch (Pikmin 2 HD).
+    pub rng: Gen,
 }
 
 impl LiveConfig {
     pub fn new(fps: f64, caves: Vec<Cave>) -> Self {
-        LiveConfig { fps, caves, tails: vec![12, 16, 20, 24, 28, 32, 40], workers: 2, hint: None, chain: true }
+        LiveConfig { fps, caves, tails: vec![12, 16, 20, 24, 28, 32, 40], workers: 2, hint: None, chain: true, rng: Gen::Gc }
     }
     /// Capture frames per game frame (1 at 30 fps, 2 at 60).
     pub fn mult(&self) -> usize {
@@ -105,6 +118,8 @@ pub struct LiveResult {
     pub confidence: Conf,
     /// RNG steps from the previous sublevel when chaining settled a weak fit.
     pub chained: Option<u64>,
+    /// The seed came from the search after the user-confirmed anchor.
+    pub anchored: bool,
     pub note: String,
     /// Game frames after the settle that the reported attempt used.
     pub tail: usize,
@@ -182,11 +197,50 @@ struct Job {
     sim_due: Option<f64>,
 }
 
+#[derive(Default)]
+struct AnchorState {
+    /// the latest trusted layout seed (chaining starts here)
+    prev: Option<u64>,
+    /// `prev` descends from a seed the runner confirmed
+    user: bool,
+}
+
+/// The anchor, shared between the detector's workers and (for example) a GUI thread.
+#[derive(Clone, Default)]
+pub struct AnchorHandle(Arc<Mutex<AnchorState>>);
+
+impl AnchorHandle {
+    /// Confirm a layout seed (later searches start just after it), or forget the anchor (None;
+    /// plain chaining from the last trusted seed goes on).
+    pub fn set(&self, layout_seed: Option<u64>) {
+        let mut a = self.0.lock().unwrap();
+        match layout_seed {
+            Some(s) => {
+                a.prev = Some(s);
+                a.user = true;
+            }
+            None => a.user = false,
+        }
+    }
+    /// The anchor: the confirmed seed, moved forward to the latest trusted seed after it.
+    pub fn get(&self) -> Option<u64> {
+        let a = self.0.lock().unwrap();
+        if a.user { a.prev } else { None }
+    }
+    /// The latest trusted layout seed, confirmed or not.
+    pub fn latest(&self) -> Option<u64> {
+        self.0.lock().unwrap().prev
+    }
+    fn advance(&self, layout_seed: u64) {
+        self.0.lock().unwrap().prev = Some(layout_seed);
+    }
+}
+
 /// State the workers share.
 struct Shared {
     cfg: LiveConfig,
     hint: Mutex<Option<ScaleHint>>,
-    prev_layout: Mutex<Option<u64>>,
+    anchor: AnchorHandle,
     /// (cave, sublevel) of the latest entry with a known sublevel
     last_sub: Mutex<Option<(String, u32)>>,
     found: Mutex<Vec<Found>>,
@@ -223,7 +277,7 @@ impl Live {
         let shared = Arc::new(Shared {
             hint: Mutex::new(cfg.hint),
             cfg,
-            prev_layout: Mutex::new(None),
+            anchor: AnchorHandle::default(),
             last_sub: Mutex::new(None),
             found: Mutex::new(Vec::new()),
             results: tx,
@@ -253,6 +307,20 @@ impl Live {
     /// The stream's current name scale (to save in a profile).
     pub fn hint(&self) -> Option<ScaleHint> {
         *self.shared.hint.lock().unwrap()
+    }
+
+    /// Confirm a layout seed as the anchor, or forget it (see [`AnchorHandle::set`]).
+    pub fn set_anchor(&self, layout_seed: Option<u64>) {
+        self.shared.anchor.set(layout_seed);
+    }
+
+    pub fn anchor(&self) -> Option<u64> {
+        self.shared.anchor.get()
+    }
+
+    /// A handle to the anchor for another thread.
+    pub fn anchor_handle(&self) -> AnchorHandle {
+        self.shared.anchor.clone()
     }
 
     /// Whether the last frame pushed was part of an entry screen (the cave name on black).
@@ -407,8 +475,8 @@ fn accept(cal: &Calibration) -> bool {
     cal.score >= min_score && margin >= min_margin
 }
 
-fn hex(s: Option<u64>) -> Option<String> {
-    s.map(|x| format!("0x{x:08X}"))
+fn hex(g: Gen, s: Option<u64>) -> Option<String> {
+    s.map(|x| format!("0x{}", g.hex(x)))
 }
 
 fn run_job(sh: &Shared, job: Job) {
@@ -559,9 +627,9 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
         let st = job.state.lock().unwrap();
         (st.cache.clone(), st.prefill_s)
     };
-    let r = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, true, Some(&cache));
+    let r = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, true, Some(&cache), cfg.rng);
     let t_seed = Instant::now();
-    let (letter, conf, chained) = settle(sh, &r);
+    let (letter, conf, chained, anchored) = settle(sh, &r, job.a);
     let t_chain = Instant::now();
     let good = conf == Conf::High || chained.is_some();
     if !good && !last {
@@ -588,7 +656,7 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
             return;
         }
     }
-    let layout = letter.map(|s| layout_seed(s, cal.cave.num_chars()));
+    let layout = letter.map(|s| layout_seed_gen(cfg.rng, s, cal.cave.num_chars()));
     // the sublevel: read on screen, else what the order of play implies (a flicker keeps the
     // replaced report's)
     let (sublevel, source) = match (r.digit_value.or(st.digit), &replaces) {
@@ -625,10 +693,11 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
         cave_name: cal.cave.label().to_string(),
         sublevel,
         sublevel_source: source,
-        letter_seed: hex(letter),
-        layout_seed: hex(layout),
+        letter_seed: hex(cfg.rng, letter),
+        layout_seed: hex(cfg.rng, layout),
         confidence: conf,
         chained,
+        anchored,
         note: r.note.clone(),
         tail,
         ready_after_s: ready,
@@ -646,8 +715,8 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
     }
     // the full analysis; an update if it does better than the quick answer
     let t_full = Instant::now();
-    let r2 = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, false, Some(&cache));
-    let (letter2, conf2, chained2) = settle(sh, &r2);
+    let r2 = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, false, Some(&cache), cfg.rng);
+    let (letter2, conf2, chained2, anchored2) = settle(sh, &r2, job.a);
     let full_s = t_full.elapsed().as_secs_f64();
     // a different seed replaces the shown one only when it can be trusted (high or chained): on a
     // weak fall the variants disagree, and an equally unsure answer is no better (replays: three
@@ -658,7 +727,7 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
         (sh.log)(&format!("[{}] full analysis ({full_s:.1} s) found nothing better", job.a));
         return;
     }
-    let layout2 = letter2.map(|s| layout_seed(s, cal.cave.num_chars()));
+    let layout2 = letter2.map(|s| layout_seed_gen(cfg.rng, s, cal.cave.num_chars()));
     let mut st = job.state.lock().unwrap();
     let Some(mut upd) = st.reported.clone() else { return };
     if conf2 == Conf::High || chained2.is_some() {
@@ -671,10 +740,11 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
     }
     upd.update = true;
     upd.refined = true;
-    upd.letter_seed = hex(letter2);
-    upd.layout_seed = hex(layout2);
+    upd.letter_seed = hex(cfg.rng, letter2);
+    upd.layout_seed = hex(cfg.rng, layout2);
     upd.confidence = conf2;
     upd.chained = chained2;
+    upd.anchored = anchored2;
     upd.note = r2.note.clone();
     upd.ready_after_s += full_s;
     st.reported = Some(upd.clone());
@@ -683,14 +753,45 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
     let _ = sh.results.send(upd);
 }
 
-/// The seed an analysis settles on: its own when high confidence, else chained from the
-/// previous sublevel's layout seed when that is clear, else its own at its confidence.
-fn settle(sh: &Shared, r: &crate::analyze::EntryResult) -> (Option<u64>, Conf, Option<u64>) {
+/// The seed an analysis settles on (letter seed, confidence, chained distance, anchored): with a
+/// confirmed anchor, a clear hit just after it; else its own when high confidence; else chained
+/// from the previous sublevel's layout seed when that is clear; else its own at its confidence.
+fn settle(sh: &Shared, r: &crate::analyze::EntryResult, at: usize) -> (Option<u64>, Conf, Option<u64>, bool) {
+    let g = sh.cfg.rng;
     let (mut letter, mut conf, mut chained) = (r.letter_seed, r.confidence, None);
+    if let (Some(anchor), Some(f)) = (sh.anchor.get(), r.fit.as_ref()) {
+        // the letters alone already agree with the anchor: no scan needed
+        if let (Some(l), Conf::High) = (letter, conf) {
+            let d = g.distance(anchor, l);
+            if (1..=ANCHOR_WIDE).contains(&d) {
+                return (letter, conf, Some(d), true);
+            }
+        }
+        for window in [NEAR, ANCHOR_WIDE] {
+            let Ok(c) = search_near_gen(g, &f.v, &f.sigma, anchor, window, 2) else { break };
+            let Some(best) = c.first() else { break };
+            let n = best.n_measured().max(1);
+            let clear = (c.len() < 2 || c[1].score - best.score > 15.0) && best.score / n as f64 <= 6.0;
+            if clear {
+                if let Some(own) = letter.filter(|&l| l != best.letter_seed && conf == Conf::High) {
+                    (sh.log)(&format!(
+                        "[{at}] the letters alone say 0x{} (high), the anchor search 0x{} ({} steps after the anchor): using the anchor",
+                        g.hex(own),
+                        g.hex(best.letter_seed),
+                        best.distance.unwrap_or(0)
+                    ));
+                }
+                if letter != Some(best.letter_seed) {
+                    conf = conf.min(Conf::Medium).max(Conf::Medium);
+                }
+                return (Some(best.letter_seed), conf.max(Conf::Medium), Some(best.distance.unwrap_or(0)), true);
+            }
+        }
+    }
     if sh.cfg.chain && conf != Conf::High {
-        let prev = *sh.prev_layout.lock().unwrap();
+        let prev = sh.anchor.latest();
         if let (Some(prev), Some(f)) = (prev, r.fit.as_ref()) {
-            if let Ok(c) = search_near(&f.v, &f.sigma, prev, NEAR, 2) {
+            if let Ok(c) = search_near_gen(g, &f.v, &f.sigma, prev, NEAR, 2) {
                 if let Some(best) = c.first() {
                     if c.len() < 2 || c[1].score - best.score > 15.0 {
                         letter = Some(best.letter_seed);
@@ -701,14 +802,14 @@ fn settle(sh: &Shared, r: &crate::analyze::EntryResult) -> (Option<u64>, Conf, O
             }
         }
     }
-    (letter, conf, chained)
+    (letter, conf, chained, false)
 }
 
 /// A trusted seed: the next sublevel chains from it, and a high-confidence read teaches the
 /// stream's scale.
 fn remember(sh: &Shared, cal: &Calibration, layout: Option<u64>, conf: Conf) {
     if let Some(l) = layout {
-        *sh.prev_layout.lock().unwrap() = Some(l);
+        sh.anchor.advance(l);
     }
     if conf == Conf::High {
         let h = cal.hint();
@@ -749,4 +850,24 @@ fn digits_job(sh: &Shared, job: Job) {
         }
     }
     let _ = sh.results.send(upd);
+}
+
+#[cfg(test)]
+mod anchor_tests {
+    use super::*;
+
+    #[test]
+    fn anchor_handle_semantics() {
+        let a = AnchorHandle::default();
+        assert_eq!(a.get(), None);
+        a.advance(5); // a trusted seed without a confirmed anchor: chaining only
+        assert_eq!((a.get(), a.latest()), (None, Some(5)));
+        let b = a.clone();
+        b.set(Some(0x1234));
+        assert_eq!(a.get(), Some(0x1234));
+        a.advance(0x5678); // the anchor moves forward with each trusted seed
+        assert_eq!(b.get(), Some(0x5678));
+        b.set(None);
+        assert_eq!((a.get(), a.latest()), (None, Some(0x5678)));
+    }
 }

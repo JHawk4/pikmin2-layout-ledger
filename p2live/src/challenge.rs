@@ -16,6 +16,14 @@
 //!    15-bit rand to a 1/9 interval) and confirmed by the next frames.
 //! 4. A beam search over (RNG position, locked digits and lock timers per counter) follows the
 //!    roll frame by frame to its end.
+//!
+//! **Switch** (Pikmin 2 HD) draws from musl's 64-bit LCG: a digit is `9 * (s >> 49) / 32768 + 1`,
+//! and solving takes about 24 digits instead of 12 ([`decode_screen_with`], `Gen::Switch`).
+//!
+//! **Anchor.** With a known earlier RNG state (the previous screen's roll end, or one the runner
+//! entered), a screen whose digits are too poor to solve is found by scanning the digit stream
+//! after the anchor (up to [`ANCHOR_MAX_DRAWS`] draws; one stage of play is about 20k–120k), which
+//! needs far fewer readable digits.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
@@ -24,7 +32,7 @@ use crate::img::{max_loc, match_direct, resize_area, FftImage, Gray, Img};
 #[cfg(test)]
 use crate::img::match_direct as _md;
 use crate::lattice::box_points;
-use crate::rng::{jump, next_seed, MASK32};
+use crate::rng::{Gen, MASK32};
 
 const M: u64 = 1 << 31;
 
@@ -41,6 +49,8 @@ const GEOM: [(f64, f64, f64, usize); 4] = [(143.25, 162.0, 27.75, 5), (267.25, 1
 const SQUEEZE: [f64; 5] = [1.0, 0.92, 0.85, 0.78, 0.72];
 
 pub const MIN_DIGIT_SCORE: f64 = 0.55;
+/// How far after an anchor a screen's roll is searched for (draws).
+pub const ANCHOR_MAX_DRAWS: usize = 5_000_000;
 pub const REG_MIN: f64 = 0.80;
 
 // ------------------------------------------------------------------------------------------
@@ -51,42 +61,86 @@ pub fn digit_of_state(s: u64) -> u8 {
     ((((s >> 16) & 0x7FFF) * 9) / 32768 + 1) as u8
 }
 
+/// The digit a draw shows on either generator.
+#[inline]
+pub fn digit_of_state_gen(g: Gen, s: u64) -> u8 {
+    match g {
+        Gen::Gc => digit_of_state(s),
+        Gen::Switch => (((s >> 49) * 9) / 32768 + 1) as u8,
+    }
+}
+
 /// Digits of the draws whose states are s0, next(s0), ... (n of them).
 pub fn digit_stream(s0: u64, n: usize) -> Vec<u8> {
+    digit_stream_gen(Gen::Gc, s0, n)
+}
+
+pub fn digit_stream_gen(g: Gen, s0: u64, n: usize) -> Vec<u8> {
     let mut out = Vec::with_capacity(n);
-    let mut s = s0 & MASK32;
+    let mut s = if g == Gen::Gc { s0 & MASK32 } else { s0 };
     for _ in 0..n {
-        out.push(digit_of_state(s));
-        s = crate::rng::step(s);
+        out.push(digit_of_state_gen(g, s));
+        s = g.step(s);
     }
     out
 }
 
-fn state_box(d: u8) -> (i128, i128) {
+/// Bits below the 15-bit value a digit reads (16 on GC, 49 on Switch) and the modulus that
+/// matters (2^31, 2^64).
+fn digit_geometry(g: Gen) -> (u32, i128) {
+    match g {
+        Gen::Gc => (16, M as i128),
+        Gen::Switch => (49, 1i128 << 64),
+    }
+}
+
+fn state_box(g: Gen, d: u8) -> (i128, i128) {
+    let (lo_bits, _) = digit_geometry(g);
     let d = d as i128;
     let lo_r = ((d - 1) * 32768 + 8) / 9; // ceil((d-1)*32768/9)
     let hi_r = (d * 32768 + 8) / 9 - 1;
-    (lo_r << 16, (hi_r << 16) | 0xFFFF)
+    (lo_r << lo_bits, (hi_r << lo_bits) | ((1i128 << lo_bits) - 1))
+}
+
+/// Digits a solve uses: about (log2 of the state space + 10) / 3.17 bits per digit.
+fn solve_len(g: Gen) -> usize {
+    match g {
+        Gen::Gc => 12,
+        Gen::Switch => 24,
+    }
+}
+
+/// Lattice nodes a solve may visit (a 24-dimensional Switch box needs more).
+fn solve_nodes(g: Gen) -> usize {
+    match g {
+        Gen::Gc => 100_000,
+        Gen::Switch => 1_000_000,
+    }
 }
 
 /// States s0 (mod 2^31) such that draw i (state next_seed(s0, i)) shows digit d for every (i, d)
 /// in `obs`. None when the enumeration is too large (too few digits).
 pub fn solve_digits(obs: &[(usize, u8)], max_nodes: usize) -> Option<Vec<u64>> {
+    solve_digits_gen(Gen::Gc, obs, max_nodes)
+}
+
+/// solve_digits for either generator (Switch: full 64-bit states; about 24 digits needed).
+pub fn solve_digits_gen(g: Gen, obs: &[(usize, u8)], max_nodes: usize) -> Option<Vec<u64>> {
     let mut obs = obs.to_vec();
     obs.sort();
     let i0 = obs[0].0;
-    let m = M as i128;
+    let (_, m) = digit_geometry(g);
     let mut lo = Vec::new();
     let mut hi = Vec::new();
     let mut a_row = Vec::new();
     for &(i, d) in &obs {
-        let (a, c) = jump((i - i0) as i64);
-        let (l, h) = state_box(d);
-        a_row.push((a % M) as i128);
-        lo.push(l - (c % M) as i128);
-        hi.push(h - (c % M) as i128);
+        let (a, c) = g.jump((i - i0) as i64);
+        let (l, h) = state_box(g, d);
+        a_row.push((a as i128).rem_euclid(m));
+        lo.push(l - (c as i128).rem_euclid(m));
+        hi.push(h - (c as i128).rem_euclid(m));
     }
-    let (l0, h0) = state_box(obs[0].1);
+    let (l0, h0) = state_box(g, obs[0].1);
     lo[0] = l0;
     hi[0] = h0;
     let n = obs.len();
@@ -99,7 +153,7 @@ pub fn solve_digits(obs: &[(usize, u8)], max_nodes: usize) -> Option<Vec<u64>> {
         .iter()
         .map(|p| {
             let x = p[0].rem_euclid(m) as u64;
-            next_seed(x, -(i0 as i64)) & (M - 1)
+            g.next(x, -(i0 as i64)) & g.seed_mask()
         })
         .collect::<HashSet<_>>()
         .into_iter()
@@ -661,8 +715,9 @@ struct Entry {
     last: Option<(usize, K, [bool; 4])>,
 }
 
-fn track(frames: &[RFrame], start: usize, s0: u64, ncs: &[usize; 4], finals: &[Vec<Option<u8>>; 4], k0: K, beam: usize) -> Vec<Entry> {
-    let stream = digit_stream(s0, MAX_STREAM);
+#[allow(clippy::too_many_arguments)]
+fn track(g: Gen, frames: &[RFrame], start: usize, s0: u64, ncs: &[usize; 4], finals: &[Vec<Option<u8>>; 4], k0: K, beam: usize) -> Vec<Entry> {
+    let stream = digit_stream_gen(g, s0, MAX_STREAM);
     let t_init: T = std::array::from_fn(|i| if 0 < k0[i] as usize && (k0[i] as usize) < ncs[i] { -1 } else { 0 });
     let mut entries = vec![Entry { score: 0.0, p: 0, k: k0, t: t_init, l: [None; 4], rep: 0, path: Vec::new(), last: None }];
     let mut emis_cache: HashMap<(usize, usize, K, [bool; 4]), (f64, u32, u32)> = HashMap::new();
@@ -769,19 +824,22 @@ fn locked_at(frames: &[RFrame], idx: &[usize], ncs: &[usize; 4]) -> K {
     k
 }
 
-fn solve_robust(obs: &[(usize, u8)], leave_one_out: bool) -> Vec<u64> {
+fn solve_robust(g: Gen, obs: &[(usize, u8)], leave_one_out: bool) -> Vec<u64> {
+    let nfit = solve_len(g);
     let mut cands: Vec<u64> = Vec::new();
-    let first: Vec<_> = obs.iter().take(12).cloned().collect();
-    if let Some(sol) = solve_digits(&first, 100_000) {
+    let first: Vec<_> = obs.iter().take(nfit).cloned().collect();
+    if let Some(sol) = solve_digits_gen(g, &first, solve_nodes(g)) {
         if sol.len() <= 50 {
             cands.extend(sol);
         }
     }
-    if cands.is_empty() && leave_one_out {
-        let head: Vec<_> = obs.iter().take(13).cloned().collect();
-        for drop in 0..head.len().min(13) {
-            let sub: Vec<_> = head.iter().enumerate().filter(|(t, _)| *t != drop).map(|(_, o)| *o).take(12).collect();
-            if let Some(sol) = solve_digits(&sub, 100_000) {
+    // (Switch: a 24-digit solve takes about 0.2 s, so 25 retries are too slow; a misread is left
+    // to the next window instead)
+    if cands.is_empty() && leave_one_out && g == Gen::Gc {
+        let head: Vec<_> = obs.iter().take(nfit + 1).cloned().collect();
+        for drop in 0..head.len().min(nfit + 1) {
+            let sub: Vec<_> = head.iter().enumerate().filter(|(t, _)| *t != drop).map(|(_, o)| *o).take(nfit).collect();
+            if let Some(sol) = solve_digits_gen(g, &sub, solve_nodes(g)) {
                 if sol.len() <= 50 {
                     cands.extend(sol);
                 }
@@ -791,7 +849,7 @@ fn solve_robust(obs: &[(usize, u8)], leave_one_out: bool) -> Vec<u64> {
     let mut out: Vec<(usize, u64)> = Vec::new();
     let uniq: HashSet<u64> = cands.into_iter().collect();
     for s0 in uniq {
-        let st = digit_stream(s0, obs.last().unwrap().0 + 1);
+        let st = digit_stream_gen(g, s0, obs.last().unwrap().0 + 1);
         let bad = obs.iter().filter(|(i, d)| st[*i] != *d).count();
         if bad <= 1 {
             out.push((bad, s0));
@@ -802,8 +860,8 @@ fn solve_robust(obs: &[(usize, u8)], leave_one_out: bool) -> Vec<u64> {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn confirm(frames: &[RFrame], fi: usize, s0: u64, ncs: &[usize; 4], k0: &K, p_last: usize, n: usize) -> bool {
-    let stream = digit_stream(s0, p_last + n * 14 + 64);
+fn confirm(g: Gen, frames: &[RFrame], fi: usize, s0: u64, ncs: &[usize; 4], k0: &K, p_last: usize, n: usize) -> bool {
+    let stream = digit_stream_gen(g, s0, p_last + n * 14 + 64);
     let mut ok = 0;
     let mut p = p_last + n;
     for fr in frames.iter().skip(fi + 1).take(8) {
@@ -842,7 +900,12 @@ fn confirm(frames: &[RFrame], fi: usize, s0: u64, ncs: &[usize; 4], k0: &K, p_la
     ok >= 1
 }
 
-fn find_anchor(frames: &[RFrame], ncs: &[usize; 4]) -> Option<(usize, u64, K)> {
+fn find_anchor(g: Gen, frames: &[RFrame], ncs: &[usize; 4]) -> Option<(usize, u64, K)> {
+    // digits for a solve: 11+ on GC (12 used), 24 on Switch
+    let (need, min_obs) = match g {
+        Gen::Gc => (11usize, 9usize),
+        Gen::Switch => (24, 22),
+    };
     let nondup: Vec<usize> = (0..frames.len()).filter(|&i| !frames[i].dup).collect();
     let mut tried = 0;
     for pos in 0..nondup.len() {
@@ -855,7 +918,7 @@ fn find_anchor(frames: &[RFrame], ncs: &[usize; 4]) -> Option<(usize, u64, K)> {
         if n == 0 {
             continue;
         }
-        let m = 1.max(11usize.div_ceil(n));
+        let m = 1.max(need.div_ceil(n));
         if m > window.len() - 1 {
             continue;
         }
@@ -863,16 +926,104 @@ fn find_anchor(frames: &[RFrame], ncs: &[usize; 4]) -> Option<(usize, u64, K)> {
         for q in 0..m {
             obs.extend(rolling_obs(&frames[window[q]], &k0, ncs).into_iter().map(|(i, d)| (q * n + i, d)));
         }
-        if obs.len() < 9 {
+        if obs.len() < min_obs {
             continue;
         }
         tried += 1;
         if tried > 12 {
             break;
         }
-        for s0 in solve_robust(&obs, tried <= 3) {
-            if confirm(frames, window[m - 1], s0, ncs, &k0, (m - 1) * n, n) {
+        for s0 in solve_robust(g, &obs, tried <= 3) {
+            if confirm(g, frames, window[m - 1], s0, ncs, &k0, (m - 1) * n, n) {
                 return Some((nondup[pos], s0, k0));
+            }
+        }
+    }
+    None
+}
+
+/// Like find_anchor, but the state is looked up in the digit stream after a known earlier state
+/// `anchor` (up to ANCHOR_MAX_DRAWS draws) instead of solved, so poorly read digits do: a frame's
+/// digits only need to agree mostly (a rolling digit matches by chance 1 time in 9), and the
+/// following frames, each 1-3 frames of draws later, must agree too. Returns (frame, state of its
+/// first draw, locked digits, draws from the anchor).
+fn find_from_anchor(g: Gen, frames: &[RFrame], ncs: &[usize; 4], anchor: u64) -> Option<(usize, u64, K, u64)> {
+    let stream = digit_stream_gen(g, g.step(anchor), ANCHOR_MAX_DRAWS + 4096);
+    let dbg = std::env::var("P2LIVE_DEBUG_ANCHOR").is_ok();
+    let nondup: Vec<usize> = (0..frames.len()).filter(|&i| !frames[i].dup).collect();
+    let mut tried = 0;
+    for pos in 0..nondup.len() {
+        let window: Vec<usize> = nondup[pos..(pos + 6).min(nondup.len())].to_vec();
+        if window.len() < 3 {
+            break;
+        }
+        let k0 = locked_at(frames, &window, ncs);
+        let n = ndraws(&k0, ncs);
+        if n < 8 {
+            continue;
+        }
+        let obs = rolling_obs(&frames[nondup[pos]], &k0, ncs);
+        if obs.len() < 8 {
+            continue;
+        }
+        tried += 1;
+        if tried > 20 {
+            break;
+        }
+        // the next frames with the same digits rolling, to check a candidate against
+        let follow: Vec<Vec<(usize, u8)>> = nondup[pos + 1..].iter().take(10).map(|&f| rolling_obs(&frames[f], &k0, ncs)).take_while(|o| o.len() >= 6).collect();
+        if follow.len() < 4 {
+            continue;
+        }
+        // stage 1: at least 60% of this frame's digits (chance: about 1 in 30,000 positions)
+        let need = (obs.len() * 6).div_ceil(10);
+        let max_bad = obs.len() - need;
+        let mut best: Option<(f64, usize)> = None;
+        for p in 0..ANCHOR_MAX_DRAWS {
+            let mut bad = 0;
+            for &(i, d) in &obs {
+                if stream[p + i] != d {
+                    bad += 1;
+                    if bad > max_bad {
+                        break;
+                    }
+                }
+            }
+            if bad > max_bad {
+                continue;
+            }
+            // stage 2: follow the next frames (each 1-3 frames of draws on), keeping the best fit
+            let (mut q, mut ok, mut tot) = (p, obs.len() - bad, obs.len());
+            for o in &follow {
+                let mut bf = (0usize, q + n);
+                for step in 1..=3 {
+                    let qq = q + step * n;
+                    if qq + n + 64 >= stream.len() {
+                        break;
+                    }
+                    let m = o.iter().filter(|&&(i, d)| stream[qq + i] == d).count();
+                    if m > bf.0 {
+                        bf = (m, qq);
+                    }
+                }
+                ok += bf.0;
+                tot += o.len();
+                q = bf.1;
+            }
+            let rate = ok as f64 / tot as f64;
+            if best.is_none_or(|b| rate > b.0) {
+                best = Some((rate, p));
+            }
+        }
+        if dbg {
+            eprintln!("    anchor window at frame {}: {} digits, k {:?}, best {:?}", frames[nondup[pos]].index, obs.len(), k0, best);
+        }
+        // the true position agrees on most digits; chance agreement is about 1 in 9 (a little
+        // more, as each following frame picks the best of three)
+        if let Some((rate, p)) = best {
+            if rate >= 0.5 {
+                let s0 = g.next(anchor, p as i64 + 1);
+                return Some((nondup[pos], s0, k0, p as u64 + 1));
             }
         }
     }
@@ -894,6 +1045,8 @@ pub struct RollResult {
     /// the frame whose first draw is `first_roll_state`
     pub first_roll_frame: Option<usize>,
     pub first_roll_state: Option<String>,
+    /// the same state as a number (a later screen's anchor when the end is not known)
+    pub first_state: Option<u64>,
     /// the state of the roll's last draw (the global RNG after the roll), and its frame
     pub end_state: Option<u64>,
     pub end_frame: Option<usize>,
@@ -903,11 +1056,21 @@ pub struct RollResult {
     pub digits_matched: u32,
     pub digits_mismatched: u32,
     pub end_margin: Option<f64>,
+    /// draws from the anchor to the roll's first decoded draw, when within ANCHOR_MAX_DRAWS
+    pub from_anchor: Option<u64>,
+    /// the screen was found by the search after the anchor (its digits were too poor to solve)
+    pub found_by_anchor: bool,
     pub note: String,
 }
 
-/// Frames of one results screen: (capture index, gray picture of the game).
+/// Frames of one results screen: (capture index, gray picture of the game). GC, no anchor.
 pub fn decode_screen(frames_in: &[(usize, Gray)], placement_hint: Option<&Placement>) -> Option<RollResult> {
+    decode_screen_with(frames_in, placement_hint, Gen::Gc, None)
+}
+
+/// decode_screen for either generator, with an optional anchor: a known RNG state before this
+/// screen (the previous roll's end, or one the runner entered).
+pub fn decode_screen_with(frames_in: &[(usize, Gray)], placement_hint: Option<&Placement>, g: Gen, anchor: Option<u64>) -> Option<RollResult> {
     if frames_in.len() < 15 {
         return None;
     }
@@ -989,6 +1152,7 @@ pub fn decode_screen(frames_in: &[(usize, Gray)], placement_hint: Option<&Placem
         decoded: false,
         first_roll_frame: None,
         first_roll_state: None,
+        first_state: None,
         end_state: None,
         end_frame: None,
         roll_complete: false,
@@ -996,16 +1160,39 @@ pub fn decode_screen(frames_in: &[(usize, Gray)], placement_hint: Option<&Placem
         digits_matched: 0,
         digits_mismatched: 0,
         end_margin: None,
+        from_anchor: None,
+        found_by_anchor: false,
         note: String::new(),
     };
-    let Some((fi, s0, k0)) = find_anchor(&frames, &ncs) else {
-        res.note = "no frame solved to a state confirmed by the next frames".into();
+    let found = match find_anchor(g, &frames, &ncs) {
+        Some(f) => Some(f),
+        None => match anchor.and_then(|a| find_from_anchor(g, &frames, &ncs, a)) {
+            Some((fi, s0, k0, _)) => {
+                res.found_by_anchor = true;
+                Some((fi, s0, k0))
+            }
+            None => None,
+        },
+    };
+    let Some((fi, s0, k0)) = found else {
+        res.note = if anchor.is_some() {
+            format!("no frame solved to a state confirmed by the next frames, nor found within {ANCHOR_MAX_DRAWS} draws after the anchor")
+        } else {
+            "no frame solved to a state confirmed by the next frames".into()
+        };
         return Some(res);
     };
     lap("anchor");
-    let entries = track(&frames, fi, s0, &ncs, &finals, k0, 32);
+    // a screen found from the anchor has poorly read digits: a wider beam keeps the roll through
+    // the locks (on cmal09, 32 loses it; 128 and 512 agree)
+    let beam = if res.found_by_anchor { 128 } else { 32 };
+    let entries = track(g, &frames, fi, s0, &ncs, &finals, k0, beam);
     lap("track");
     let best = &entries[0];
+    if std::env::var("P2LIVE_DEBUG_ANCHOR").is_ok() {
+        let line: Vec<String> = best.path.iter().map(|st| format!("{}:{:?}:{}/{}", frames[st.fi].index, st.k, st.good, st.bad)).collect();
+        eprintln!("    path {}", line.join(" "));
+    }
     let last_draw_end = best.p;
     res.end_margin = entries.iter().skip(1).find(|e| e.p != last_draw_end).map(|e| ((best.score - e.score) * 10.0).round() / 10.0);
     for st in &best.path {
@@ -1025,7 +1212,7 @@ pub fn decode_screen(frames_in: &[(usize, Gray)], placement_hint: Option<&Placem
             continue;
         }
         let obs = rolling_obs(fr, &k0, &ncs);
-        let st = digit_stream(next_seed(s0, pos - n0 as i64), n0);
+        let st = digit_stream_gen(g, g.next(s0, pos - n0 as i64), n0);
         let bad = obs.iter().filter(|(i, d)| st.get(*i).is_none_or(|s| s != d)).count();
         if obs.len() >= 6 && bad <= 1.max(obs.len() / 6) {
             pos -= n0 as i64;
@@ -1035,7 +1222,18 @@ pub fn decode_screen(frames_in: &[(usize, Gray)], placement_hint: Option<&Placem
         }
     }
     res.first_roll_frame = Some(frames[first_idx].index);
-    res.first_roll_state = Some(format!("0x{:08X}", next_seed(s0, pos) & (M - 1)));
+    let first_state = g.next(s0, pos) & g.seed_mask();
+    res.first_roll_state = Some(format!("0x{}", g.hex(first_state)));
+    res.first_state = Some(first_state);
+    let mut anchor_note = None;
+    if let Some(a) = anchor {
+        let d = g.distance(a, first_state);
+        if d >= 1 && d <= ANCHOR_MAX_DRAWS as u64 {
+            res.from_anchor = Some(d);
+        } else {
+            anchor_note = Some(format!("not within {ANCHOR_MAX_DRAWS} draws after the anchor"));
+        }
+    }
     let mut end = last_draw_end;
     if ndraws(&best.k, &ncs) > 0 {
         // cut off before the end: finish with the lock timers when they are known
@@ -1064,15 +1262,27 @@ pub fn decode_screen(frames_in: &[(usize, Gray)], placement_hint: Option<&Placem
         res.roll_complete = true;
     }
     res.decoded = res.roll_complete || res.extrapolated;
-    res.end_state = res.decoded.then(|| next_seed(s0, end as i64 - 1) & (M - 1));
+    // a screen found from the anchor has poor digits: its end counts only when most digits agree
+    // along the roll and no other end comes close (its start is exact either way)
+    let untrusted = res.found_by_anchor && (res.digits_matched < res.digits_mismatched || res.end_margin.is_some_and(|m| m < 3.0));
+    if untrusted {
+        res.decoded = false;
+    }
+    res.end_state = res.decoded.then(|| g.next(s0, end as i64 - 1) & g.seed_mask());
     let mut notes = Vec::new();
+    if res.found_by_anchor {
+        notes.push(format!("found {} draws after the anchor", res.from_anchor.unwrap_or(0)));
+    }
+    notes.extend(anchor_note);
     if res.digits_mismatched as f64 > 0.05 * res.digits_matched.max(1) as f64 {
         notes.push(format!("{} digit mismatches vs {} matches", res.digits_mismatched, res.digits_matched));
     }
     if res.end_margin.is_some_and(|m| m < 3.0) {
         notes.push(format!("roll end ambiguous (another end scores within {:.1})", res.end_margin.unwrap()));
     }
-    if !res.roll_complete {
+    if untrusted {
+        notes.push("start found from the anchor, but the roll's end could not be followed on these digits".into());
+    } else if !res.roll_complete {
         notes.push(if res.extrapolated { "roll cut off; end extrapolated from the lock timers".into() } else { "roll cut off before its end; end unknown".into() });
     }
     res.note = if notes.is_empty() { "ok".into() } else { notes.join("; ") };
@@ -1176,7 +1386,7 @@ mod tests {
                 obs.push((obs.len(), c.to_digit(10).unwrap() as u8));
             }
         }
-        let sol = solve_robust(&obs, true);
+        let sol = solve_robust(Gen::Gc, &obs, true);
         assert!(sol.contains(&0x423CDA79), "{sol:X?}");
     }
 
@@ -1198,6 +1408,25 @@ mod tests {
             let (v, _) = max_loc(&_md(&crop, t));
             assert!(fast[*d as usize] >= v as f64 - 1e-3, "digit {d}: {} vs {v}", fast[*d as usize]);
         }
+    }
+
+    #[test]
+    fn switch_digits_solve() {
+        // synthetic Switch roll: 24 consecutive digits pin the 64-bit state
+        let g = Gen::Switch;
+        let s0 = 0x2DEC_AB0E_1234_5678u64;
+        let st = digit_stream_gen(g, s0, 40);
+        let obs: Vec<(usize, u8)> = st.iter().enumerate().map(|(i, &d)| (i, d)).collect();
+        let sol = solve_robust(g, &obs, false);
+        assert_eq!(sol, vec![s0]);
+        // from a later draw too (positions need not start at 0)
+        let later: Vec<(usize, u8)> = obs[7..].to_vec();
+        assert!(solve_robust(g, &later, false).contains(&s0));
+    }
+
+    #[test]
+    fn gc_digit_stream_unchanged() {
+        assert_eq!(digit_stream(0x423CDA79, 5), digit_stream_gen(Gen::Gc, 0x423CDA79, 5));
     }
 
     #[test]

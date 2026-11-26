@@ -37,6 +37,7 @@ fn main() {
             eprintln!("usage: p2live entries SEEDS.json [--jobs N] [--limit N] [--frames F1,F2] [--out FILE.jsonl]");
             eprintln!("       p2live replay VIDEO|SEEDS.json [--feed x0,y0,x1,y1] [--start S] [--duration S] [--speed 1|0] [--double]");
             eprintln!("              [--caves all|en|ja|pod|pod-ja] [--tails 20,40] [--workers N] [--no-chain] [--out FILE.jsonl]");
+            eprintln!("              [--rng gc|switch] [--anchor LAYOUT_SEED]   (entries takes --rng too)");
             std::process::exit(2);
         }
     }
@@ -72,7 +73,10 @@ fn entries(args: &[String]) {
         None => Box::new(std::io::sink()),
     });
     let run = seeds_path.parent().and_then(|p| p.file_name()).map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-    let opts = Options::default();
+    let mut opts = Options::default();
+    if arg(args, "--rng").as_deref() == Some("switch") {
+        opts.rng = p2live::rng::Gen::Switch;
+    }
     let pool = rayon::ThreadPoolBuilder::new().num_threads(jobs).build().unwrap();
     let t_all = Instant::now();
     let rows: Vec<Value> = pool.install(|| {
@@ -151,9 +155,15 @@ pub fn stage_report() -> String {
         .join(", ")
 }
 
-/// p2live challenge VIDEO [--out FILE.json]: every results screen's score roll.
+/// p2live challenge VIDEO [--out FILE.json] [--rng gc|switch] [--chain] [--anchor HEX]: every
+/// results screen's score roll. `--chain` uses each decoded roll's end as the next screen's
+/// anchor; `--anchor` gives the first one.
 fn challenge_cmd(args: &[String]) {
-    use p2live::challenge::{blue_fraction, decode_screen, Screens};
+    use p2live::challenge::{blue_fraction, decode_screen_with, Screens};
+    use p2live::rng::Gen;
+    let g = if arg(args, "--rng").as_deref() == Some("switch") { Gen::Switch } else { Gen::Gc };
+    let chain = args.iter().any(|a| a == "--chain");
+    let mut anchor: Option<u64> = arg(args, "--anchor").and_then(|a| u64::from_str_radix(a.trim_start_matches("0x"), 16).ok());
     use std::io::Read;
     let path = &args[0];
     let info = probe(path).expect("ffprobe");
@@ -171,18 +181,22 @@ fn challenge_cmd(args: &[String]) {
     let mut results = Vec::new();
     let t0 = Instant::now();
     let mut idx = 0usize;
-    let handle = |frames: Vec<(usize, p2live::img::Gray)>, hint: &mut Option<p2live::challenge::Placement>, results: &mut Vec<Value>| {
+    let mut handle = |frames: Vec<(usize, p2live::img::Gray)>, hint: &mut Option<p2live::challenge::Placement>, results: &mut Vec<Value>| {
         let t = Instant::now();
-        if let Some(r) = decode_screen(&frames, hint.as_ref()) {
+        if let Some(r) = decode_screen_with(&frames, hint.as_ref(), g, anchor) {
             *hint = Some(r.placement);
+            if chain && (r.end_state.is_some() || r.first_state.is_some()) {
+                anchor = r.end_state.or(r.first_state);
+            }
             eprintln!(
-                "  screen {}-{}: {} end {} at {:?} ({}, {:.2} s)",
+                "  screen {}-{}: {} end {} at {:?} ({}{}, {:.2} s)",
                 r.first_frame,
                 r.last_frame,
                 r.final_display,
-                r.end_state.map(|s| format!("0x{s:08X}")).unwrap_or("-".into()),
+                r.end_state.map(|s| format!("0x{}", g.hex(s))).unwrap_or("-".into()),
                 r.end_frame,
                 r.note,
+                r.from_anchor.map(|d| format!(", {d} draws after the anchor")).unwrap_or_default(),
                 t.elapsed().as_secs_f64()
             );
             results.push(serde_json::to_value(&r).unwrap());

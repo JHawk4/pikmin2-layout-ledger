@@ -172,3 +172,8 @@ pub fn pos(v: f64, f: f64) -> f64 {
 pub fn layout_seed(letter_seed: u64, num_chars: usize) -> u64 {
     rng::next_seed(letter_seed, num_chars as i64) & rng::MASK31
 }
+
+/// layout_seed for either generator (all 64 bits on Switch).
+pub fn layout_seed_gen(g: rng::Gen, letter_seed: u64, num_chars: usize) -> u64 {
+    g.next(letter_seed, num_chars as i64) & g.seed_mask()
+}

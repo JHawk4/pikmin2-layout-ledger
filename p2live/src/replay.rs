@@ -67,9 +67,15 @@ pub fn replay(args: &[String]) {
     }
     cfg.workers = if speed > 0.0 { arg(args, "--workers").and_then(|x| x.parse().ok()).unwrap_or(2) } else { 0 };
     cfg.chain = !args.iter().any(|a| a == "--no-chain");
+    if let Some(g) = arg(args, "--rng") {
+        cfg.rng = if g == "switch" { p2live::rng::Gen::Switch } else { p2live::rng::Gen::Gc };
+    }
     let fps = info.fps;
     let game_frame = move |run_start: usize| start_f + run_start / mult;
     let (mut live, rx) = Live::new(cfg.clone(), Box::new(|s| eprintln!("  {s}")));
+    if let Some(a) = arg(args, "--anchor") {
+        live.set_anchor(u64::from_str_radix(a.trim_start_matches("0x"), 16).ok());
+    }
     let printer = std::thread::spawn(move || {
         let mut rows: Vec<LiveResult> = Vec::new();
         let mut refined = 0usize;
@@ -88,7 +94,7 @@ pub fn replay(args: &[String]) {
                         sub,
                         r.letter_seed.as_deref().unwrap_or("none"),
                         r.confidence,
-                        r.chained.map(|d| format!(" +chained {d}")).unwrap_or_default(),
+                        format!("{}{}", r.chained.map(|d| format!(" +chained {d}")).unwrap_or_default(), if r.anchored { " (anchor)" } else { "" }),
                         r.ready_after_s
                     );
                 } else {
@@ -107,7 +113,7 @@ pub fn replay(args: &[String]) {
                 sub,
                 r.letter_seed.as_deref().unwrap_or("none"),
                 r.confidence,
-                r.chained.map(|d| format!(" +chained {d}")).unwrap_or_default(),
+                format!("{}{}", r.chained.map(|d| format!(" +chained {d}")).unwrap_or_default(), if r.anchored { " (anchor)" } else { "" }),
                 r.ready_after_s,
                 r.name_s,
                 if r.hinted { " hinted" } else { "" },

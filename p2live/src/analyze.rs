@@ -19,7 +19,8 @@ use crate::calibrate::{calibrate, entry_runs, Calibration};
 use crate::digits;
 use crate::fit::{fit, FitResult, Segment};
 use crate::lattice::{self, Candidate};
-use crate::templates::{caves, layout_seed, Cave, POD_CAVES};
+use crate::rng::Gen;
+use crate::templates::{caves, layout_seed_gen, Cave, POD_CAVES};
 use crate::track::{track_all, Blend, MatchCache, Reuse, Track};
 use crate::img::Gray;
 
@@ -203,9 +204,14 @@ fn combinations(items: &[usize], k: usize) -> Vec<Vec<usize>> {
 /// analyze._search: lattice search; when inconclusive, retry leaving out one letter, then two
 /// (`max_out` caps how many letters are left out; 0 means no retries).
 pub fn search_fit(f: &FitResult, max_out: usize) -> (Vec<Candidate>, Conf) {
+    search_fit_gen(Gen::Gc, f, max_out)
+}
+
+/// search_fit for either generator.
+pub fn search_fit_gen(g: Gen, f: &FitResult, max_out: usize) -> (Vec<Candidate>, Conf) {
     let measured: Vec<usize> = (0..f.v.len()).filter(|&i| f.v[i].is_finite() && f.sigma[i].is_finite()).collect();
     let attempt = |out: &[usize]| -> (Vec<Candidate>, Conf) {
-        match lattice::search(&f.v, &f.sigma, out, if out.is_empty() { 500_000 } else { 100_000 }) {
+        match lattice::search_gen(g, &f.v, &f.sigma, out, if out.is_empty() { 500_000 } else { 100_000 }) {
             Ok(c) => {
                 let conf = confidence(&c);
                 (c, conf)
@@ -265,11 +271,12 @@ fn fit_with_step(tracks: &[Track], num_chars: usize, s_guess: f64, base: &FitRes
 
 pub struct Options {
     pub caves: Vec<Cave>,
+    pub rng: Gen,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Options { caves: caves() }
+        Options { caves: caves(), rng: Gen::Gc }
     }
 }
 
@@ -355,7 +362,7 @@ pub fn analyze_event(src: &dyn Frames, ev: &Event, opts: &Options, only: Option<
     entries
         .into_iter()
         .map(|(cal, a, b, k)| {
-            let mut r = analyze_entry(src, &frames, start, cal, a, b, k);
+            let mut r = analyze_entry_with(src, &frames, start, cal, a, b, k, FALL_LEAD, FALL_TAIL, false, None, opts.rng);
             r.near = near.clone();
             r
         })
@@ -364,7 +371,7 @@ pub fn analyze_event(src: &dyn Frames, ev: &Event, opts: &Options, only: Option<
 
 /// analyze._analyze_entry. `frames` start at absolute frame `start`.
 pub fn analyze_entry(src: &dyn Frames, frames: &[Gray], start: usize, cal: Calibration, a: usize, b: usize, k: usize) -> EntryResult {
-    analyze_entry_with(src, frames, start, cal, a, b, k, FALL_LEAD, FALL_TAIL, false, None)
+    analyze_entry_with(src, frames, start, cal, a, b, k, FALL_LEAD, FALL_TAIL, false, None, Gen::Gc)
 }
 
 /// analyze_entry with the fall window as parameters: `lead` frames before the settled run and
@@ -386,6 +393,7 @@ pub fn analyze_entry_with(
     tail: usize,
     quick: bool,
     cache: Option<&MatchCache>,
+    g: Gen,
 ) -> EntryResult {
     let mut r = EntryResult::empty("");
     r.settled_frame = Some(start + k);
@@ -475,7 +483,7 @@ pub fn analyze_entry_with(
         .filter(|s| !s.is_empty())
         .collect();
         let how = how.join(", ");
-        let (cands, conf) = timed(4, || search_fit(&f, if quick { 1 } else { 2 }));
+        let (cands, conf) = timed(4, || search_fit_gen(g, &f, if quick { 1 } else { 2 }));
         if r.fit.is_none() || conf > r.confidence {
             r.fit = Some(f.clone());
             r.candidates = cands;
@@ -484,7 +492,7 @@ pub fn analyze_entry_with(
         }
         if conf != Conf::High && n_meas >= 5 {
             for (f2, d, k) in timed(3, || fit_with_step(&tracks, num_chars, s_guess, &f, segment)) {
-                let (c2, conf2) = search_fit(&f2, 0);
+                let (c2, conf2) = search_fit_gen(g, &f2, 0);
                 if conf2 > r.confidence {
                     r.fit = Some(f2);
                     r.candidates = c2;
@@ -505,7 +513,7 @@ pub fn analyze_entry_with(
     }
     let best = r.candidates[0].letter_seed;
     r.letter_seed = Some(best);
-    r.layout_seed = Some(layout_seed(best, num_chars));
+    r.layout_seed = Some(layout_seed_gen(g, best, num_chars));
     r
 }
 
