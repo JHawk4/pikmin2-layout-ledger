@@ -829,7 +829,14 @@ def process_run(buf, cache: dict) -> Screen | None:
         if pl.score < REG_MIN:
             pl = None
     if pl is None:
-        pl = register(mid)
+        # the middle frame alone can fall just short (CH27 WR: 0.79 there, 0.85-0.94 elsewhere),
+        # so try a few frames across the run and keep the best registration
+        for q in (2, 3, 5, 4, 6):
+            cand = register(buf[len(buf) * q // 8][1])
+            if pl is None or cand.score > pl.score:
+                pl = cand
+            if pl.score >= REG_MIN:
+                break
         if pl.score < REG_MIN:
             return None
         cache["placement"] = pl
