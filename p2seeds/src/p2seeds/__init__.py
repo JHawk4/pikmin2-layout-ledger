@@ -73,10 +73,12 @@ class _Alias(importlib.abc.MetaPathFinder, importlib.abc.Loader):
         return f"{__name__}.{ALIASES[fullname.rpartition('.')[2]]}"
 
     def create_module(self, spec):
-        return importlib.import_module(self._target(spec.name))
+        module = importlib.import_module(self._target(spec.name))
+        spec.loader_state = module.__spec__      # importlib sets module.__spec__ = spec next
+        return module
 
-    def exec_module(self, module):
-        pass                                     # already executed under its new name
+    def exec_module(self, module):               # already executed under its new name:
+        module.__spec__ = module.__spec__.loader_state   # give it back its own spec
 
     def get_code(self, fullname):                # `python -m p2seeds.<old>`: run the new home instead
         src = f"import runpy\nrunpy.run_module({self._target(fullname)!r}, run_name='__main__', alter_sys=True)\n"

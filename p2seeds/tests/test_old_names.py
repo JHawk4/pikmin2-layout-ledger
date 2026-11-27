@@ -28,3 +28,11 @@ def test_from_import_and_attributes():
 def test_run_old_name_as_main():
     out = subprocess.run([sys.executable, "-m", "p2seeds.live", "--help"], capture_output=True, text=True)
     assert out.returncode == 0 and "--render" in out.stdout
+
+
+def test_old_name_keeps_the_modules_own_spec():
+    import p2seeds.sublevels  # noqa: F401
+    from p2seeds.story import sublevels
+
+    assert sublevels.__spec__.name == "p2seeds.story.sublevels"
+    assert sublevels.__spec__.parent == sublevels.__package__
