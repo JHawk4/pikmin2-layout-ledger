@@ -140,7 +140,7 @@ the Wii's cave files make from that seed (the same where the files match).
 - projectPiki/pikmin2 decomp (github.com/projectPiki/pikmin2): `MapUnitGenerator.cpp`,
   `MapCreator.cpp`, `RandMapMgr.cpp`, `gameMapParts.cpp`, `baseGameSection.cpp`,
   `SingleGameSection.h`, `GameSystem.h`, `MSL_C/rand.c`, symbol maps.
-- CaveGen (github.com/JHaack4/CaveGen): `CaveGen.java` (`createRandomMap`, `rand`), readme.
+- CaveGen (github.com/JHawk4/CaveGen): `CaveGen.java` (`createRandomMap`, `rand`), readme.
 - Meeo's "set seed" and "get seed" codes (USA demo build), in the user's Dolphin `GPVE01.ini`;
   speedrun.com's Pikmin 2 "Set Seed Code" guide (speedrun.com/pikmin2/guides/lufb1) has codes for
   each region (not read here: the site refuses automated fetches).

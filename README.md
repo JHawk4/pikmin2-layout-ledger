@@ -17,7 +17,7 @@ layout seed follows from that (see `PLAN.md` for the full design).
   small video downloads (≤480p, ≤30 fps, no audio).
 - `p2seeds/`: the Pikmin 2 pipeline (feed detection, entry screens, letter tracking,
   seed search, sublevel labels, layout rendering, HTML report).
-- `vendor/CaveGen/`: fresh clone of https://github.com/JHaack4/CaveGen (not committed).
+- `vendor/CaveGen/`: fresh clone of https://github.com/JHawk4/CaveGen (not committed).
 - `data/`: videos, caches and outputs (not committed).
 
 ## Setup
@@ -25,7 +25,7 @@ layout seed follows from that (see `PLAN.md` for the full design).
 ```bash
 py -3.13 -m venv .venv
 .venv/Scripts/python -m pip install -e srcom_videos -e p2seeds pytest
-git clone https://github.com/JHaack4/CaveGen.git vendor/CaveGen
+git clone https://github.com/JHawk4/CaveGen.git vendor/CaveGen
 ```
 
 Java (JDK 8+) is needed to regenerate the test reference data, and as the fallback below.
