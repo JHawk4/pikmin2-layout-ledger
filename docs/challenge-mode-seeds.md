@@ -522,15 +522,122 @@ Times are with two videos running in parallel on 8 cores.
   159 (72%).
 - **Whole-Pikmin shifts (13).** The same dive shifted by one to three Pikmin; mostly single- or
   two-colour stages (CH1, CH3, CH13, CH15, CH19). No reliable tie-breaker yet; detection fixes
-  some and breaks others.
+  some and breaks others. Fixed since: see the next section.
 - **Other misses (32).** CH6 (1/1/1) is missed on every video, CH26 (4) on four, CH28 (25
   bulbmin) on four; the whole-window rule for small stages did not rescue them. cmal26 has the
   most misses and the slowest reads (17 of its 26 grey reads were unclear); not yet looked into.
-- **The margin is not a usable confidence yet.** 127 reads were "clear"; 80 exact, 20 late, 27
+- **The margin was not a usable confidence** (it is after the fix in the next section). 127 reads were "clear"; 80 exact, 20 late, 27
   wrong. A layout check of the top candidates against floor 1 is the likely fix, as for the
   detection reader.
 - Detection changed the answer for the better on 4 dives (cmal11 +1, cmal26 +3) and for the worse
   on 2 (cmal04).
+
+### Why the anchored reader missed, and the fix (`miss_diag.py`, `final_rank_test.py`, `cross_rank`)
+
+The 45 dives not read exactly or 1-2 draws late were diagnosed one by one. `miss_diag.py` sets a
+dive up as the reader does, then fits the true state, its neighbours from -16 to +16 draws and the
+reader's pick directly, with no window search.
+
+| Which state fits best when fitted directly | Dives |
+|---|---|
+| the true state | 20 |
+| a one-Pikmin shift of it (+-4, +-8, +-12 draws) | 16 |
+| the reader's wrong pick | 5 |
+| the true state + 1 draw | 3 |
+| another neighbour (+5, -3, -11) | 3 |
+
+So on 20 of them the search had simply lost a state that fits best. The cached reads show how:
+
+- **The final geometry fit is not repeatable.** Fitting the same state from two starting geometries
+  gives losses 5-10% apart. The reader compared each candidate's own fitted loss, so the order of
+  the leaders was partly luck. It also fitted the leader's one-Pikmin shifts separately and moved
+  to a shift whenever one came out lower: each such fit was another chance to win. That produced
+  the whole-Pikmin shifts. Refitting the same dives from one common start gave different shifts
+  (first table above), which is the same effect.
+- **Only six candidates were fitted.** The true state was often further down the fixed-geometry
+  ranking (rank 7 to 80 on six dives) and never got its own fit.
+- **Near and far halves of the window were combined by margin**, not by loss: on cmal13 CH30 the far
+  read had the true state on top and the near read was kept.
+
+The fix is `cross_rank` in `challenge_dive.py`, now the last step of `read_dive`:
+
+- the search's top 12, the leaders of an earlier read of the same dive (the other half of the
+  window) and the leader's one-Pikmin shifts are each fitted from the reference geometry;
+- every candidate is then scored under every fitted geometry, at start offsets of 0, +-1 and +-2
+  Pikmin delays, and keeps its best. A geometry found for one candidate is available to all;
+- the rest of the search's top 200 is screened at half resolution under the leaders' geometries and
+  the best 8 join (150 on stages with at most 15 Pikmin, where fits are cheap);
+- the three leaders' +-4 and +-8 shifts join, the eight leaders are fitted again from their best
+  geometry, and everything is scored once more.
+
+Results, re-ranking the cached searches of all 159 dives (`final_rank_test.py`; same setup, same
+candidates as the reader had):
+
+| Video | Dives | Exact | 1-2 draws late | Whole-Pikmin shift | Miss |
+|---|---|---|---|---|---|
+| cmal02 | 28 | 25 | 3 | 0 | 0 |
+| cmal04 | 26 | 23 | 2 | 0 | 1 |
+| cmal08 | 26 | 23 | 2 | 0 | 1 |
+| cmal11 | 26 | 18 | 5 | 0 | 3 |
+| cmal13 | 27 | 18 | 7 | 0 | 2 |
+| cmal26 | 26 | 16 | 5 | 0 | 5 |
+| **All** | **159** | **123** | **24** | **0** | **12** |
+| before | 159 | 92 | 20 | 15 | 32 |
+
+- 147 of 159 (92%) are exact or 1-2 draws late, against 112 before. No dive that was right before
+  is wrong now. (The earlier table says 94 + 20; it counted the detection cross-check's picks.)
+- **The margin is now a usable confidence** (less clean end to end, see below). Margin of the leader over the runner-up of at least
+  5%: 120 dives, all 120 right. At least 2%: 141 dives, 138 right.
+- The ranking step takes 1 to 8 minutes per dive, mean just under 4, with three videos in parallel
+  on 8 cores. It replaces the old fit step.
+- A first end-to-end check (`anchored_eval.py --tag x`, full window search with the changed reader)
+  on 15 dives, 14 of them former misses, gave 15 of 15 exact. The full re-read follows.
+
+**End to end, all 159 dives** (`anchored_eval.py --grey-only --tag x`: full window search and the
+changed reader, no detection cross-check; results in `e2e_<video>.json`):
+
+| Video | Dives | Exact | 1-2 draws late | Whole-Pikmin shift | Miss |
+|---|---|---|---|---|---|
+| cmal02 | 28 | 25 | 3 | 0 | 0 |
+| cmal04 | 26 | 22 | 2 | 1 | 1 |
+| cmal08 | 26 | 23 | 2 | 0 | 1 |
+| cmal11 | 26 | 17 | 5 | 0 | 4 |
+| cmal13 | 27 | 19 | 7 | 0 | 1 |
+| cmal26 | 26 | 16 | 4 | 0 | 6 |
+| **All** | **159** | **122** | **23** | **1** | **13** |
+
+- 145 of 159 (91%) exact or 1-2 draws late, against 147 from re-ranking the cached searches. 155
+  dives come out the same; four differ:
+  - cmal04 CH2 (30 of one colour): exact when re-ranked, now one Pikmin late (+4 draws), with a
+    margin of 10.6%. One whole-Pikmin shift is back.
+  - cmal11 CH26 (4 Pikmin): exact when re-ranked, now missed, with a margin of 6.5%.
+  - cmal26 CH4 (50 of one colour): 1 draw late when re-ranked, now -11 draws, margin 0.1%.
+  - cmal13 CH26 (4 Pikmin): missed when re-ranked, now exact, margin 1.2%.
+- **The margin is a weaker confidence than the re-ranking suggested.** Margin of at least 5%: 125
+  dives, 123 right (the two wrong ones are cmal04 CH2 and cmal11 CH26 above). At least 2%: 141
+  dives, 138 right. So a 5% margin is about 98% reliable, not certain.
+- So the final ranking still depends somewhat on which candidates and geometries the search hands
+  it: the same dive, re-read, changed its answer on 4 of 159.
+- Time: mean 9.4 minutes per dive for search plus ranking (longest 33), three videos in parallel
+  on 8 cores; about 8 hours for the 144 dives not already cached.
+
+The lists below describe the re-ranked result; end to end the misses are the same dives except
+for the four above.
+
+The 12 that remain:
+
+- 8 are stages with 3 or 4 Pikmin: CH6 (1/1/1) on four videos, CH26 (4) on three, and CH11 (5/5) on
+  cmal11. On two of them the true state is among the fitted candidates and still does not win; the
+  dive carries too little information for the fit quality we have. On cmal11 CH6 and CH11 the
+  "Pick one!" window closing was not found, so the start frame is a guess.
+- cmal11 CH28, cmal26 CH28, CH18, CH19: the true state did not reach the search's top 200 (three),
+  or sits second by 0.3% (cmal26 CH19).
+
+Open points:
+- On six of the former misses a neighbour of the expected state fitted best in the direct test (+1
+  on three, +5, -3, -11). After the fix four of them read 1 draw late and two are still missed, so
+  the +5, -3 and -11 were fit noise. The 24 "late" reads remain unexplained.
+- cmal26 is still the weakest video (5 misses, lower margins); not looked into.
 
 ### Floor-1 layout check (`docs/challenge_dive/floor_check.py`)
 
