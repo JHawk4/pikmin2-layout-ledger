@@ -1,0 +1,14 @@
+[package]
+name = "cavegen3-rng-vectors"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Fixed RNG sequences from CaveGen3, for p2seeds' rng.py parity test (test_rng_parity.py)"
+
+# its own workspace, so it never joins a parent one
+[workspace]
+
+[dependencies]
+# CaveGen3 is the source of truth for the game's RNG. Pinned; after moving the pin, regenerate
+# p2seeds/tests/data/cavegen3_rng.json (see test_rng_parity.py) and record the new rev there.
+cavegen3 = { git = "https://github.com/JHawk4/CaveGen3", rev = "00b252266a0bec7dc1cae7037add10fa5c3240f8" }
