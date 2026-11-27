@@ -10,7 +10,8 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "p2seeds" / "src"))
-from p2seeds import analyze, chain, letters_model, rng  # noqa: E402
+from p2seeds.story import analyze, chain, letters_model
+from p2seeds import rng  # noqa: E402
 
 
 def main(out_dir):

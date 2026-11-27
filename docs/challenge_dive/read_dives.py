@@ -15,7 +15,7 @@ import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "p2seeds", "src"))
 
-from p2seeds import challenge_dive as cd  # noqa: E402
+from p2seeds.challenge import dive as cd  # noqa: E402
 
 
 def main():

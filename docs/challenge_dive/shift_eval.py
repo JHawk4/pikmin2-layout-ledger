@@ -18,7 +18,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 from det_eval import ROOT, dives, prepare  # noqa: E402
-from p2seeds import dive_rgb as dr, rng  # noqa: E402
+from p2seeds.challenge import dive_rgb as dr
+from p2seeds import rng  # noqa: E402
 
 
 def main():

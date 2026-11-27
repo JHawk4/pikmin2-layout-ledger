@@ -1,6 +1,6 @@
 # Japanese All Treasures runs: can the seeds be read?
 
-Date: 2026-11-21. Follows up `EVALUATION_AT.md` (2026-11-14), which first ran the reader on the
+Date: 2026-11-21. Follows up [`story-evaluation-at.md`](story-evaluation-at.md) (2026-11-14), which first ran the reader on the
 top 3 Japanese GameCube All Treasures runs. This pass re-checks those results, tries two more Japanese runs
 (both 360p, one with a timer overlay), checks the recovered layouts against the real floor times,
 and fixes what was cheap to fix.
@@ -16,7 +16,7 @@ are too short to pin down a seed.
 **360p captures work only in part** (20–50% of floors). The letters fall the whole name height in about 9
 frames, and at 360p too few clean points land on each fall. A 720p copy of the same run helps a little
 but not much (5 instead of 3 high floors on one stretch). **Wii U VC runs (ranks 1, 2) remain out of reach**
-(see `EVALUATION_AT.md`).
+(see [`story-evaluation-at.md`](story-evaluation-at.md)).
 
 ## Per run
 
@@ -53,8 +53,8 @@ High seeds per cave (best runs):
 | DD 夢の穴 (3)           | 0/14 | 0/14 | 0/14 | 0/14 |
 
 (All four columns are after the new linking. kobachi and JackDraz are relinked from their saved letter fits, so
-they come out slightly below `EVALUATION_AT.md`'s 85 and 78, which include digits and links re-read by hand
-afterwards. A few floors in each run were never read, see `EVALUATION_AT.md`.)
+they come out slightly below [`story-evaluation-at.md`](story-evaluation-at.md)'s 85 and 78, which include digits and links re-read by hand
+afterwards. A few floors in each run were never read, see [`story-evaluation-at.md`](story-evaluation-at.md).)
 
 ## Are the layouts right?
 

@@ -12,10 +12,10 @@ import sys
 
 import numpy as np
 
-from p2seeds import analyze
-from p2seeds.events import Event
+from p2seeds.story import analyze
+from p2seeds.story.events import Event
 from p2seeds.feed import Feed
-from p2seeds.fit import free_fall
+from p2seeds.story.fit import free_fall
 from p2seeds.video import Video
 
 FITS = []

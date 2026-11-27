@@ -3,7 +3,7 @@
 Goal: a Pay Off Debt (PoD) layout judge whose within-sublevel predictions match runners'
 actual net time (`cost = seconds between entry screens - pokos / 2`), with beta ~ 1 overall
 and per sublevel. Metrics come from `evalkit.py`, the same sublevel + run fixed-effects
-residualization as `p2seeds.site.calibration()`:
+residualization as `p2seeds.ledger.site.calibration()`:
 
 - `R2` = 1 - |yr - xr|^2 / |yr|^2: the prediction at face value (slope 1), the objective.
 - `corr2`: R2 after the best global rescale. `beta` ± SE: slope of yr on xr.
@@ -154,7 +154,7 @@ game's seeds are not uniform, or the reference is off; worth a look before readi
 
 The outcome now counts every poko collected on the sublevel, creatures included
 (`cost = seconds between entry screens - (treasure pokos + creature pokos) / 2`, pokos from
-`treasures.reliable_pokos()`, as `p2seeds.site.calibration()`). Everything above was fit on
+`treasures.reliable_pokos()`, as `p2seeds.ledger.site.calibration()`). Everything above was fit on
 treasure pokos only (snapshot `data/plays.json`; to rerun it set `evalkit.PLAYS = "plays.json"`).
 
 ## Setup

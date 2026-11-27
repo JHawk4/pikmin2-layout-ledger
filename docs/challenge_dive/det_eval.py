@@ -24,7 +24,8 @@ import numpy as np
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
-from p2seeds import challenge_dive as cd, dive_detect as dd, dive_rgb as dr, rng  # noqa: E402
+from p2seeds.challenge import dive as cd, dive_detect as dd, dive_rgb as dr
+from p2seeds import rng  # noqa: E402
 
 
 def st(x):

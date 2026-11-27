@@ -6,7 +6,7 @@ sys.path.insert(0, __import__("os").path.dirname(__file__))
 import divefit2 as F
 sys.path.insert(0, "p2seeds/src")
 from p2seeds import rng
-from p2seeds.lattice import box_points
+from p2seeds.story.lattice import box_points
 M = 1 << 31; UNIT = 1 << 16
 
 def measure(geom, nvis=5, seed=0):

@@ -42,7 +42,7 @@ plus a `ScaleMgr`). Challenge mode reaches this screen through `VsGame` `LoadSta
 
 - `p2seeds analyze` on the first 4 minutes of the 2-player GC run finds all 5 title screens as entry
   candidates, but recognizes none of them (best story cave 0.36–0.38).
-- `docs/challenge_mode_probe.py` adds the 30 challenge names. Then "Concrete Maze" (CH12) is
+- `docs/challenge-mode/title_probe.py` adds the 30 challenge names. Then "Concrete Maze" (CH12) is
   recognized at 0.37 (runner-up "Cave of Pain" 0.28, so the margin is fine; the score is low
   because of the flame glow). The font is the same, so no new templates are needed. 9 of 13 letters
   track, but each moves at most 2–4 px (6.5 for "z") over about 100 frames. `fit` stops with
@@ -282,7 +282,7 @@ states and the direction signs leave exactly the true one, in under a second.
 ## 8. The dive reader at scale: several runners, and the score WRs
 
 §7 worked on one dive. This section turns it into a pipeline
-(`p2seeds/src/p2seeds/challenge_dive.py`, scripts in `docs/challenge_dive/`) and tests it across
+(`p2seeds/src/p2seeds/challenge/dive.py`, scripts in `docs/challenge_dive/`) and tests it across
 runners, against the score rolls.
 
 ### Pipeline (`challenge_dive.read_dive`)
@@ -320,7 +320,7 @@ The dive begins **5 draws after the last draw of the previous score roll**, as d
 reader's `state_after_last_draw`. That holds for both hand-checked cases (Cryptic Cavern, Snack Pit),
 and then the floor-1 seed = that state + 1004, matching CaveGen's constant.
 
-### Score-roll reader (`p2seeds/src/p2seeds/challenge_results.py`)
+### Score-roll reader (`p2seeds/src/p2seeds/challenge/results.py`)
 
 Built by a helper agent and checked against the hand-read values in §3–§4. On 9 videos it decoded
 274 of 306 results screens. Rolls in cmal09 (spark573, Wii) are partly blended frames, so only 14 of

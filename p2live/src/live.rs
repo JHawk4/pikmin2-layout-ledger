@@ -1,4 +1,4 @@
-//! Seeds from a stream of frames, as they happen (the Rust version of p2seeds/live.py).
+//! Seeds from a stream of frames, as they happen (the Rust version of p2seeds/story/live.py).
 //!
 //! The capture side calls [`Live::push`] once per received frame. It only runs the cheap
 //! entry-screen check and keeps a ring buffer. For each entry screen it hands three kinds of

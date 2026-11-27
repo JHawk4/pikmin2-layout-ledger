@@ -20,7 +20,7 @@ import time
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "p2seeds", "src"))
-from p2seeds import challenge_dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
+from p2seeds.challenge import dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
 
 
 def read(video, r, parts=("flower",), top_n=150, truth=None, passes=None, log=print, shortlist=None, inject_truth=True):

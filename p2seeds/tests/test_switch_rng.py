@@ -2,8 +2,9 @@
 import numpy as np
 import pytest
 
-from p2seeds import lattice, letters_model, rng
-from p2seeds.search import search_near
+from p2seeds.story import lattice, letters_model
+from p2seeds import rng
+from p2seeds.story.search import search_near
 
 A64, MASK = 6364136223846793005, (1 << 64) - 1
 

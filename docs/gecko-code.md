@@ -4,7 +4,7 @@
 generates a cave sublevel that the chosen run has a trusted seed for, the code sets the RNG to that
 seed first, so the layout matches the run. Other sublevels stay random. Story mode only.
 
-Code: `p2seeds/src/p2seeds/gecko.py` (addresses, a small PowerPC assembler, the table),
+Code: `p2seeds/src/p2seeds/ledger/gecko.py` (addresses, a small PowerPC assembler, the table),
 `gecko_page.py` (the page; its script joins the parts in the browser), `site.write_gecko` (called by
 `site.export`, over the Pay Off Debt and All Treasures sections). Tests: `p2seeds/tests/test_gecko.py`.
 

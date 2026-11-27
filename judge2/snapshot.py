@@ -2,7 +2,7 @@
 
 A play = one runner on one sublevel that is followed by the next sublevel of the same cave
 (the last sublevel of a cave has no end screen to measure against). Mirrors
-p2seeds.site.calibration(): only `a` (the entry played) must be trusted; took is the gap
+p2seeds.ledger.site.calibration(): only `a` (the entry played) must be trusted; took is the gap
 between the two entry screens; cost = took - pokos / 2.
 Run once; afterwards everything works from the snapshot (other sessions re-process runs).
 """

@@ -1,4 +1,4 @@
-"""Shared evaluation for judge2: the same fixed-effects calibration as p2seeds.site.calibration().
+"""Shared evaluation for judge2: the same fixed-effects calibration as p2seeds.ledger.site.calibration().
 
 A prediction x and an outcome y (cost = seconds - pokos/2) are both residualized on
 sublevel and run fixed effects (Frisch-Waugh), then

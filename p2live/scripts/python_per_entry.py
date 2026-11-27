@@ -17,7 +17,7 @@ from pathlib import Path
 def one(task):
     main, run, seeds, frame, want = task
     sys.path.insert(0, str(Path(main) / "p2seeds" / "src"))
-    from p2seeds import analyze, events
+    from p2seeds.story import analyze, events
     from p2seeds.video import Video
     m = json.load(open(seeds))["meta"]
     with Video(os.path.join(main, m["video"])) as v:

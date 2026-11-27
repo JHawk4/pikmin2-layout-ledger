@@ -3,12 +3,12 @@
 import numpy as np
 import pytest
 
-from p2seeds import letters_model
-from p2seeds.calibrate import calibrate
-from p2seeds.fit import fit
-from p2seeds.search import search
-from p2seeds.synth import render_fall
-from p2seeds.track import track_all
+from p2seeds.story import letters_model
+from p2seeds.story.calibrate import calibrate
+from p2seeds.story.fit import fit
+from p2seeds.story.search import search
+from p2seeds.story.synth import render_fall
+from p2seeds.story.track import track_all
 
 
 @pytest.mark.parametrize("name, seed, feed_h", [

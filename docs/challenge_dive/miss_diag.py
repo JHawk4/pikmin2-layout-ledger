@@ -20,7 +20,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 from anchored_eval import NEAR, anchored_dives, video_reg  # noqa: E402
-from p2seeds import challenge_dive as cd, rng  # noqa: E402
+from p2seeds.challenge import dive as cd
+from p2seeds import rng  # noqa: E402
 
 M = 0x7FFFFFFF
 OFFS = tuple(np.arange(-4.0, 4.01, 0.5))

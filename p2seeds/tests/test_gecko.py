@@ -7,7 +7,7 @@ import subprocess
 
 import pytest
 
-from p2seeds import gecko, gecko_page, theme
+from p2seeds.ledger import gecko, gecko_page, theme
 
 USA = gecko.BY_KEY["GPVE01"]
 

@@ -343,7 +343,7 @@ python docs/switch/summarize.py "GC=data/output/12_tcbtrio_y64e4x0m/fits.json" "
 python docs/switch/variants.py data/output/12_tcbtrio_y64e4x0m/fits.json data/switch/out/04_tcbtrio/fits.json
 python docs/switch/probe.py data/switch/videos/04_tcbtrio_z194e07m.mp4 34,0,606,320 23300 23420 data/switch/probe_fits.json
 python -u docs/switch/brute.py data/switch/probe_fits.json
-# section 7 (dump_digits.py needs p2seeds.challenge_results from claude/challenge-mode-seeds-37abaa)
+# section 7 (dump_digits.py needs p2seeds.challenge.results)
 python docs/switch/dump_digits.py cmal01_tcbtrio_switch_usa.mp4 data/switch/digits/cmal01_switch.json
 python docs/switch/rng_candidates.py selftest
 python docs/switch/rng_candidates.py data/switch/digits/cmal01_switch.json --screens 0,4,5,6,7,9

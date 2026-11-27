@@ -46,7 +46,7 @@ These modes are CaveGen's real-time manip (`Manip.java`, `Seed.java`), ported:
 
 1. **The score roll.** On each results screen the score digits roll from the global RNG
    (`randInt(9) + 1` per unlocked digit per frame). `p2live::challenge` reads the roll to its end.
-   - It is a port of `p2seeds/challenge_results.py` from the challenge-mode-seeds branch.
+   - It is a port of `p2seeds/challenge/results.py` 
    - The panel is registered by template, so GC 4:3, Wii and Wii U 16:9 and any crop work.
    - Decoding starts as soon as the digits stop changing, and takes about 1.2 s once the panel's
      position is known. The position is found at the start of the first screen.

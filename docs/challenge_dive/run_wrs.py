@@ -17,7 +17,7 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
 
-from p2seeds import challenge_dive as cd  # noqa: E402
+from p2seeds.challenge import dive as cd  # noqa: E402
 
 WR = os.path.join(ROOT, "data", "challenge", "wr")
 DIVES = os.environ.get("WR_DIVES", "dives")   # output folder under data/challenge/wr

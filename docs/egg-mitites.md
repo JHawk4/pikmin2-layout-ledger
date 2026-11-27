@@ -34,7 +34,7 @@ Decompilation: [projectPiki/pikmin2](https://github.com/projectPiki/pikmin2).
   [Pikipedia's Nectar egg page](https://www.pikminwiki.com/Nectar_egg). The header defaults are all
   1.0 and are overwritten by the file. `rand()` is the MSL LCG
   (`src/Dolphin/MSL_C/MSL_Common/rand.c`), the same one as `p2seeds/src/p2seeds/rng.py`.
-  `p2seeds/src/p2seeds/egg.py` maps a state or a `rand()` value to an outcome.
+  `p2seeds/src/p2seeds/story/egg.py` maps a state or a `rand()` value to an outcome.
 - Two fallbacks come after the roll:
   - `mDoCheckHasSpray` (on by default): a spicy or bitter roll becomes 1 nectar until that spray has
     been made in story mode. Mitites are not affected.
@@ -98,7 +98,7 @@ state at that draw.
 | Deterministic RTA setup (do X, then break on frame N) | **No.** The per-frame draw count depends on Pikmin and enemy behaviour, so no setup gives a repeatable state at the break. |
 | Frame-perfect break timing in RTA | **No.** Without knowing the state, every frame is another independent ~5% roll. |
 | Few-percent improvement | **No** by timing. **Avoidance only:** keep one Mitite group alive above ground (three in a cave) and later eggs cannot hatch Mitites. A Mitite roll becomes 1 nectar. This is rarely worth doing. |
-| TAS (inputs replayable, RAM visible) | **Yes, easily.** Delay or advance the final hit by a frame, or change Pikmin activity, until the roll lands in 27853–29491 for Mitites (or outside it to avoid them). About 1 in 20 frame choices works. `p2seeds.egg.outcome_after(state)` checks a state. |
+| TAS (inputs replayable, RAM visible) | **Yes, easily.** Delay or advance the final hit by a frame, or change Pikmin activity, until the roll lands in 27853–29491 for Mitites (or outside it to avoid them). About 1 in 20 frame choices works. `p2seeds.story.egg.outcome_after(state)` checks a state. |
 
 **What a runner would actually do:** treat every egg as a 5% Mitite risk. Break eggs with Purples
 (this kills Mitites as they hatch), or skip eggs on routes where Mitites would cost time. Do not try to

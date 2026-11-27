@@ -2,7 +2,8 @@
 
 import numpy as np
 
-from p2seeds import site, treasures
+from p2seeds.ledger import site
+from p2seeds.story import treasures
 
 
 def test_kolmogorov_critical_values():

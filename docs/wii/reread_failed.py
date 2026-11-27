@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "p2seeds" / "src"))
 
-from p2seeds.challenge_results import read_results  # noqa: E402
+from p2seeds.challenge.results import read_results  # noqa: E402
 
 
 def main() -> None:

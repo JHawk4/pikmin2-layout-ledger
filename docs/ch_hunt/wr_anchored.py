@@ -18,7 +18,7 @@ import time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
-from p2seeds import challenge_dive as cd  # noqa: E402
+from p2seeds.challenge import dive as cd  # noqa: E402
 
 WR = os.environ.get("WR_DATA", r"C:\Users\Jordan\Desktop\Claude\p2-vod-seeds\.claude\worktrees\judge2-net-timesave-304bfd\data\challenge\wr")
 

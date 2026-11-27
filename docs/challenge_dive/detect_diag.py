@@ -16,7 +16,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "p2seeds", "src"))
-from p2seeds import challenge_dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
+from p2seeds.challenge import dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
 
 BGR = {"red": (40, 40, 255), "yellow": (0, 230, 255), "blue": (255, 140, 0), "white": (255, 255, 255),
        "purple": (230, 80, 200)}

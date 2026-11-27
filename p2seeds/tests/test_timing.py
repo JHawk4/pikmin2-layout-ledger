@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from p2seeds.analyze import game_times
+from p2seeds.story.analyze import game_times
 
 
 def _video(game_frames, noise_on=()):

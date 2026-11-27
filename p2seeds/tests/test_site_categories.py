@@ -2,7 +2,7 @@
 
 import re
 
-from p2seeds import judge_report, theme
+from p2seeds.ledger import judge_report, theme
 
 
 def _e(cave, sub):

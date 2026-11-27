@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from p2seeds import i18n, ja_table, theme
+from p2seeds.ledger import i18n, ja_table, theme
 
 PAGES = Path(__file__).resolve().parents[2] / "data" / "pages"      # the built site, when there is one
 

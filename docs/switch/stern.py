@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "p2seeds" / "src"))
-from p2seeds.lattice import box_points, lll  # noqa: E402
+from p2seeds.story.lattice import box_points, lll  # noqa: E402
 
 
 def entry_runs(path, min_len):

@@ -11,7 +11,8 @@ the fits are recorded (fits.json) and can be tested against RNG variants offline
 import sys
 from pathlib import Path
 
-from p2seeds import analyze, cli, lattice
+from p2seeds.story import analyze, lattice
+from p2seeds import cli
 
 _orig = lattice.search
 

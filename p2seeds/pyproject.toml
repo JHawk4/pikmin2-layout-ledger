@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "p2seeds"
 version = "0.1.0"
-description = "Recover Pikmin 2 story-mode sublevel seeds from speedrun videos."
+description = "Recover Pikmin 2 seeds (story mode and Challenge Mode) from speedrun videos."
 requires-python = ">=3.10"
 dependencies = [
     "numpy>=1.26",

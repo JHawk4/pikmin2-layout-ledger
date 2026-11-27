@@ -161,7 +161,7 @@ calibration or expected cave order.
 
 ### Per entry screen, clean captures
 
-`p2seeds/scripts/bench_stages.py` times each stage, best of 3. Four entries from JackDraz 01
+`docs/realtime/bench_stages.py` times each stage, best of 3. Four entries from JackDraz 01
 (465×360 feed) and kobachi 03 (647×436 feed):
 
 | stage | time | notes |
@@ -177,7 +177,7 @@ calibration or expected cave order.
 
 ### Whole `analyze_event`, 16 entries from 4 runs
 
-From `p2seeds/scripts/profile_realtime.py`, which runs the full offline analysis for each entry:
+From `docs/realtime/profile_realtime.py`, which runs the full offline analysis for each entry:
 
 - **15 of the 16 seeds match** the recorded offline seeds.
 - **Clean captures** (JackDraz 01, kobachi 03, wr29 EC/SH/FC, Curtis CoC): 33–263 s on the loaded
@@ -284,10 +284,10 @@ something else, add the thin frame-tap filter rather than porting the pipeline.
 
 ```powershell
 # from the main checkout (videos and CaveGen3 live in data/)
-.venv\Scripts\python -m p2seeds.live data\videos\01_JackDraz_mewq470m.mp4 --seeds data\output\01_JackDraz_mewq470m\seeds.json --start 900 --duration 300 --caves pod --render data\scratch\live
+.venv\Scripts\python -m p2seeds.story.live data\videos\01_JackDraz_mewq470m.mp4 --seeds data\output\01_JackDraz_mewq470m\seeds.json --start 900 --duration 300 --caves pod --render data\scratch\live
 ```
 
-`p2seeds/src/p2seeds/live.py` plays a video at real speed (`--speed`) and hands each frame to
+`p2seeds/src/p2seeds/story/live.py` plays a video at real speed (`--speed`) and hands each frame to
 `Live.push`, the way a capture callback would. `--double` simulates a 60 fps capture.
 
 The capture loop only runs the per-frame entry-screen check and keeps a 400-frame ring buffer. When

@@ -25,7 +25,8 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 from anchored_eval import NEAR, ROOT, anchored_dives, video_reg  # noqa: E402
-from p2seeds import challenge_dive as cd, rng  # noqa: E402
+from p2seeds.challenge import dive as cd
+from p2seeds import rng  # noqa: E402
 
 M = 0x7FFFFFFF
 STEP = 0.1 / cd.TIMER_SPEED          # frames between two Pikmin of one colour

@@ -61,7 +61,7 @@ the anchor the reader finds at the screen's first frame, `6D1C08B9`. On albut3's
 experiment's state at 8624, `473F7A08`, lies 98 draws (7 game frames over 8 video frames, one of
 them repeated) before the reader's anchor at 8632, `227D0FE6`.
 
-## 3. Reader change (`p2seeds/src/p2seeds/challenge_results.py`)
+## 3. Reader change (`p2seeds/src/p2seeds/challenge/results.py`)
 
 - **Detection:** per screen, `blend_gain` = how much better 50/50 pair templates fit the digits than
   single digits (median over the first frames). Clean screens give 0.00; blended screens
@@ -131,7 +131,7 @@ video frames, 2–3% mismatches, all 30 PAL screens decoded.
 
 ## 6. Story mode (note only)
 
-The story-mode entry screen on Wii is the Wii U VC one, which `EVALUATION_AT.md` already looked at:
+The story-mode entry screen on Wii is the Wii U VC one, which [`story-evaluation-at.md`](story-evaluation-at.md) already looked at:
 the name is stretched by 16:9, the screen fades out before the letters land, and a swirl effect
 covers much of the name, so only 2–3 letters per entry could be tracked. Blended captures would add
 a double image of each falling letter. A pair model like the one here would apply (each frame =

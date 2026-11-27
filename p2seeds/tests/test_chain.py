@@ -2,8 +2,9 @@
 
 import numpy as np
 
-from p2seeds import caves, chain, letters_model, rng, search, templates
-from p2seeds.analyze import split_digits
+from p2seeds import caves, rng
+from p2seeds.story import chain, letters_model, search, templates
+from p2seeds.story.analyze import split_digits
 
 
 def test_forward_states_and_distance():
@@ -113,7 +114,7 @@ def test_digit_crop_keeps_a_leading_one_in_japanese():
     img[55:65, 20:60] = 255          # a wide glyph (下)
     img[52:68, 100:104] = 255        # "1"
     img[52:68, 112:126] = 255        # "2", further from the "1" than the grouping gap
-    from p2seeds.analyze import digit_crop
+    from p2seeds.story.analyze import digit_crop
     ja, en = digit_crop(img, "ja"), digit_crop(img, "en")
     assert ja.shape[1] > en.shape[1] >= 10
     assert len(split_digits(ja)) == 2
@@ -130,7 +131,8 @@ def test_cavegen_region_follows_the_run_language():
 def test_linked_seed_out_of_order_is_dropped():
     """A seed linking filled in must sit between its settled neighbors in the RNG sequence."""
     from types import SimpleNamespace
-    from p2seeds import chain, rng
+    from p2seeds.story import chain
+    from p2seeds import rng
 
     a = 0x1234567
     b = rng.next_seed(a, 100_000)
@@ -240,7 +242,7 @@ def test_redo_refreshes_the_saved_read_so_linking_keeps_the_seed_that_links():
     floor 3); updating seeds.json alone would be undone by the next relink."""
     import json
     from types import SimpleNamespace
-    from p2seeds import redo
+    from p2seeds.story import redo
 
     n = 14
     a = 0x09DAD0DD

@@ -18,7 +18,8 @@ from collections import Counter
 
 import numpy as np
 
-from p2seeds import lattice, rng
+from p2seeds.story import lattice
+from p2seeds import rng
 
 LCGS = {
     "gc": (0x41C64E6D, 0x3039),       # GameCube/Wii (ANSI C rand)

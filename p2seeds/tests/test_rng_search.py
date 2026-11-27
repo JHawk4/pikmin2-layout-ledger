@@ -4,8 +4,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from p2seeds import letters_model, rng
-from p2seeds.search import search
+from p2seeds.story import letters_model
+from p2seeds import rng
+from p2seeds.story.search import search
 
 REF = json.loads((Path(__file__).parent / "data" / "seed_ref.json").read_text())["cases"]
 

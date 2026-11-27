@@ -76,5 +76,5 @@ the 6 plays here did. That may be chance (P ≈ 0.12), or runners reset such lay
     python judge2/at_snapshot.py <run dirs...>      # -> judge2/data/at_plays.json
     python judge2/at_fit.py
 
-`p2seeds.judge2.add_to_run` fills `judge2_*` for runs whose judge.json has `"kind": "at"`,
+`p2seeds.ledger.judge2.add_to_run` fills `judge2_*` for runs whose judge.json has `"kind": "at"`,
 plus `judge2_missing`, with the Japanese weights when the cave names are Japanese.

@@ -3,11 +3,11 @@
 import cv2
 import numpy as np
 
-from p2seeds import templates
-from p2seeds.calibrate import calibrate
-from p2seeds.events import is_wide, normalize
+from p2seeds.story import templates
+from p2seeds.story.calibrate import calibrate
+from p2seeds.story.events import is_wide, normalize
 from p2seeds.feed import Feed
-from p2seeds.synth import render_fall
+from p2seeds.story.synth import render_fall
 
 
 def _wide(frame: np.ndarray) -> np.ndarray:
@@ -37,8 +37,8 @@ def test_normalize_restores_a_fading_title():
 
 
 def test_rescue_takes_a_cut_short_title_from_its_neighbours():
-    from p2seeds.analyze import RESCUE_MARGIN_NEAR, EventResult, rescue_caves
-    from p2seeds.events import Event
+    from p2seeds.story.analyze import RESCUE_MARGIN_NEAR, EventResult, rescue_caves
+    from p2seeds.story.events import Event
 
     def found(frame, cave):
         return EventResult(Event(frame, frame, 1), settled_frame=frame, cave_id=cave)
@@ -52,9 +52,9 @@ def test_rescue_takes_a_cut_short_title_from_its_neighbours():
 
 
 def test_route_names_the_sublevels_between_two_entries():
-    from p2seeds.analyze import EventResult
-    from p2seeds.events import Event
-    from p2seeds.route_rescue import _missing
+    from p2seeds.story.analyze import EventResult
+    from p2seeds.story.events import Event
+    from p2seeds.story.route_rescue import _missing
 
     def at(cave, sub):
         return EventResult(Event(0, 0, 1), settled_frame=1, cave_id=cave, sublevel=sub)
@@ -74,7 +74,7 @@ def test_route_names_the_sublevels_between_two_entries():
 
 
 def test_rescued_sublevels_renumber_an_entry_whose_number_was_a_guess():
-    from p2seeds.redo import resequence
+    from p2seeds.story.redo import resequence
     es = [{"frame": 100, "cave": "BK", "sublevel": 5, "sublevel_source": "digit"},
           {"frame": 900, "cave": "BK", "sublevel": 1, "sublevel_source": "sequence"},
           {"frame": 1500, "cave": "BK", "sublevel": 7, "sublevel_source": "digit (sequence said 2)"}]
@@ -83,7 +83,7 @@ def test_rescued_sublevels_renumber_an_entry_whose_number_was_a_guess():
 
 
 def test_a_seedless_second_detection_does_not_split_a_sublevels_treasures():
-    from p2seeds.treasures import sublevel_entries
+    from p2seeds.story.treasures import sublevel_entries
     e = lambda f, c, s, seed=None: {"frame": f, "cave": c, "sublevel": s, "layout_seed": seed}
     entries = [e(1, "HoB", 4, "0x1"), e(2, "BK", 1), e(3, "HoB", 5, "0x2"),     # stray between 4 and 5
                e(4, "HoB", 6), e(5, "HoB", 7, "0x3")]                          # a real seedless sublevel

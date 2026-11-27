@@ -4,7 +4,7 @@
 
 Prints a JSON list, one entry per results screen: first/last frame, the anchor frame and the
 state of its first draw, the per-frame states (with --frames), the index and state of the last
-draw of the roll, and a consistency note. See p2seeds/challenge_results.py.
+draw of the roll, and a consistency note. See p2seeds/challenge/results.py.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from pathlib import Path
 # use this checkout's p2seeds (the editable install may point at another checkout)
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "p2seeds" / "src"))
 
-from p2seeds.challenge_results import read_results  # noqa: E402
+from p2seeds.challenge.results import read_results  # noqa: E402
 
 
 def main() -> None:

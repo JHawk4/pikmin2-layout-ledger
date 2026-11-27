@@ -189,7 +189,7 @@ Tool (not committed): `data/wii_story/comedown_sheets.py RUN_DIR OUT_DIR`.
 On Wii U the title often goes black while the cave name's letters are still
 falling. This happens on short loads, so final floors are hit hardest. No frame
 shows a settled name, so the detector never sees an entry.
-`p2seeds/src/p2seeds/route_rescue.py` finds these titles from what is still on
+`p2seeds/src/p2seeds/story/route_rescue.py` finds these titles from what is still on
 screen:
 
 - **"Sublevel N" is there before the name falls and doesn't move.** The rescue

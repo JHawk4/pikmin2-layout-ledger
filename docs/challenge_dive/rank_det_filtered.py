@@ -9,7 +9,7 @@ is the starting point. Every passing state is scored at that geometry, the best 
 import argparse, json, os, sys, time
 import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "p2seeds", "src"))
-from p2seeds import challenge_dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
+from p2seeds.challenge import dive as cd, dive_detect as dd, dive_rgb as dr  # noqa: E402
 
 ap = argparse.ArgumentParser()
 ap.add_argument("video"); ap.add_argument("result"); ap.add_argument("det")

@@ -1,6 +1,6 @@
 """Snapshot every high-confidence Pay Off Debt play, with creature pokos, into judge2/data/plays_net.json.
 
-The net-timesave outcome (p2seeds.site.calibration, POKOS_PER_SECOND = 2):
+The net-timesave outcome (p2seeds.ledger.site.calibration, POKOS_PER_SECOND = 2):
     cost = seconds from this sublevel's entry screen to the next one's - total pokos / 2
 total pokos = treasure pokos + creature ("bug") pokos, as treasures.reliable_pokos() gives
 them (None when more than 30 creature pokos had to be clipped: no outcome then).
@@ -18,7 +18,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "data" / "output"
 sys.path.insert(0, str(ROOT / "p2seeds" / "src"))
-from p2seeds import judge_report, treasures  # noqa: E402
+from p2seeds.ledger import judge_report
+from p2seeds.story import treasures  # noqa: E402
 
 plays = []
 for jf in sorted(OUT.glob("*/judge.json")):

@@ -1,8 +1,9 @@
 """Lattice seed search: finds the true seed from any subset of noisy letter velocities."""
 import numpy as np
 
-from p2seeds import lattice, rng
-from p2seeds.search import V_PER_RAND
+from p2seeds.story import lattice
+from p2seeds import rng
+from p2seeds.story.search import V_PER_RAND
 
 
 def _measure(seed, n, sigma, bias, keep, rs):

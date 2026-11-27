@@ -4,7 +4,7 @@ challenge_results.py decodes the roll with the GameCube RNG and keeps only final
 fails (as it does on every Switch screen). This keeps the raw readings so other generators can be
 tested against them (see rng_candidates.py).
 
-Needs p2seeds.challenge_results from branch claude/challenge-mode-seeds-37abaa on PYTHONPATH.
+Needs p2seeds.challenge.results from branch claude/challenge-mode-seeds-37abaa on PYTHONPATH.
 
     python docs/switch/dump_digits.py VIDEO OUT.json
 
@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import sys
 
-from p2seeds.challenge_results import COUNTERS, choose_layout, iter_screens, process_run, read_frame
+from p2seeds.challenge.results import COUNTERS, choose_layout, iter_screens, process_run, read_frame
 
 
 def main(video: str, out: str) -> None:

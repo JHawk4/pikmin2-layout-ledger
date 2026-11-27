@@ -16,7 +16,7 @@ Set `P2SEEDS_LAYOUTMATCH` to a built `layoutmatch.exe` when this checkout has no
 | `overlay_pairs.py FRAME SUB SEED PAIRS OUT` | draw a seed's objects through a homography from a few hand pairs. |
 | `specificity.py SUB END COUNT OBS.json` | how many seeds in a window share a set of observations (alone and together), to say how specific a matched candidate is. |
 
-Fix on the roll reader (`p2seeds/challenge_results.py`, `process_run`): a results screen was
+Fix on the roll reader (`p2seeds/challenge/results.py`, `process_run`): a results screen was
 registered from its middle frame only; on the CH27 record that frame scored 0.79 (< 0.80) while
 the rest of the roll scored 0.85–0.94, so the screen was dropped. It now tries frames across the
 run and keeps the best registration. CH27's roll then decodes (9780 + 500 + 120 = 10,400, the

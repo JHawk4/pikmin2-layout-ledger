@@ -2,21 +2,64 @@
 
 A ledger of layout luck, time saved and pokos for Pikmin 2 Pay Off Debt speedruns (formerly `p2-vod-seeds`).
 
-Recover the RNG seed, and so the exact CaveGen layout, of every story-mode
-sublevel in a Pikmin 2 speedrun video. Works offline on recorded VODs only.
+Every seed reader for Pikmin 2 speedrun videos lives here: each recovers the RNG seed, and so the exact
+CaveGen layout, from something the game draws with its RNG. Game mechanics (the GC/Wii and Switch RNGs,
+cave generation, judges, the layout viewer) come from [CaveGen3](https://github.com/JHawk4/CaveGen3); this
+repository reads videos and builds the report site.
 
-How it works: on each sublevel entry screen the cave name's letters fall with
-starting speeds drawn from the game's RNG. The tool finds those screens,
-recognizes the cave name, tracks every letter's fall, fits its starting speed,
-and searches all 2^31 RNG states for the one that produces those speeds. The
-layout seed follows from that (see `PLAN.md` for the full design).
+## Readers
+
+**Story mode: falling letters.** On each sublevel entry screen the cave name's letters fall with starting
+speeds drawn from the RNG. The reader finds those screens, recognizes the cave name, tracks every letter's
+fall, fits its starting speed and finds the RNG state that produces those speeds; the layout seed follows.
+Works offline on recorded VODs.
+- Design and results: [story-plan.md](docs/story-plan.md), [story-evaluation.md](docs/story-evaluation.md)
+  (Pay Off Debt), [story-evaluation-at.md](docs/story-evaluation-at.md) (All Treasures).
+- The RNG chain between sublevels, treasures from the treasure panel, Japanese runs:
+  [jp-all-treasures.md](docs/jp-all-treasures.md).
+- Wii and Wii U VC runs (titles cut to black, route rescue): [wii-story.md](docs/wii-story.md).
+- Switch (Pikmin 2 HD), a different RNG (musl's 64-bit LCG): [switch-rng.md](docs/switch-rng.md).
+- The Gecko code that replays a run's layouts: [gecko-code.md](docs/gecko-code.md).
+- Egg drops (can a runner steer an egg to Mitites?): [egg-mitites.md](docs/egg-mitites.md).
+
+**Challenge Mode.** Challenge Mode has no entry-screen letters, so its seed comes from three other places:
+- the results-screen score roll (digit draws) and the stage-select Pikmin dive:
+  [challenge-mode-seeds.md](docs/challenge-mode-seeds.md); on Wii captures, where each frame blends two game
+  frames: [wii-seeds.md](docs/wii-seeds.md);
+- the layout seen in the video, matched against CaveGen3 layouts (the video side of the layout matcher, and
+  the seed hunt's validator and finder tools): [layout-matcher.md](docs/layout-matcher.md),
+  [docs/validator](docs/validator/README.md), [docs/ch_hunt](docs/ch_hunt/README.md).
+
+**Live: `p2live`.** A Rust port of the story-mode reader that runs while a runner plays (camera or OBS
+Virtual Camera, with a GUI and an OBS Browser Source). It uses the `cavegen3` crate from CaveGen3 via git.
+[realtime-obs.md](docs/realtime-obs.md), [p2live/README.md](p2live/README.md),
+[p2live/app/README.md](p2live/app/README.md).
+
+**The ledger site.** Built from the story-mode results: layout luck, time saved and pokos per run
+(see Use and Published site below).
 
 ## Layout
 
+- `p2seeds/`: the Python package, organised by approach (`p2seeds/src/p2seeds/`):
+  - core: `rng.py` (GC and Switch generators), `caves.py`, the CaveGen / CaveGen3 bridges (`cavegen.py`,
+    `cg3.py`, `views.py`), `video.py`, `feed.py` and the command line (`cli.py`);
+  - `story/`: the falling-letters reader (`events`, `calibrate`, `track`, `fit`, `search`, `lattice`,
+    `analyze`, `chain`, `redo`, `route_rescue`, `treasures`, `report`, `details`, `live`, ...);
+  - `challenge/`: the score-roll reader (`results.py`) and the Pikmin dive reader (`dive.py`,
+    `dive_detect.py`, `dive_rgb.py`);
+  - `ledger/`: the report site (`site`, `run_page`, `judge_report`, `judge_page`, `judge2`, `luck`,
+    `gecko`, `charts`, `theme`, `i18n`, `ja_table`).
+
+  Old flat module names (`p2seeds.chain`, `p2seeds.challenge_dive`, ...) still import, as the same module
+  objects (`ALIASES` in `p2seeds/__init__.py`). `p2seeds/cg3/` is the small Rust bridge to CaveGen3 (judge
+  scores, treasure lists, the layout matcher's `layoutmatch` and `itemscan`).
+- `p2live/`: the Rust live reader (`p2live/app/`: the GUI app).
+- `judge2/`: the refit Pay Off Debt judge (research scripts, logs and the `judge2` crate).
 - `srcom_videos/`: reusable, game-agnostic library: speedrun.com leaderboards and
   small video downloads (≤480p, ≤30 fps, no audio).
-- `p2seeds/`: the Pikmin 2 pipeline (feed detection, entry screens, letter tracking,
-  seed search, sublevel labels, layout rendering, HTML report).
+- `docs/`: one report per topic (above), with its one-off research scripts in a folder of the same topic
+  (`docs/challenge_dive/`, `docs/layout_matcher/`, `docs/hunt/`, `docs/switch/`, `docs/wii/`,
+  `docs/realtime/`, ...).
 - `vendor/CaveGen/`: fresh clone of https://github.com/JHawk4/CaveGen (not committed).
 - `data/`: videos, caches and outputs (not committed).
 
@@ -86,14 +129,14 @@ cargo build --release --manifest-path ../cavegen3/Cargo.toml -p cavegen3-cli   #
 # the site over every judged run -> data/output/index.html (runs and their layout luck), layouts.html and
 # detection.html (pick a run), timesave.html (every run's time per sublevel, raw or beyond the layout),
 # pokos.html, accuracy.html (does the judge predict real times), seeds.html (RNG-order check); also
-# refreshes each run's judge.html (run_page.py) and report.html
+# refreshes each run's judge.html (`ledger/run_page.py`) and report.html
 .venv/Scripts/python -m p2seeds site
 ```
 
 Layout luck comes from **judge2** (`judge2/`, CaveGen's Pay Off Debt judge refit on these runs' real times;
 also in CaveGen3 as the `judge2` judge). Each sublevel's luck is its score against the median of 1000
 random layouts; a run's luck percentile compares its total with 20,000 simulated runs that each draw one
-random layout of the same sublevels (`luck.py`).
+random layout of the same sublevels (`ledger/luck.py`).
 
 `judge.html` shows every layout render, its luck, how random layouts of that sublevel are spread (a
 violin per sublevel), and what the runner did against the median run, net of pokos and of the layout: PBs drew lucky layouts more often than chance, so the judge's difference between each layout and the median run's is taken out.
@@ -116,7 +159,7 @@ Every page has an English/日本語 switch in its header, like CaveGen3's. The p
 in the browser, including chart tooltips and text the pages' scripts add later. The choice is remembered
 (`?lang=ja` / `?lang=en` in a link also sets it), and browsers set to Japanese get Japanese first. Numbers,
 seeds, cave codes and runners' names fill placeholders, and treasure and cave names become the game's Japanese
-names. The Japanese is in `p2seeds/src/p2seeds/ja_table.py` (see `i18n.py` for how it is matched). After
+names. The Japanese is in `p2seeds/src/p2seeds/ledger/ja_table.py` (see `ledger/i18n.py` for how it is matched). After
 changing a page's English, list what the table lacks with:
 
 ```bash
@@ -125,13 +168,13 @@ changing a page's English, list what the table lacks with:
 
 ## How a seed is found
 
-Each falling letter is tracked down its column by template matching (`track.py`). Some captures blend
+Each falling letter is tracked down its column by template matching (`story/track.py`). Some captures blend
 two game frames into each video frame, so a falling letter shows twice; the detector tries both a
 two-peak tracker and, when the copies overlap, a glyph-pair template matched at every separation.
 Each falling letter's starting velocity is fitted from its track, then the seed comes from a lattice
-search (`lattice.py`): the RNG is affine, so the measured letters, relative to the best-measured one,
+search (`story/lattice.py`): the RNG is affine, so the measured letters, relative to the best-measured one,
 bound a lattice point in a box. LLL reduction and enumeration find every seed that fits in milliseconds,
-from any subset of letters. Linking (`chain.py`) then confirms seeds against their neighbors: only seeds
+from any subset of letters. Linking (`story/chain.py`) then confirms seeds against their neighbors: only seeds
 that agree with another independently found seed anchor the searches near them, and anything filled in
 must sit in RNG order between them. Seed distances use CaveGen's O(log n) `nth_inv` (`rng.index`).
 
@@ -139,4 +182,8 @@ must sit in RNG order between them. Seed distances use CaveGen's O(log n) `nth_i
 
 ```bash
 .venv/Scripts/python -m pytest srcom_videos/tests p2seeds/tests
+cargo test --manifest-path p2live/Cargo.toml
 ```
+
+`test_rng_parity.py` checks both generators in `rng.py` against fixed sequences from CaveGen3, so the two
+cannot drift apart.
