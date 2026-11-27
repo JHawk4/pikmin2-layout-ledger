@@ -1,0 +1,7 @@
+{"frame": "wr_12_r21 2950 floor 3 gameplay", "points": [
+ {"px": [815, 625], "names": ["pod"], "label": "pod"},
+ {"px": [560, 555], "names": ["clover"], "label": "clover"},
+ {"px": [920, 530], "names": ["clover"], "label": "clover"},
+ {"px": [960, 680], "names": ["clover"], "label": "clover"},
+ {"px": [1130, 325], "names": ["key"], "label": "Key at the arm end"}
+]}

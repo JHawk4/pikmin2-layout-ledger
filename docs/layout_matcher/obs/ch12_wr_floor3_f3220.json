@@ -1,0 +1,9 @@
+{"frame": "wr_12_r21 3220 floor 3", "points": [
+ {"px": [525, 385], "names": ["pod"], "label": "pod (red ball)"},
+ {"px": [45, 675], "names": ["key"], "label": "key bottom-left"},
+ {"px": [410, 350], "names": ["clover"]},
+ {"px": [385, 495], "names": ["clover"]},
+ {"px": [780, 235], "names": ["clover"]},
+ {"px": [735, 525], "names": ["clover"]},
+ {"px": [50, 285], "names": ["clover"]}
+]}
