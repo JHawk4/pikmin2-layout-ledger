@@ -318,8 +318,19 @@ pub fn search_near(v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: us
     search_near_gen(Gen::Gc, v, sigma, anchor, max_dist, top)
 }
 
-/// search.search_near for either generator.
+/// search.search_near for either generator: every seed in the window is scored.
 pub fn search_near_gen(g: Gen, v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: usize) -> Result<Vec<Candidate>, SearchError> {
+    search_near_impl(g, v, sigma, anchor, max_dist, top, false)
+}
+
+/// The same over a wide window, with a quick reject on the 5 best-measured letters (7+ letters
+/// only). About 5 times faster, but a true seed with 3 mistracked letters among those 5 is
+/// skipped, so the normal chaining window uses `search_near_gen`.
+pub fn search_near_quick(g: Gen, v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: usize) -> Result<Vec<Candidate>, SearchError> {
+    search_near_impl(g, v, sigma, anchor, max_dist, top, true)
+}
+
+fn search_near_impl(g: Gen, v: &[f64], sigma: &[f64], anchor: u64, max_dist: u64, top: usize, quick: bool) -> Result<Vec<Candidate>, SearchError> {
     let (max_bias, cap) = (0.5, 16.0);
     let m: Vec<usize> = (0..v.len()).filter(|&i| v[i].is_finite() && sigma[i].is_finite()).collect();
     if m.len() < 2 {
@@ -343,7 +354,7 @@ pub fn search_near_gen(g: Gen, v: &[f64], sigma: &[f64], anchor: u64, max_dist: 
     // among them still leave a fitting seed 3 close pairs)
     let mut pre: Vec<usize> = (0..m.len()).collect();
     pre.sort_by(|&a, &b| sigma[m[a]].partial_cmp(&sigma[m[b]]).unwrap());
-    pre.truncate(if m.len() >= 7 { 5 } else { 0 });
+    pre.truncate(if quick && m.len() >= 7 { 5 } else { 0 });
     let pre_tol = pre.iter().map(|&k| sigma[m[k]]).fold(0.0f64, f64::max) * 2.0 * 4.0 + 0.02;
     for d in 0..max_dist {
         // letter seed = anchor advanced d+1 = window[0].0; character i reads window[1+i]

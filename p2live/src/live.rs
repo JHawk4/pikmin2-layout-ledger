@@ -45,7 +45,7 @@ use crate::analyze::{analyze_entry_with, Conf, Frames, FALL_LEAD, MIN_CAVE_MARGI
 use crate::calibrate::{calibrate, calibrate_hinted, is_entry_screen, Calibration, ScaleHint};
 use crate::digits::read_sublevel;
 use crate::img::{resize_area, Gray, Img};
-use crate::lattice::search_near_gen;
+use crate::lattice::{search_near_gen, search_near_quick};
 use crate::rng::Gen;
 use crate::track::{prefill, MatchCache};
 use crate::templates::{layout_seed_gen, Cave};
@@ -629,7 +629,9 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
     };
     let r = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, true, Some(&cache), cfg.rng);
     let t_seed = Instant::now();
-    let (letter, conf, chained, anchored) = settle(sh, &r, job.a);
+    // the anchors as they are before this entry: a report moves them to this entry's own seed
+    let from = (sh.anchor.get(), sh.anchor.latest());
+    let (letter, conf, chained, anchored) = settle(sh, &r, job.a, from, false);
     let t_chain = Instant::now();
     let good = conf == Conf::High || chained.is_some();
     if !good && !last {
@@ -716,7 +718,7 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
     // the full analysis; an update if it does better than the quick answer
     let t_full = Instant::now();
     let r2 = analyze_entry_with(&NoMoreFrames, &job.frames[..=b], job.first, cal.clone(), a, b, k, lead, tail * m, false, Some(&cache), cfg.rng);
-    let (letter2, conf2, chained2, anchored2) = settle(sh, &r2, job.a);
+    let (letter2, conf2, chained2, anchored2) = settle(sh, &r2, job.a, from, true);
     let full_s = t_full.elapsed().as_secs_f64();
     // a different seed replaces the shown one only when it can be trusted (high or chained): on a
     // weak fall the variants disagree, and an equally unsure answer is no better (replays: three
@@ -756,10 +758,13 @@ fn seed_attempt(sh: &Shared, job: Job, tail: usize, last: bool) {
 /// The seed an analysis settles on (letter seed, confidence, chained distance, anchored): with a
 /// confirmed anchor, a clear hit just after it; else its own when high confidence; else chained
 /// from the previous sublevel's layout seed when that is clear; else its own at its confidence.
-fn settle(sh: &Shared, r: &crate::analyze::EntryResult, at: usize) -> (Option<u64>, Conf, Option<u64>, bool) {
+///
+/// `from` = (the confirmed anchor, the last trusted seed) before this entry. `wide`: also scan
+/// `ANCHOR_WIDE` after the anchor (seconds: only for the full analysis, after the first report).
+fn settle(sh: &Shared, r: &crate::analyze::EntryResult, at: usize, from: (Option<u64>, Option<u64>), wide: bool) -> (Option<u64>, Conf, Option<u64>, bool) {
     let g = sh.cfg.rng;
     let (mut letter, mut conf, mut chained) = (r.letter_seed, r.confidence, None);
-    if let (Some(anchor), Some(f)) = (sh.anchor.get(), r.fit.as_ref()) {
+    if let (Some(anchor), Some(f)) = (from.0, r.fit.as_ref()) {
         // the letters alone already agree with the anchor: no scan needed
         if let (Some(l), Conf::High) = (letter, conf) {
             let d = g.distance(anchor, l);
@@ -768,7 +773,11 @@ fn settle(sh: &Shared, r: &crate::analyze::EntryResult, at: usize) -> (Option<u6
             }
         }
         for window in [NEAR, ANCHOR_WIDE] {
-            let Ok(c) = search_near_gen(g, &f.v, &f.sigma, anchor, window, 2) else { break };
+            if window == ANCHOR_WIDE && !wide {
+                break;
+            }
+            let found = if window == NEAR { search_near_gen(g, &f.v, &f.sigma, anchor, window, 2) } else { search_near_quick(g, &f.v, &f.sigma, anchor, window, 2) };
+            let Ok(c) = found else { break };
             let Some(best) = c.first() else { break };
             let n = best.n_measured().max(1);
             let clear = (c.len() < 2 || c[1].score - best.score > 15.0) && best.score / n as f64 <= 6.0;
@@ -789,7 +798,8 @@ fn settle(sh: &Shared, r: &crate::analyze::EntryResult, at: usize) -> (Option<u6
         }
     }
     if sh.cfg.chain && conf != Conf::High {
-        let prev = sh.anchor.latest();
+        // (with a confirmed anchor, this window was just searched above)
+        let prev = if from.0.is_some() && from.0 == from.1 { None } else { from.1 };
         if let (Some(prev), Some(f)) = (prev, r.fit.as_ref()) {
             if let Ok(c) = search_near_gen(g, &f.v, &f.sigma, prev, NEAR, 2) {
                 if let Some(best) = c.first() {

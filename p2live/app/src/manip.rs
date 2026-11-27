@@ -187,6 +187,8 @@ pub fn score_to_rank(bp: &[f64], score: f64) -> f64 {
 #[derive(Clone, Debug, Default)]
 struct Stats {
     mean: f64,
+    /// the mean over floors that have a key
+    mean_valid: f64,
     stddev: f64,
     top: f64,
 }
@@ -205,7 +207,7 @@ fn stats(id: &str, kind: &str) -> Option<Stats> {
         x2 += k * k;
     }
     x /= r.len() as f64;
-    Some(Stats { mean: x, stddev: (x2 / r.len() as f64 - x * x).max(0.0).sqrt(), top: r[r.len() * 5 / 100] })
+    Some(Stats { mean: x, mean_valid: mv, stddev: (x2 / r.len() as f64 - x * x).max(0.0).sqrt(), top: r[r.len() * 5 / 100] })
 }
 
 /// sqrt of the summed variance of a level's floors 2+ (what cannot be manipulated).
@@ -531,9 +533,10 @@ pub fn plan(inp: &PlanInput, run: &RunState, cfg: &ManipSettings) -> Result<Plan
         let Some(st) = stats(&format!("CH{l}-1"), kind) else { continue };
         let bp = &rank_file()[&format!("CH{l}-1-{kind}")];
         // the level's average and no-key score: CaveGen3's (the table's) when built in
-        let (mean, mean_valid) = match builtin.and_then(|t| t.level(l)) {
+        // (with CaveGen's own table file, the rank file's, as that table was built from it)
+        let (mean, mean_valid) = match builtin.and_then(|t| t.level(l)).filter(|_| matches!(table, TableSource::Builtin { .. })) {
             Some(ls) => (ls.mean, ls.mean_valid),
-            None => (st.mean, st.mean),
+            None => (st.mean, st.mean_valid),
         };
         let (scroll_frames, scroll_seq) = scroll(l);
         let orpg = late_stdev(l, kind) * cfg.give_up_per_second_vol * (1.0 - run.played.len() as f64 / 30.0);
@@ -572,7 +575,8 @@ pub fn plan(inp: &PlanInput, run: &RunState, cfg: &ManipSettings) -> Result<Plan
     let show = if !mode.realtime() || first_level { 30 } else { 5 };
     let mut out = Vec::new();
     for mut o in options {
-        if out.len() >= show {
+        // score attack: ignored and played levels and layouts outside the rank threshold are out
+        if out.len() >= show || (!mode.realtime() && o.cost >= 50000.0) {
             break;
         }
         let (f, w) = best_timing(g, o.level, start, o.seed, o.advances as i64);

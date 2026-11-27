@@ -20,7 +20,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use p2live::challenge::{blue_fraction, decode_screen_with, register, Placement, RollResult, Screens, REG_MIN};
+use p2live::challenge::{blue_fraction, decode_screen_with, register, BLUE_MIN, Placement, RollResult, Screens, REG_MIN};
 use p2live::img::Gray;
 
 use crate::capture::{Crop, Frame};
@@ -151,11 +151,12 @@ impl ChState {
 /// Make the plan from `end` on a worker (also used by the GUI: an entered seed, a title loop).
 pub fn spawn_plan(st: &Arc<Mutex<ChState>>, end: u64, title_loops: usize, repaint: &Arc<dyn Fn() + Send + Sync>) {
     let (st, repaint) = (st.clone(), repaint.clone());
-    {
+    let screen = {
         let mut s = st.lock().unwrap();
         s.busy = Some("judging the levels…".into());
         s.title_loops = title_loops;
-    }
+        s.screens
+    };
     repaint();
     std::thread::Builder::new()
         .name("plan".into())
@@ -170,6 +171,9 @@ pub fn spawn_plan(st: &Arc<Mutex<ChState>>, end: u64, title_loops: usize, repain
                 eprintln!("plan in {:.2} s", t.elapsed().as_secs_f64());
             }
             let mut s = st.lock().unwrap();
+            if s.screens != screen {
+                return; // a newer results screen came meanwhile: this plan is for an old roll
+            }
             s.busy = None;
             match p {
                 Ok(p) => {
@@ -209,6 +213,18 @@ pub struct ChPipe {
     enter_last: Option<usize>,
     /// the current blue run is not the results panel (Switch's level select is as blue)
     rejected: bool,
+    /// Switch: the panel check of the current blue run (on a worker): its verdict, whether one
+    /// is running, and how many failed
+    gate: Arc<Mutex<Option<bool>>>,
+    gate_busy: bool,
+    gate_tries: usize,
+    /// a blue run was cut at the buffer's length here: the blue that follows is the same screen
+    cut_at: Option<usize>,
+    /// the first black frame of the current black run, and of the last fade
+    black_first: Option<usize>,
+    fade_start: Option<usize>,
+    /// where the last results screen ended
+    real_end: Option<usize>,
 }
 
 /// Blue frames before a run counts as a results screen.
@@ -297,7 +313,7 @@ pub fn probe(f: &Frame, c: Crop) -> String {
 
 impl ChPipe {
     pub fn new() -> Self {
-        ChPipe { screens: Screens::new(), hint: Arc::new(Mutex::new(None)), decoded: false, prev_band: None, static_run: 0, await_fade: false, black_last: None, fade_end: None, real: false, enter_run: 0, enter_last: None, rejected: false }
+        ChPipe { screens: Screens::new(), hint: Arc::new(Mutex::new(None)), decoded: false, prev_band: None, static_run: 0, await_fade: false, black_last: None, fade_end: None, real: false, enter_run: 0, enter_last: None, rejected: false, gate: Arc::new(Mutex::new(None)), gate_busy: false, gate_tries: 0, cut_at: None, black_first: None, fade_start: None, real_end: None }
     }
 
     /// One captured frame (capture index `idx`, `fps` capture frames a second).
@@ -307,30 +323,75 @@ impl ChPipe {
         let active = self.screens.active();
         let blue = if active || idx % 3 == 0 { blue_fraction(&small_rgb(f, crop, 160, 90), 160, 90) } else { 0.0 };
         let was_active = active;
-        let finished = self.screens.push(idx, blue, || f.gray(crop));
+        let rejected = self.rejected;
+        let finished = self.screens.push(idx, blue, || if rejected { Gray::new(1, 1, vec![0]) } else { f.gray(crop) });
+        let switch = {
+            let mut s = st.lock().unwrap();
+            s.fps = fps;
+            s.rng == Gen::Switch
+        };
+        let real_at = REAL_SCREEN * mult;
         if !was_active && self.screens.active() {
             self.real = false;
-            self.rejected = false;
-            st.lock().unwrap().on_results = true;
-            repaint();
+            // blue right after a run cut at the buffer's length is the same screen going on
+            // so is blue before the fade that follows a results screen (the Save / Don't Save
+            // dialog splits the screen), for up to 10 s
+            let after_dialog = self.await_fade && self.real_end.is_some_and(|e| (idx.saturating_sub(e) as f64) < 10.0 * fps);
+            self.rejected = after_dialog || self.cut_at.is_some_and(|c| idx <= c + 3);
+            self.cut_at = None;
+            self.gate = Arc::new(Mutex::new(None));
+            self.gate_busy = false;
+            self.gate_tries = 0;
+            if !self.rejected {
+                st.lock().unwrap().on_results = true;
+                repaint();
+            }
         }
         // a blue run long enough to be a results screen (the Save / Don't Save dialog splits a
         // screen; the short blue run after it is not a new one)
-        if self.screens.active() && !self.real && !self.rejected && self.screens.so_far().len() >= REAL_SCREEN {
-            // once the panel's place is known, the run must show it
-            let known = *self.hint.lock().unwrap();
-            if let Some(h) = known {
-                let g = &self.screens.so_far()[REAL_SCREEN - 1].1;
-                let p = register(g, Some(&h));
-                if p.score < REG_MIN {
-                    self.rejected = true;
-                    if dbg {
-                        eprintln!("[{idx}] blue, but not the results panel ({:.2}): skipped", p.score);
+        let mut pass = false;
+        if self.screens.active() && !self.real && !self.rejected && self.screens.so_far().len() >= real_at {
+            if !switch {
+                pass = true;
+            } else {
+                // Switch's level select is as blue as the results screen: the run must show the
+                // results panel. Checked on a worker (0.3-1 s), on up to three frames half a
+                // second apart, since the panel may still be sliding in.
+                let verdict = self.gate.lock().unwrap().take();
+                match verdict {
+                    Some(true) => pass = true,
+                    Some(false) => {
+                        self.gate_busy = false;
+                        self.gate_tries += 1;
+                        if self.gate_tries >= 3 {
+                            self.rejected = true;
+                            st.lock().unwrap().on_results = false;
+                            if dbg {
+                                eprintln!("[{idx}] blue, but not the results panel: skipped");
+                            }
+                            repaint();
+                        }
+                    }
+                    None => {
+                        if !self.gate_busy && self.screens.so_far().len() >= real_at * (self.gate_tries + 1) {
+                            self.gate_busy = true;
+                            let g = self.screens.so_far().last().unwrap().1.clone();
+                            let (hint, gate) = (self.hint.clone(), self.gate.clone());
+                            std::thread::spawn(move || {
+                                let known = *hint.lock().unwrap();
+                                let p = register(&g, known.as_ref());
+                                let ok = p.score >= REG_MIN;
+                                if ok {
+                                    hint.lock().unwrap().get_or_insert(p);
+                                }
+                                *gate.lock().unwrap() = Some(ok);
+                            });
+                        }
                     }
                 }
             }
         }
-        if self.screens.active() && !self.real && !self.rejected && self.screens.so_far().len() >= REAL_SCREEN {
+        if pass {
             self.real = true;
             if dbg {
                 eprintln!("[{idx}] results screen from {}", self.screens.so_far()[0].0);
@@ -348,6 +409,9 @@ impl ChPipe {
                     }
                 }
             }
+            // that plan was for the last roll: a level enter before the new plan must not use it
+            s.plan = None;
+            s.selected = 0;
             s.frame0 = None;
             s.fades = 0;
             s.title_loops = 0;
@@ -363,6 +427,10 @@ impl ChPipe {
         }
         if let Some(frames) = finished {
             st.lock().unwrap().on_results = false;
+            // still blue: the run was cut at the buffer's length, not over
+            if blue >= BLUE_MIN {
+                self.cut_at = Some(idx);
+            }
             if self.real {
                 if dbg {
                     eprintln!("[{idx}] results screen ends ({} frames, {}..{})", frames.len(), frames.first().map(|f| f.0).unwrap_or(0), frames.last().map(|f| f.0).unwrap_or(0));
@@ -372,14 +440,15 @@ impl ChPipe {
                 }
                 self.decoded = false;
                 self.await_fade = true;
+                self.real_end = Some(idx);
                 self.black_last = None;
             }
             self.real = false;
             repaint();
         } else if self.screens.active() && self.real && !self.decoded {
             // find the panel early (the first screen of a session), so decoding is quick
-            if self.screens.so_far().len() == REAL_SCREEN && self.hint.lock().unwrap().is_none() {
-                let g = self.screens.so_far()[REAL_SCREEN - 1].1.clone();
+            if self.screens.so_far().len() == real_at && self.hint.lock().unwrap().is_none() {
+                let g = self.screens.so_far()[real_at - 1].1.clone();
                 let hint = self.hint.clone();
                 std::thread::spawn(move || {
                     let p = register(&g, None);
@@ -420,14 +489,20 @@ impl ChPipe {
         // after the results screen (or after a title loop)
         let black = is_black(f, crop);
         if black {
-            if self.black_last.is_none() && dbg {
-                eprintln!("[{idx}] black");
+            if self.black_last.is_none() {
+                self.black_first = Some(idx);
+                if dbg {
+                    eprintln!("[{idx}] black");
+                }
             }
             self.black_last = Some(idx);
         } else if let Some(last) = self.black_last.take() {
             // a fade ended (fades within 1 s of each other are one, as in CaveGen)
             let new_fade = self.fade_end.is_none_or(|e| last.saturating_sub(e) as f64 > fps);
             self.fade_end = Some(last);
+            if new_fade {
+                self.fade_start = self.black_first;
+            }
             let mut s = st.lock().unwrap();
             if new_fade {
                 s.fades += 1;
@@ -479,7 +554,8 @@ impl ChPipe {
             let mut s = st.lock().unwrap();
             let due = s.settings.detect_title_loops && !black && !s.entered && s.fades >= 2 && s.fades % 2 == 0 && s.frame0.is_some() && idx.saturating_sub(e) as f64 > fps;
             if due {
-                let menu = s.menu_state(e).map(|m| m.0);
+                // the level select's state when it faded out (CaveGen's tracker stops there too)
+                let menu = s.menu_state(self.fade_start.unwrap_or(e)).map(|m| m.0);
                 let loops = s.title_loops + 1;
                 s.fades = 0;
                 s.frame0 = None;
@@ -504,9 +580,9 @@ impl ChPipe {
             .name("challenge".into())
             .spawn(move || {
                 let h = *hint.lock().unwrap();
-                let (rng, anchor) = {
+                let (rng, anchor, screen) = {
                     let s = st.lock().unwrap();
-                    (s.rng, s.anchor.or(s.last_end))
+                    (s.rng, s.last_end.or(s.anchor), s.screens)
                 };
                 let mut res = decode(&frames, h.as_ref(), rng, anchor);
                 // the panel's place from an early frame can be off: try once more without it
@@ -514,6 +590,9 @@ impl ChPipe {
                     res = decode(&frames, None, rng, anchor);
                 }
                 let mut s = st.lock().unwrap();
+                if s.screens != screen {
+                    return; // a newer results screen came meanwhile
+                }
                 let Some(r) = res else {
                     s.busy = None;
                     s.error = Some("the results screen did not match the reference panel".into());
@@ -523,12 +602,13 @@ impl ChPipe {
                 };
                 *hint.lock().unwrap() = Some(r.placement);
                 let end = r.end_state;
-                // the next screen is searched near this one (its start, when the end is unsure)
+                // the next screen is searched near this one: its end, or its start when the end
+                // is unsure. The user's own anchor moves only to an end that can be trusted.
                 if let Some(a) = r.end_state.or(r.first_state) {
                     s.last_end = Some(a);
-                    if s.anchor.is_some() {
-                        s.anchor = Some(a);
-                    }
+                }
+                if let (Some(_), Some(e)) = (s.anchor, r.end_state) {
+                    s.anchor = Some(e);
                 }
                 s.roll = Some(r);
                 s.error = None;

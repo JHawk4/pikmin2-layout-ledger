@@ -81,14 +81,17 @@ These modes are CaveGen's real-time manip (`Manip.java`, `Seed.java`), ported:
    by a click.
 5. **Title loops.** Left on the level select, the game goes through the title demo and comes back
    4505 draws later. As in CaveGen, with no level enter, an even number of fades (2 or more) since
-   the results screen is a loop. The plan is made again from the menu's state then + 4505, timed
-   from the next fade. **Title loop +1** does the same by hand. It can be turned off in Manip
+   the results screen is a loop. The plan is made again from the menu's state when it faded out
+   + 4505, timed from the next fade. (CaveGen's own tracker of the menu's state left out the 61
+   frames before the first advance; this one keeps them, like the countdown does.) **Title loop +1** does the same by hand. It can be turned off in Manip
    settings.
 6. **Splits.** The run's clock starts at its first level enter. "vs splits" is the time so far
    against the summed splits (CaveGen's `splits`, m.ss per level, in Manip settings) of the
    levels played.
-7. **Anchor and seeds by hand.** The last roll's end is the anchor for the next screen, so a roll
-   with few readable digits can still be found near it. Type a state and click **Anchor** to set
+7. **Anchor and seeds by hand.** The last roll's end is the anchor for the next screen. A roll
+   the lattice can't solve is then looked up in the next 5 million draws: at least 10 rolling
+   digits on one frame and 6 following frames must agree, and no other place may come close.
+   The screen then says "found near the anchor", with a warning when its end is unsure. Type a state and click **Anchor** to set
    one yourself, or **Plan from it** to plan as if a roll had ended there (CaveGen's last known
    seed, for when a roll can't be read).
 
@@ -135,7 +138,11 @@ p2live-app.exe --build-times p2live/app/data --samples 200000   # the shipped ta
 - **Timing:** the frame tables are CaveGen's, for GameCube at 30 fps. Its per-level "frames from A
   to the level" are its own rough estimates.
 - **Title loops:** detected by CaveGen's fade count, which has not been checked on a video with
-  a real title loop.
+  a real title loop. If a floor card is missed (a washed-out capture), the fade into the level
+  counts as a loop: the plan is remade and the wrong level can be marked played. Turn "Detect
+  title-screen loops" off if that happens, and use **Title loop +1**.
+- **A late plan:** if the level is entered before the plan is ready (a slow PC), no level is
+  marked played; click it in the grid.
 
 ```bash
 p2live challenge video.mp4 --out rolls.json                     # every results screen's roll
@@ -167,8 +174,9 @@ Pick **Switch** as the console in setup. Pikmin 2 HD's `rand()` is musl's 64-bit
   - On cmal01 (tcbtrio, Switch): all 30 rolls decode, and consecutive screens are 18,207–117,485
     draws apart, as the Switch study found. Decoding takes 2–6 s a screen, against about 1 s on
     GameCube.
-  - Switch's level select is as blue as the results screen. Once the panel's place is known, a
-    blue run counts only if it shows the results panel.
+  - Switch's level select is as blue as the results screen. A blue run counts only if it shows
+    the results panel: checked off the capture thread on up to three frames half a second
+    apart.
 - **Menu timing:** the same frame tables, with the durations read from `rand() / RAND_MAX` at 31
   bits. That the game's frame counts and draws (+4, +1000, +4505) are unchanged on Switch is an
   assumption. No Switch run has been timed against the plan yet.

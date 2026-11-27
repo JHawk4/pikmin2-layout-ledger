@@ -125,7 +125,8 @@ exe) is a good fit: the Browser Source overlay is a web page anyway, so the two 
        detection, splits and the run's delta.
    - **Anchors:** in story mode, a seed marked right is searched near first. In Challenge Mode,
      the last roll (or a state typed in) anchors the next one, so poorly read rolls are found
-     near it (cmal09: 16 of 16 unreadable roll starts found, 5 ends).
+     near it (cmal09: all 16 unreadable rolls found, 23k-104k draws after the screen before; 15
+     give an end, which nothing else confirms).
    - **Switch (Pikmin 2 HD):** musl's 64-bit generator for letters, rolls, layouts and menu
      timing. All 30 cmal01 rolls decode; Switch story mode is checked only on saved fits.
    - **Still to do:** frames from a running OBS Virtual Camera; the window tested by a person.

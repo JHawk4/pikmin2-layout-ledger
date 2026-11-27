@@ -959,11 +959,13 @@ fn find_from_anchor(g: Gen, frames: &[RFrame], ncs: &[usize; 4], anchor: u64) ->
         }
         let k0 = locked_at(frames, &window, ncs);
         let n = ndraws(&k0, ncs);
-        if n < 8 {
+        if n < 10 {
             continue;
         }
+        // (with 8 digits and 4 follow frames of 6, random digits pass somewhere in 5M draws;
+        // with 10 and 6 frames of 8 they do not: 0 of 12 trials)
         let obs = rolling_obs(&frames[nondup[pos]], &k0, ncs);
-        if obs.len() < 8 {
+        if obs.len() < 10 {
             continue;
         }
         tried += 1;
@@ -971,14 +973,16 @@ fn find_from_anchor(g: Gen, frames: &[RFrame], ncs: &[usize; 4], anchor: u64) ->
             break;
         }
         // the next frames with the same digits rolling, to check a candidate against
-        let follow: Vec<Vec<(usize, u8)>> = nondup[pos + 1..].iter().take(10).map(|&f| rolling_obs(&frames[f], &k0, ncs)).take_while(|o| o.len() >= 6).collect();
-        if follow.len() < 4 {
+        let follow: Vec<Vec<(usize, u8)>> = nondup[pos + 1..].iter().take(10).map(|&f| rolling_obs(&frames[f], &k0, ncs)).take_while(|o| o.len() >= 8).collect();
+        if follow.len() < 6 {
             continue;
         }
         // stage 1: at least 60% of this frame's digits (chance: about 1 in 30,000 positions)
         let need = (obs.len() * 6).div_ceil(10);
         let max_bad = obs.len() - need;
         let mut best: Option<(f64, usize)> = None;
+        // the best rate at another position (not the same roll a frame or two off)
+        let mut second = 0.0f64;
         for p in 0..ANCHOR_MAX_DRAWS {
             let mut bad = 0;
             for &(i, d) in &obs {
@@ -1011,8 +1015,21 @@ fn find_from_anchor(g: Gen, frames: &[RFrame], ncs: &[usize; 4], anchor: u64) ->
                 q = bf.1;
             }
             let rate = ok as f64 / tot as f64;
-            if best.is_none_or(|b| rate > b.0) {
-                best = Some((rate, p));
+            match best {
+                Some((r0, p0)) if p.abs_diff(p0) > 8 * n => {
+                    if rate > r0 {
+                        second = second.max(r0);
+                        best = Some((rate, p));
+                    } else {
+                        second = second.max(rate);
+                    }
+                }
+                Some((r0, _)) => {
+                    if rate > r0 {
+                        best = Some((rate, p));
+                    }
+                }
+                None => best = Some((rate, p)),
             }
         }
         if dbg {
@@ -1021,7 +1038,7 @@ fn find_from_anchor(g: Gen, frames: &[RFrame], ncs: &[usize; 4], anchor: u64) ->
         // the true position agrees on most digits; chance agreement is about 1 in 9 (a little
         // more, as each following frame picks the best of three)
         if let Some((rate, p)) = best {
-            if rate >= 0.5 {
+            if rate >= 0.5 && rate - second >= 0.1 {
                 let s0 = g.next(anchor, p as i64 + 1);
                 return Some((nondup[pos], s0, k0, p as u64 + 1));
             }

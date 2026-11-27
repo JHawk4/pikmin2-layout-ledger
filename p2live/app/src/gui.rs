@@ -1137,7 +1137,7 @@ impl App {
             Arc::new(move || ctx.request_repaint())
         };
         ui.horizontal_wrapped(|ui| {
-            match ch.anchor.or(ch.last_end) {
+            match ch.last_end.or(ch.anchor) {
                 Some(a) => {
                     ui.label(RichText::new(format!("anchor {}{}", ch.rng.hex(a), if ch.anchor.is_some() { " (yours)" } else { " (last roll)" })).monospace().weak())
                         .on_hover_text("The next roll is searched near this state, so a roll with few readable digits still gives its seed.");
@@ -1153,7 +1153,10 @@ impl App {
                 .on_hover_text("A state you know is right (e.g. a roll end you read yourself): the next rolls are searched near it.")
                 .clicked()
             {
-                shared.ch.lock().unwrap().anchor = parsed;
+                let mut s = shared.ch.lock().unwrap();
+                s.anchor = parsed;
+                s.last_end = parsed;
+                drop(s);
                 self.anchor_text.clear();
             }
             if ui
@@ -1166,13 +1169,18 @@ impl App {
                         let mut s = shared.ch.lock().unwrap();
                         s.anchor = Some(e);
                         s.last_end = Some(e);
+                        // timed from the next fade to the level select
+                        s.frame0 = None;
+                        s.want_fade = true;
                     }
                     crate::chengine::spawn_plan(&shared.ch, e, 0, &repaint);
                     self.anchor_text.clear();
                 }
             }
-            if ch.anchor.is_some() && ui.small_button("forget anchor").clicked() {
-                shared.ch.lock().unwrap().anchor = None;
+            if (ch.anchor.is_some() || ch.last_end.is_some()) && ui.small_button("forget anchor").clicked() {
+                let mut s = shared.ch.lock().unwrap();
+                s.anchor = None;
+                s.last_end = None;
             }
             ui.separator();
             if ui
