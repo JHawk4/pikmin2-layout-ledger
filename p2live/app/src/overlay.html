@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Pikmin 2 layout</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; height: 100%; }
+  body { display: flex; flex-direction: column; align-items: center; font-family: "Segoe UI", system-ui, sans-serif; }
+  #cap {
+    color: #fff; font-weight: 600; font-size: var(--size, 28px); padding: 4px 10px; margin: 0;
+    text-shadow: 0 0 4px #000, 0 0 4px #000, 0 0 2px #000; white-space: nowrap;
+  }
+  #cap .seed { font-family: Consolas, monospace; font-weight: 500; opacity: 0.85; margin-left: 0.5em; }
+  #cap .low { color: #ffb347; }
+  #wrap { flex: 1; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+  #map { max-width: 100%; max-height: 100%; object-fit: contain; display: none; }
+</style>
+</head>
+<body>
+<p id="cap"></p>
+<div id="wrap"><img id="map" alt=""></div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const cap = document.getElementById('cap');
+  const map = document.getElementById('map');
+  if (q.get('caption') === '0') cap.style.display = 'none';
+  if (q.get('size')) document.documentElement.style.setProperty('--size', parseInt(q.get('size'), 10) + 'px');
+  let shown = -1;
+  async function poll() {
+    try {
+      const r = await fetch('/state', { cache: 'no-store' });
+      const s = await r.json();
+      if (s.version !== shown) {
+        const sure = s.confidence === 'high' || s.chained;
+        cap.innerHTML = s.title
+          ? `${s.title}<span class="seed${sure ? '' : ' low'}">${s.seed}${sure ? '' : ' (' + s.confidence + ')'}</span>`
+          : '';
+        if (s.picture) {
+          const img = new Image();
+          img.onload = () => { map.src = img.src; map.style.display = 'block'; };
+          img.src = '/layout.png?v=' + s.version;
+          shown = s.version;
+        } else {
+          map.style.display = 'none';
+          if (!s.title) shown = s.version;
+        }
+      }
+    } catch (e) { /* the app is closed; keep trying */ }
+    setTimeout(poll, 250);
+  }
+  poll();
+</script>
+</body>
+</html>
