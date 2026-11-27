@@ -586,12 +586,43 @@ candidates as the reader had):
 
 - 147 of 159 (92%) are exact or 1-2 draws late, against 112 before. No dive that was right before
   is wrong now. (The earlier table says 94 + 20; it counted the detection cross-check's picks.)
-- **The margin is now a usable confidence.** Margin of the leader over the runner-up of at least
+- **The margin is now a usable confidence** (less clean end to end, see below). Margin of the leader over the runner-up of at least
   5%: 120 dives, all 120 right. At least 2%: 141 dives, 138 right.
 - The ranking step takes 1 to 8 minutes per dive, mean just under 4, with three videos in parallel
   on 8 cores. It replaces the old fit step.
-- End to end (`anchored_eval.py --tag x`, full window search with the changed reader) on 15 dives,
-  14 of them former misses: 15 of 15 exact. The other 144 dives have not been re-read end to end.
+- A first end-to-end check (`anchored_eval.py --tag x`, full window search with the changed reader)
+  on 15 dives, 14 of them former misses, gave 15 of 15 exact. The full re-read follows.
+
+**End to end, all 159 dives** (`anchored_eval.py --grey-only --tag x`: full window search and the
+changed reader, no detection cross-check; results in `e2e_<video>.json`):
+
+| Video | Dives | Exact | 1-2 draws late | Whole-Pikmin shift | Miss |
+|---|---|---|---|---|---|
+| cmal02 | 28 | 25 | 3 | 0 | 0 |
+| cmal04 | 26 | 22 | 2 | 1 | 1 |
+| cmal08 | 26 | 23 | 2 | 0 | 1 |
+| cmal11 | 26 | 17 | 5 | 0 | 4 |
+| cmal13 | 27 | 19 | 7 | 0 | 1 |
+| cmal26 | 26 | 16 | 4 | 0 | 6 |
+| **All** | **159** | **122** | **23** | **1** | **13** |
+
+- 145 of 159 (91%) exact or 1-2 draws late, against 147 from re-ranking the cached searches. 155
+  dives come out the same; four differ:
+  - cmal04 CH2 (30 of one colour): exact when re-ranked, now one Pikmin late (+4 draws), with a
+    margin of 10.6%. One whole-Pikmin shift is back.
+  - cmal11 CH26 (4 Pikmin): exact when re-ranked, now missed, with a margin of 6.5%.
+  - cmal26 CH4 (50 of one colour): 1 draw late when re-ranked, now -11 draws, margin 0.1%.
+  - cmal13 CH26 (4 Pikmin): missed when re-ranked, now exact, margin 1.2%.
+- **The margin is a weaker confidence than the re-ranking suggested.** Margin of at least 5%: 125
+  dives, 123 right (the two wrong ones are cmal04 CH2 and cmal11 CH26 above). At least 2%: 141
+  dives, 138 right. So a 5% margin is about 98% reliable, not certain.
+- So the final ranking still depends somewhat on which candidates and geometries the search hands
+  it: the same dive, re-read, changed its answer on 4 of 159.
+- Time: mean 9.4 minutes per dive for search plus ranking (longest 33), three videos in parallel
+  on 8 cores; about 8 hours for the 144 dives not already cached.
+
+The lists below describe the re-ranked result; end to end the misses are the same dives except
+for the four above.
 
 The 12 that remain:
 
