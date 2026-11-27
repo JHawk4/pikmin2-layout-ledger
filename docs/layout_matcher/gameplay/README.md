@@ -39,3 +39,15 @@ CaveGen3's comedown camera, so the fit only absorbs the comedown's zoom/turn/shi
   when the camera can be guessed (pod-facing, scale 0.9), then simfit the survivors.
 - Pitfalls: low-variation floors (CH12-3: 18 seeds share the pod room) need objects far from the pod; white balls in
   CH18's pipe ends are not eggs.
+
+## rotscan (fast scan when the camera has been turned)
+
+`rotscan.py SUB END_HEX COUNT PTS.json OUT.json [--rot-step 10] [--scales 0.8,1.0,1.2] [--tol 0.18] [--need N]`
+
+Rotates/scales the marks about the "pod" mark for every camera turn and scale, runs the Rust `lm.scan` (~24 s per
+1M seeds per pass) and keeps seeds with >= N marks. Feed OUT.json's seeds to simfit, which is stricter.
+- CH12-3: picked 3998412E (k 33,120 before roll 0072844E) from the 18 candidates, using chess pieces on frames 4320 and 4440.
+- CH18-1, frame 640 (pod, figwort, pipe treasure, egg, flame): 108 seeds out of 1M at 4/4, but the best simfit is 4/5
+  with objects on empty floor. Those marks are not enough (or one is misread); more marks needed (see validator's typed_fit.py).
+- Interpreter: use the main checkout's `.venv/Scripts/python.exe` and set `P2SEEDS_LAYOUTMATCH`; bare `python` here is
+  an old interpreter.
