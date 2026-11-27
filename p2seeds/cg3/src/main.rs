@@ -2,6 +2,7 @@
 //! answer per line on stdout:
 //!
 //!   {"sub": "SCx-6", "seed": "0x1234ABCD", "judge": "pod"}
+//!   {"sub": "EC-1", "seed": "0x306306F66F0443C4", "judge": "pod", "rng": "switch"}  (Switch, 64-bit seed)
 //!     -> {"score": 123.4, "items": [{"name": "...", "value": 50, "carried_by": null}, ...]}
 //!   {"sub": "SCx-6", "reference": 2000, "judge": "pod"}
 //!     -> {"scores": [...]}       (judge scores of seeds 0, 1, ... spread over the RNG)
@@ -12,7 +13,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::sync::OnceLock;
 
-use cavegen3::{GameData, Layout, SpawnObject, jhawk_judge::{JhawkJudge, JudgeType}};
+use cavegen3::{GameData, Generator, Layout, SpawnObject, jhawk_judge::{JhawkJudge, JudgeType}};
 use serde_json::{Value, json};
 
 /// Pokos each creature is worth when carried back (name,minCarry,maxCarry,seeds,seedsMin,pokos,...),
@@ -48,9 +49,13 @@ fn answer(data: &GameData, req: &Value) -> Result<Value, String> {
     }
 
     let seed_text = req["seed"].as_str().ok_or("missing \"seed\"")?;
-    let seed = u32::from_str_radix(seed_text.trim_start_matches("0x").trim_start_matches("0X"), 16)
+    let generator: Generator = req["rng"].as_str().unwrap_or("gc").parse()?;
+    let seed = u64::from_str_radix(seed_text.trim_start_matches("0x").trim_start_matches("0X"), 16)
         .map_err(|e| format!("bad seed: {e}"))?;
-    let layout = Layout::generate(seed, ci);
+    if generator == Generator::Gc && seed > u32::MAX as u64 {
+        return Err(format!("seed {seed_text} has more than 32 bits; is this a Switch run (\"rng\": \"switch\")?"));
+    }
+    let layout = Layout::generate_with(generator, seed, ci);
     let game = &ci.cave_cfg.game;
     let value = |name: &str| data.treasure(game, name).map(|t| t.value);
     let mut items = Vec::new();

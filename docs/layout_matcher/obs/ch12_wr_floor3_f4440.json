@@ -1,0 +1,6 @@
+{"frame": "wr_12_r21 4440 floor 3", "points": [
+ {"px": [525, 290], "names": ["chess_king_white"], "label": "light chess piece"},
+ {"px": [865, 210], "names": ["chess_queen_black"], "label": "black chess piece"},
+ {"px": [465, 490], "names": ["clover"]},
+ {"px": [790, 490], "names": ["clover"]}
+]}

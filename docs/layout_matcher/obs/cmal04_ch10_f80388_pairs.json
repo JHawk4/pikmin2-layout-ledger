@@ -1,0 +1,11 @@
+[
+ {"what": "pod", "ahead": 0, "side": 0, "px": 640, "py": 470},
+ {"what": "kareooinu_s behind-left", "ahead": -114, "side": -67, "px": 530, "py": 650},
+ {"what": "ooinu_l left", "ahead": -26, "side": -245, "px": 270, "py": 530},
+ {"what": "ooinu_l right", "ahead": -16, "side": 252, "px": 1010, "py": 500},
+ {"what": "magaret ahead", "ahead": 306, "side": 20, "px": 660, "py": 150},
+ {"what": "tanpopo", "ahead": 194, "side": -274, "px": 285, "py": 255},
+ {"what": "kareooinu_s teki", "ahead": 373, "side": -123, "px": 490, "py": 115},
+ {"what": "kareooinu_s teki", "ahead": 415, "side": -239, "px": 360, "py": 80},
+ {"what": "kochappy", "ahead": 8, "side": -426, "px": 45, "py": 500}
+]

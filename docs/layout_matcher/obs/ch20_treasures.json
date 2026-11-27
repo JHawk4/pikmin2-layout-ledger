@@ -1,0 +1,6 @@
+[
+ {"label": "Rubber Ugly (duck) in pipe end, lower room, near wall", "names": ["ahiru"], "ahead": -200, "side": 880, "tol": 130},
+ {"label": "Sud Generator (soap) in pipe end round the corner", "names": ["toy_dog"], "ahead": -720, "side": 870, "tol": 130},
+ {"label": "Maternal Sculpture (bell) in next pipe end on the soap's wall", "names": ["bell"], "ahead": -1050, "side": 480, "tol": 160},
+ {"label": "treasure in the lower pool, seen gold in the comedown", "names": ["ahiru","toy_dog","bell","diamond_red_l","diamond_green_l"], "ahead": -480, "side": 390, "tol": 110}
+]

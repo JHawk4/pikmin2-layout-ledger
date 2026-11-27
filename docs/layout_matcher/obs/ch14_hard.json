@@ -1,0 +1,5 @@
+[
+ {"label": "Key at spot 1 (right arm in comedown)", "names": ["key"], "ahead": 510, "side": -680, "tol": 60},
+ {"label": "Combustion Berry at inner spot 9", "names": ["ichigo_l"], "ahead": -300, "side": 190, "tol": 60},
+ {"label": "white feather at inner spot 10", "names": ["bird_hane"], "ahead": 50, "side": -350, "tol": 60}
+]

@@ -51,7 +51,10 @@ def search(
     top: int = 5,
 ) -> list[Candidate]:
     """`v[i]`/`sigma[i]` are the measured velocity and its 1-sigma error for character i
-    (nan for spaces/unmeasured). Returns the best candidates, lowest score first."""
+    (nan for spaces/unmeasured). Returns the best candidates, lowest score first.
+    GC generator only (it enumerates the 2^31 states); lattice.search covers both."""
+    if rng.active() != "gc":
+        raise NotImplementedError("search.search enumerates GC states; use lattice.search")
     v = np.asarray(v, dtype=np.float64)
     sigma = np.asarray(sigma, dtype=np.float64)
     measured = [i for i in range(len(v)) if np.isfinite(v[i]) and np.isfinite(sigma[i])]
@@ -76,11 +79,11 @@ def search(
     for r0 in range(lo, hi + 1, per_chunk):
         rs = np.arange(r0, min(hi + 1, r0 + per_chunk), dtype=np.uint64)
         states = ((rs[:, None] << np.uint64(16)) | low16[None, :]).ravel()
-        vp = rng.rand_of_state(states).astype(np.float64) * V_PER_RAND - v[pivot]  # pivot's offset
+        vp = rng.speed_of_state(states) - v[pivot]  # pivot's offset
         for i in prune:
             a, c = jumps[i]
             s_i = (states * np.uint64(a) + np.uint64(c)) & np.uint64(rng.MASK32)
-            di = rng.rand_of_state(s_i).astype(np.float64) * V_PER_RAND - v[i]
+            di = rng.speed_of_state(s_i) - v[i]
             keep = np.abs(di - vp) <= tol[i]
             states, vp = states[keep], vp[keep]
             if states.size == 0:
@@ -97,8 +100,9 @@ def _score(states, v, sigma, measured, jumps, pivot, cap, max_bias):
     d = np.full((states.size, len(v)), np.nan)
     for i in measured:
         a, c = jumps[i]
-        s_i = (states * np.uint64(a) + np.uint64(c)) & np.uint64(rng.MASK32)
-        d[:, i] = rng.rand_of_state(s_i).astype(np.float64) * V_PER_RAND - v[i]
+        with np.errstate(over="ignore"):
+            s_i = (states * np.uint64(a) + np.uint64(c)) & np.uint64(rng.state_mask())
+        d[:, i] = rng.speed_of_state(s_i) - v[i]
     m = np.array(measured)
     dm = d[:, m]
     w = 1.0 / sigma[m] ** 2
@@ -110,7 +114,7 @@ def _score(states, v, sigma, measured, jumps, pivot, cap, max_bias):
     a0, c0 = rng.jump(-(pivot + 1))  # pivot's state is after pivot+1 advances from the seed
     out = []
     for k in keep:
-        seed = (int(states[k]) * a0 + c0) & rng.MASK31
+        seed = (int(states[k]) * a0 + c0) & rng.seed_mask()
         r = np.full(len(v), np.nan)
         r[m] = res[k]
         out.append(Candidate(seed, float(total[k]), float(bias[k]), r))
@@ -146,7 +150,7 @@ def search_near(
     while done < max_dist:
         b = min(block, max_dist - done)
         st = rng.forward_states(s, b + n)          # st[j] = s advanced j+1
-        r = rng.rand_of_state(st).astype(np.float64) * V_PER_RAND
+        r = rng.speed_of_state(st)
         # letter seed = s advanced d+1 (d = 0..b-1); its character i reads st[d+1+i]
         dm = np.stack([r[1 + i: 1 + i + b] - v[i] for i in m], axis=1)
         bias = np.clip(np.median(dm, axis=1), -max_bias, max_bias)
@@ -155,7 +159,7 @@ def search_near(
         for k in np.argsort(total)[:top]:
             rr = np.full(n, np.nan)
             rr[m] = res[k]
-            best.append(Candidate(int(st[k]) & rng.MASK31, float(total[k]), float(bias[k]), rr, done + int(k) + 1))
+            best.append(Candidate(int(st[k]) & rng.seed_mask(), float(total[k]), float(bias[k]), rr, done + int(k) + 1))
         best.sort(key=lambda c: c.score)
         del best[top:]
         s = int(st[b - 1])

@@ -108,7 +108,8 @@ def render(cave: str, sublevel: int, layout_seed: int, out: Path, fallback: Path
     exe = cavegen3_exe()
     if exe is not None:
         with tempfile.TemporaryDirectory() as tmp:
-            subprocess.run([str(exe), f"{cave}-{sublevel}", f"{layout_seed:08X}", "--show",
+            from .cavegen import _cg3_seed_args
+            subprocess.run([str(exe), f"{cave}-{sublevel}", *_cg3_seed_args(layout_seed), "--show",
                             "landingBox,comedownBox,podAngle", "--screen", aspect, "-o", tmp],
                            check=True, capture_output=True, timeout=120)
             png = next(Path(tmp).glob("*.png"))

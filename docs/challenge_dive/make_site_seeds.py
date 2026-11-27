@@ -1,0 +1,139 @@
+"""Collect the WR dive results into the pikmin-wrs site's seeds.json.
+
+    python docs/challenge_dive/make_site_seeds.py OUT.json
+
+Reads data/challenge/wr/wr_list.json and data/challenge/wr/dives/wr_<CH>.json. A seed is published
+when the dive's best state beats every other candidate clearly (`--min-margin`, relative image
+loss) and is a minimum against its own 4-draw shifts. Everything else is listed as unread, with
+the reason.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(ROOT, "p2seeds", "src"))
+
+from p2seeds import rng  # noqa: E402
+
+WR = os.path.join(ROOT, "data", "challenge", "wr")
+DOC = "https://github.com/JHawk4/pikmin2-layout-ledger/blob/claude/challenge-mode-seeds-37abaa/docs/challenge-mode-seeds.md"
+
+
+def assess(r):
+    """(state, layout_seed, margin_other, margin_shift) or None."""
+    if not r.get("ok") or not r.get("candidates"):
+        return None
+    best = r["candidates"][0]
+    s = best["state"]
+    l0 = best["loss"]
+    # best competitor that is not a whole-dive shift of the winner
+    def related(x):
+        if (x & 0x7FFFFFFF) == (s & 0x7FFFFFFF):
+            return True
+        return rng.distance(s, x, limit=64) is not None or rng.distance(x, s, limit=64) is not None
+    others = [c["loss"] for c in r["candidates"][1:] + r.get("top", []) if not related(c["state"])]
+    m_other = (min(others) - l0) / l0 if others else None
+    m_shift = r.get("shift_margin")
+    return s, rng.next_seed(s, 999) & 0x7FFFFFFF, m_other, m_shift
+
+
+def preceding_roll_check(r, s):
+    """True/False when the video shows a decoded results roll before the dive (its end + 5, plus up to
+    3 menu-flash draws, is the dive's first state); None when there is none."""
+    name = os.path.splitext(r.get("video", ""))[0]
+    p = os.path.join(WR, "rolls", name + ".json")
+    if not os.path.exists(p):
+        return None
+    d = json.load(open(p))
+    d = d["results"] if isinstance(d, dict) else d
+    prev = [x for x in d if x.get("decoded") and x["last_frame"] < r["visit"][0] and x.get("state_after_last_draw")]
+    if not prev:
+        return None
+    e = int(prev[-1]["state_after_last_draw"], 16)
+    return any((rng.next_seed(e, 5 + k) & 0x7FFFFFFF) == (s & 0x7FFFFFFF) for k in range(4))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out")
+    ap.add_argument("--min-margin", type=float, default=0.10)
+    ap.add_argument("--min-shift", type=float, default=0.005)
+    ap.add_argument("--min-pikmin", type=int, default=8,
+                    help="fewer visible Pikmin leave many look-alike states in the window")
+    ap.add_argument("--allow-unverified", action="store_true",
+                    help="also publish reads that only pass the margin rule. Off by default: the CH29 cross-check "
+                         "(tcbtrio) and the CH10 record were wrong with margins of 12.5%% and 23.6%%, because "
+                         "pruning can drop the true state before the exact comparison")
+    a = ap.parse_args()
+    wrs = {w["ch"]: w for w in json.load(open(os.path.join(WR, "wr_list.json"), encoding="utf8"))}
+    entries, unread, report = [], {}, []
+    for ch in range(1, 31):
+        w = wrs.get(ch)
+        if not w:
+            continue
+        p = os.path.join(WR, "dives", f"wr_{ch:02d}.json")
+        if not w.get("video"):
+            unread[str(200 + ch)] = {"en": "the record has no video", "ja": "記録に動画がありません"}
+            continue
+        if not os.path.exists(p):
+            unread[str(200 + ch)] = {"en": "not read yet", "ja": "未読み取り"}
+            continue
+        r = json.load(open(p))
+        a_ = assess(r)
+        if a_ is None:
+            note = r.get("note") or "no result"
+            if "no stage-select" in note:
+                txt = {"en": "the video does not show the stage select", "ja": "動画にステージ選択画面がありません"}
+            elif "no Pikmin" in note:
+                txt = {"en": "no Pikmin jump into this stage (it starts with Bulbmin only)",
+                       "ja": "ステージ選択で飛び込むピクミンがいないステージです"}
+            else:
+                txt = {"en": "could not be read", "ja": "読み取れませんでした"}
+            unread[str(200 + ch)] = txt
+            report.append((ch, None, note))
+            continue
+        s, lay, m_other, m_shift = a_
+        visible = sum(min(k, 50) for k in r.get("counts", []))
+        verified = preceding_roll_check(r, s)
+        ok = ((m_other is None or m_other >= a.min_margin) and (m_shift is None or m_shift >= a.min_shift)
+              and visible >= a.min_pikmin) or verified is True
+        if verified is False:
+            ok = False
+        if ok and verified is not True and not a.allow_unverified:
+            report.append((ch, f"{lay:08X}", "passes the margin rule but is not confirmed: withheld"))
+            unread[str(200 + ch)] = {"en": "read, but not confirmed by a results screen (withheld)",
+                                     "ja": "読み取りましたが結果画面で確認できないため非公開"}
+            continue
+        report.append((ch, f"{lay:08X}", f"other {m_other} shift {m_shift} verified {verified}", ok))
+        if not ok:
+            unread[str(200 + ch)] = ({"en": "too few Pikmin jump in to pin it down", "ja": "飛び込むピクミンが少なく絞り込めません"}
+                                     if visible < a.min_pikmin else
+                                     {"en": "the video does not pin it down (several layouts fit)",
+                                      "ja": "動画から一つに絞れません（複数の候補）"})
+            continue
+        entries.append({
+            "post": w["post"], "rule": w["rule"], "stage": 200 + ch,
+            "floors": [{"sublevel": f"CH{ch}-1", "seed": f"0x{lay:08X}"}],
+            "dive_state": f"0x{s & 0x7FFFFFFF:08X}",
+            "margin": round(m_other, 3) if m_other is not None else None,
+            "shift_margin": round(m_shift, 3) if m_shift is not None else None,
+            "how": ({"en": "stage-select dive, confirmed by the previous results roll",
+                     "ja": "ステージ選択の飛び込み（直前の結果画面で確認済み）"} if verified else
+                    {"en": "stage-select dive + results roll", "ja": "ステージ選択の飛び込み＋結果画面"}),
+            "verified": bool(verified),
+        })
+    out = {"_about": "Pikmin 2 challenge-mode sublevel layout seeds read from record videos with "
+                     "pikmin2-layout-ledger's dive reader (floor 1 of each stage). Keyed by pik5 post id, so a seed "
+                     "only shows while that run is the record. Generated by docs/challenge_dive/make_site_seeds.py.",
+           "_doc": DOC, "pikmin2": entries, "unread": unread}
+    json.dump(out, open(a.out, "w", encoding="utf8"), indent=1, ensure_ascii=False)
+    for row in report:
+        print(*row)
+
+
+if __name__ == "__main__":
+    main()

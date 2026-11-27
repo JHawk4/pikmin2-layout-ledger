@@ -1,6 +1,6 @@
 """Command line.
 
-  p2seeds analyze VIDEO [--url URL] [--out DIR]       one video file
+  p2seeds analyze VIDEO [--url URL] [--out DIR]       one video file ([--rng switch] for Pikmin 2 HD)
   p2seeds run [--manifest data/videos/manifest.json]   every downloaded run in a manifest
   p2seeds judge OUT_DIR [--kind pod]                   judge a processed run's layouts with CaveGen
   p2seeds render OUT_DIR                               render layouts missing from img/ (after --no-render)
@@ -21,11 +21,32 @@ from pathlib import Path
 
 import cv2
 
-from . import cavegen, chain, report, sublevels
+from . import cavegen, chain, report, rng, sublevels
 from .analyze import analyze_event
 from .events import detect
 from .feed import Feed, find_feed
 from .video import Video
+
+
+def use_rng_of(out_dir: Path) -> str:
+    """Select the generator a processed run was analysed with (seeds.json meta; GC if unset)."""
+    try:
+        meta = json.loads((Path(out_dir) / "seeds.json").read_text(encoding="utf-8")).get("meta", {})
+    except FileNotFoundError:
+        meta = {}
+    rng.use(meta.get("rng", "gc"))
+    return rng.active()
+
+
+def _no_cavegen() -> int:
+    log("this run uses the Switch generator, which only CaveGen3 has; build its command line "
+        "(data/build/cavegen3/cavegen3.exe) and p2seeds' bridge (p2seeds/cg3) for layouts")
+    return 1
+
+
+def _layouts_possible() -> bool:
+    """False for a Switch run without CaveGen3 (Java CaveGen has only the GC generator)."""
+    return rng.active() == "gc" or cavegen.switch_ready()
 
 
 def log(msg: str) -> None:
@@ -34,8 +55,15 @@ def log(msg: str) -> None:
 
 def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str | None = None,
               meta: dict | None = None, feed: Feed | None = None, render: bool = True,
-              start_s: float | None = None, stop_s: float | None = None) -> list:
+              start_s: float | None = None, stop_s: float | None = None, gen: str = "gc") -> list:
+    """`gen`: the RNG to search with, "gc" (GameCube, Wii, Wii U) or "switch" (Pikmin 2 HD)."""
     t0 = time.time()
+    rng.use(gen)
+    if gen != "gc":
+        log(f"generator: {gen}")
+        if not cavegen.switch_ready():
+            log("  no CaveGen3 build, so no layout pictures (Java CaveGen has only the GC generator)")
+            render = False
     video = Video(path)
     feed = feed or find_feed(video)
     log(f"feed: x {feed.x0}-{feed.x1}, y {feed.y0}-{feed.y1} ({feed.width}x{feed.height})")
@@ -113,7 +141,7 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
 
     counts = {c: sum(r.confidence == c for r in results) for c in ("high", "medium", "low", "none")}
     meta = dict(meta or {})
-    meta.update({"video": str(path), "fps": video.fps, "feed": [feed.x0, feed.y0, feed.x1, feed.y1],
+    meta.update({"rng": gen, "video": str(path), "fps": video.fps, "feed": [feed.x0, feed.y0, feed.x1, feed.y1],
                  "seconds": round(time.time() - t0, 1), "counts": counts})
     meta.setdefault("summary", f"{len(results)} sublevel entries · {counts['high']} high, {counts['medium']} medium, "
                                 f"{counts['low']} low, {counts['none']} no seed · processed in {meta['seconds']:.0f} s")
@@ -134,6 +162,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--no-render", action="store_true")
     a.add_argument("--start", type=float, default=None, help="seconds into the video to start scanning")
     a.add_argument("--stop", type=float, default=None, help="seconds into the video to stop scanning")
+    a.add_argument("--rng", choices=rng.GENERATORS, default="gc",
+                   help="random-number generator: gc (GameCube, Wii, Wii U) or switch (Pikmin 2 HD)")
     r = sub.add_parser("run")
     r.add_argument("--manifest", default="data/videos/manifest.json")
     r.add_argument("--out", default="data/output")
@@ -181,6 +211,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "redo":
         from . import redo
+        use_rng_of(args.out_dir)
         frames = {int(f) for f in args.frames.split(",")} if args.frames else None
 
         def progress(e, r, ok):
@@ -195,6 +226,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "details":
         from . import details
         out = Path(args.out_dir)
+        use_rng_of(out)
+        if not _layouts_possible():
+            return _no_cavegen()
         cavegen.set_region_for(json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"])
         page = details.write(out, force=args.force,
                              progress=lambda i, n, r: log(f"  {i}/{n} {r['cave']} {r.get('sublevel')}"))
@@ -227,6 +261,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "treasures":
         from . import treasures
         out = Path(args.out_dir)
+        use_rng_of(out)
+        if not _layouts_possible():
+            return _no_cavegen()
+        cavegen.set_region_for(json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"])
         if args.bugs_only:
             counts = treasures.refresh_bugs(out)
             clipped = sum(v.get("bug_clipped") or 0 for v in counts.values())
@@ -261,6 +299,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "render":
         out = Path(args.out_dir)
+        use_rng_of(out)
+        if not _layouts_possible():
+            return _no_cavegen()
         entries = json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"]
         cavegen.set_region_for(entries)
         for e in entries:
@@ -274,6 +315,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "judge":
         from . import judge_report
         out = Path(args.out_dir)
+        use_rng_of(out)
+        if not _layouts_possible():
+            return _no_cavegen()
         cavegen.set_region_for(json.loads((out / "seeds.json").read_text(encoding="utf-8"))["entries"])
         judge_report.judge_run(out, args.kind, progress=lambda i, n, r: log(
             f"  {i:>3}/{n} {r['cave']} {r['sublevel']} {r['layout_seed']} -> "
@@ -285,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         out = Path(args.out or f"data/output/{Path(args.video).stem}")
         feed = Feed(*map(int, args.feed.split(","))) if args.feed else None
         run_video(args.video, out, args.url, args.title, feed=feed, render=not args.no_render,
-                  start_s=args.start, stop_s=args.stop)
+                  start_s=args.start, stop_s=args.stop, gen=args.rng)
         return 0
 
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))["runs"]
@@ -303,7 +347,8 @@ def main(argv: list[str] | None = None) -> int:
                   meta={"run": run}, render=not args.no_render,
                   # a manifest entry may pin the game area ("feed": [x0, y0, x1, y1]) when
                   # detection gets it wrong, e.g. a wide splits panel next to a 4:3 game
-                  feed=Feed(*entry["feed"]) if entry.get("feed") else None)
+                  feed=Feed(*entry["feed"]) if entry.get("feed") else None,
+                  gen=rng.for_platform(run.get("platform")))
     return 0
 
 
@@ -318,20 +363,26 @@ def _batch(args) -> int:
         if entry.get("status") != "ok":
             continue
         out = Path(args.out) / Path(entry["download"]["path"]).stem
-        if not (out / "seeds.json").exists() or not (out / "judge.json").exists() or not (out / "treasures.json").exists():
-            todo.append((run_id, out))
+        # Switch runs get judged and counted when CaveGen3 can make their layouts
+        gc = rng.for_platform(entry["run"].get("platform")) == "gc" or cavegen.switch_ready()
+        if gc and (not (out / "seeds.json").exists() or not (out / "judge.json").exists()
+                   or not (out / "treasures.json").exists()):
+            todo.append((run_id, out, gc))
+        elif not gc and not (out / "seeds.json").exists():   # Switch without CaveGen3: seeds only
+            todo.append((run_id, out, gc))
     log(f"{len(todo)} run(s) to process with {args.jobs} job(s)")
     py = [sys.executable, "-m", "p2seeds"]
 
     def one(item):
-        run_id, out = item
+        run_id, out, gc = item
         logf = out.parent / f"{out.name}.log"
         out.parent.mkdir(parents=True, exist_ok=True)
         steps = []
         if not (out / "seeds.json").exists():
             steps.append(py + ["run", "--manifest", args.manifest, "--out", args.out, "--only", run_id])
-        steps.append(py + ["judge", str(out), "--kind", args.kind])
-        steps.append(py + ["treasures", str(out)])
+        if gc:
+            steps.append(py + ["judge", str(out), "--kind", args.kind])
+            steps.append(py + ["treasures", str(out)])
         with open(logf, "a", encoding="utf-8") as fh:
             for cmd in steps:
                 if subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT).returncode != 0:

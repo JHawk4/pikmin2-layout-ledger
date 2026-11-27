@@ -1,0 +1,6 @@
+[
+ {"label": "treasure in right cap", "names": ["ahiru","toy_dog","bell","diamond_red_l","diamond_green_l"], "ahead": -180, "side": 860, "tol": 100},
+ {"label": "treasure in lower pool room", "names": ["ahiru","toy_dog","bell","diamond_red_l","diamond_green_l"], "ahead": -480, "side": 390, "tol": 100},
+ {"label": "treasure in top-left cap", "names": ["ahiru","toy_dog","bell","diamond_red_l","diamond_green_l"], "ahead": 770, "side": -400, "tol": 110},
+ {"label": "hole in bottom-right cap", "names": ["hole"], "ahead": -750, "side": 920, "tol": 130}
+]

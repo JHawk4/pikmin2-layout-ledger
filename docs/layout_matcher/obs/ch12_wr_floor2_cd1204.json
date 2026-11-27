@@ -1,0 +1,391 @@
+{
+"frame": "wr_12_r21 1204 comedown floor 2",
+"points": [
+{
+"px": [
+310.0,
+95.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+540.0,
+92.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+608.0,
+128.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+715.0,
+95.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+835.0,
+72.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+895.0,
+88.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+385.0,
+165.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+762.0,
+195.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+820.0,
+185.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+1055.0,
+195.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+410.0,
+255.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+475.0,
+292.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+688.0,
+252.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+428.0,
+325.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+715.0,
+315.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+1132.0,
+262.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+365.0,
+378.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+935.0,
+397.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+1070.0,
+397.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+303.0,
+450.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+502.0,
+438.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+920.0,
+458.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+605.0,
+545.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+720.0,
+540.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+468.0,
+603.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+583.0,
+600.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+915.0,
+588.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+545.0,
+668.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+838.0,
+685.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+640.0,
+470.0
+],
+"names": [
+"ooinu_s",
+"kareooinu_s"
+],
+"label": "small figwort"
+},
+{
+"px": [
+830,
+390
+],
+"names": [
+"ooinu_l"
+],
+"label": "big red figwort"
+},
+{
+"px": [
+1180,
+370
+],
+"names": [
+"ooinu_l"
+],
+"label": "big red figwort"
+},
+{
+"px": [
+480,
+515
+],
+"names": [
+"gate"
+],
+"label": "gate"
+},
+{
+"px": [
+265,
+688
+],
+"names": [
+"key"
+],
+"label": "Key?"
+},
+{
+"px": [
+1000,
+170
+],
+"names": [
+"tanpopo",
+"wakame_l",
+"zenmai",
+"clover",
+"tukushi",
+"magaret",
+"hikarikinoko"
+],
+"label": "green single plant"
+}
+]
+}

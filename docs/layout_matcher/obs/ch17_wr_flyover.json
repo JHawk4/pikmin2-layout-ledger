@@ -1,0 +1,6 @@
+[
+ {"label": "gas pipe ahead-right", "names": ["gashiba"], "ahead": 133, "side": 233, "tol": 60},
+ {"label": "no gas pipe ahead-left (138,-138)", "names": ["gashiba"], "absent_within": 210},
+ {"label": "pot/geyser ahead-right", "names": ["geyser"], "ahead": 213, "side": 292, "tol": 80},
+ {"label": "no treasure/egg/mitite within 300", "names": ["egg", "kumakibori", "bell_blue", "yoyo_red", "diamond_blue", "tamagomushi"], "absent_within": 300}
+]
