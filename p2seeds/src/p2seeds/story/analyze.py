@@ -150,6 +150,19 @@ def split_digits(crop: np.ndarray | None) -> list[np.ndarray]:
     return out
 
 
+PRE_RUN = 30     # frames before a Wii settled run where the landing title may be read instead
+
+
+def _best_calibration(frames: list[np.ndarray], ks) -> tuple[Calibration | None, int]:
+    """The best-scoring calibration over frames `ks` (each brightness-normalized, all caves)."""
+    best, kb = None, -1
+    for k in ks:
+        c = calibrate(normalize(frames[k]))
+        if c is not None and (best is None or c.score > best.score):
+            best, kb = c, int(k)
+    return best, kb
+
+
 def entry_runs_for(frames: list[np.ndarray], feed: Feed) -> list[tuple[int, int]]:
     """entry_runs with the settings for this feed: a 16:9 (Wii) title is often settled for only
     3-15 frames before it fades out, so shorter runs of fading frames count."""
@@ -222,6 +235,15 @@ def analyze_event(video: Video, feed: Feed, event: Event, search_kw: dict | None
             min_score, min_margin = RESCUE_SCORE, only_margin
             if cal is not None and cal.cave.cavegen != only:
                 cal = None
+        if wide and a > 0 and (cal is None or cal.score < min_score or margin < min_margin):
+            # Wii U VC: a picture behind the title (the cave's comedown) can keep the screen from
+            # counting as settled until the name has faded; the name is clearest in the frames
+            # just before the run, where the letters land. Start the entry there if it reads.
+            cal2, k2 = _best_calibration(frames, range(max(0, a - PRE_RUN), a, 5))
+            if cal2 is not None and (only is None or cal2.cave.cavegen == only):
+                margin2 = cal2.score - (cal2.runner_up[1] if cal2.runner_up else 0.0)
+                if cal2.score >= min_score and margin2 >= min_margin:
+                    cal, k, margin, a = cal2, k2, margin2, k2
         if cal is None or cal.score < min_score or margin < min_margin:
             if cal and (best_reject is None or cal.score > best_reject[0].score):
                 best_reject = (cal, margin)
