@@ -142,7 +142,7 @@ def run_video(path: str, out_dir: Path, video_url: str | None = None, title: str
 
     counts = {c: sum(r.confidence == c for r in results) for c in ("high", "medium", "low", "none")}
     meta = dict(meta or {})
-    meta.update({"rng": gen, "video": str(path), "fps": video.fps, "feed": [feed.x0, feed.y0, feed.x1, feed.y1],
+    meta.update({"rng": gen, "video": str(path), "fps": video.fps, "feed": feed.to_list(),
                  "seconds": round(time.time() - t0, 1), "counts": counts})
     meta.setdefault("summary", f"{len(results)} sublevel entries · {counts['high']} high, {counts['medium']} medium, "
                                 f"{counts['low']} low, {counts['none']} no seed · processed in {meta['seconds']:.0f} s")
@@ -347,7 +347,8 @@ def main(argv: list[str] | None = None) -> int:
         run_video(entry["download"]["path"], Path(args.out) / slug, entry.get("video"), title,
                   meta={"run": run}, render=not args.no_render,
                   # a manifest entry may pin the game area ("feed": [x0, y0, x1, y1]) when
-                  # detection gets it wrong, e.g. a wide splits panel next to a 4:3 game
+                  # detection gets it wrong, e.g. a wide splits panel next to a 4:3 game; a fifth item
+                  # lists rectangles to blank, e.g. splits drawn over the game ([[x0, y0, x1, y1], ...])
                   feed=Feed(*entry["feed"]) if entry.get("feed") else None,
                   gen=rng.for_platform(run.get("platform")))
     return 0

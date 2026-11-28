@@ -21,6 +21,9 @@ class Feed:
     y0: int
     x1: int  # exclusive
     y1: int
+    # rectangles [x0, y0, x1, y1] in video pixels blanked (black) in every crop: splits or a timer
+    # drawn over the game picture, whose text would pass for an entry screen's or rule one out
+    mask: tuple = ()
 
     @property
     def width(self) -> int:
@@ -31,7 +34,16 @@ class Feed:
         return self.y1 - self.y0
 
     def crop(self, gray: np.ndarray) -> np.ndarray:
-        return gray[self.y0:self.y1, self.x0:self.x1]
+        out = gray[self.y0:self.y1, self.x0:self.x1]
+        if self.mask:
+            out = out.copy()
+            for x0, y0, x1, y1 in self.mask:
+                out[max(0, y0 - self.y0):max(0, y1 - self.y0), max(0, x0 - self.x0):max(0, x1 - self.x0)] = 0
+        return out
+
+    def to_list(self) -> list:
+        """As stored in seeds.json ("feed"); `Feed(*feed.to_list())` gives it back."""
+        return [self.x0, self.y0, self.x1, self.y1] + ([[list(m) for m in self.mask]] if self.mask else [])
 
 
 def find_feed(video: Video, samples: int = 240) -> Feed:
