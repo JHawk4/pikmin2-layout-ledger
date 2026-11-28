@@ -426,7 +426,7 @@ are the sort's values; drag across a chart to see the slope of just that stretch
 def add_run_note(category: str = "pod") -> str:
     root = "" if category == "pod" else "../"
     return ('<p class="muted">Missing a run, or want one added? Share its video or speedrun.com link in the '
-            f'<a href="{root}suggest.html">suggestion box</a>.</p>')
+            f'<a class="suggest-link" href="{root}suggest.html">suggestion box</a>.</p>')
 
 
 def _pct(p: dict) -> str:
@@ -941,9 +941,8 @@ def build(root: str | Path = "data/output") -> Path:
         act = acts[runs.index(r)]
         run_total = sum(v["net"] for v in act.values()) if act else None
         high = sum(1 for x in e if x.get("confidence") == "high")
-        link = r["run"].get("weblink")
         wr = r["run"].get("series") == "wr"
-        rank = "" if wr else str(r["run"].get("place", ""))
+        rank = "" if wr or not r["run"].get("place") else str(r["run"]["place"])
 
         def sv(x):
             return "" if x is None else f"{x:.3f}"
@@ -953,6 +952,7 @@ def build(root: str | Path = "data/output") -> Path:
         trs.append(f'<tr><td class="num" data-v="{html.escape(rank or "99")}">{html.escape(rank)}</td>'
                    f'<td class="sticky"><a href="{html.escape(r["slug"])}/judge.html">{html.escape(r["player"])}</a>'
                    f'{" <span class=badge>former WR</span>" if wr else ""}'
+                   f'{" <span class=badge>not on speedrun.com</span>" if r["run"].get("series") == "extra" else ""}'
                    f'{_platform_badge(r["run"])}</td>'
                    f'<td data-v="{r["run"].get("time_seconds") or 0}">{_fmt_time(r["run"].get("time_seconds"))}</td>'
                    f'<td class="num" data-v="{sv(judge2_total if judged else None)}">{judge_report._num(judge2_total if judged else None)}</td>'
@@ -961,7 +961,7 @@ def build(root: str | Path = "data/output") -> Path:
                    f'<td class="num{" weak" if high < 0.9 * len(e) else ""}" data-v="{high / max(1, len(e)):.3f}">{high} of {len(e)}</td>'
                    f'<td>{html.escape(r["run"].get("date", ""))}</td>'
                    f'<td><a href="{html.escape(r["slug"])}/report.html">detection</a>'
-                   f'{f" · <a href={chr(34)}{html.escape(link)}{chr(34)} target=_blank rel=noopener>speedrun.com</a>" if link else ""}</td></tr>')
+                   f'{judge_report.run_link(r["run"])}</td></tr>')
 
     data_rows = "".join(f"<tr><td>{html.escape(a)}</td><td>{html.escape(b)}</td><td>{html.escape(c)}</td>"
                         f"<td><code>{html.escape(d)}</code></td><td class='num'>{s:,}</td></tr>"
@@ -1151,7 +1151,7 @@ def export(root: str | Path = "data/output", out: str | Path = "data/pages",
     i18n.write_js(out / "i18n.js", runner_names([r for runs, _ in sections for r in runs]))
     for page in out.rglob("*.html"):         # a section built before the switch existed gets it here
         text = page.read_text(encoding="utf-8")
-        fixed = i18n.add_switch(text, "../" * (len(page.relative_to(out).parts) - 1))
+        fixed = theme.fix_nav_js(i18n.add_switch(text, "../" * (len(page.relative_to(out).parts) - 1)))
         if fixed != text:
             page.write_text(fixed, encoding="utf-8")
     return out

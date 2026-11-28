@@ -20,6 +20,15 @@ from . import charts, luck
 from ..story import treasures
 from ..caves import CAVES
 
+
+def run_link(run: dict) -> str:
+    """' · speedrun.com' linking the run's page, or ' · video' for a run that isn't on speedrun.com
+    (added by hand from its video: no weblink, series "extra")."""
+    href, label = run.get("weblink"), "speedrun.com"
+    if not href and run.get("videos"):
+        href, label = run["videos"][0].get("url"), "video"
+    return f' · <a href="{html.escape(href)}" target="_blank" rel="noopener">{label}</a>' if href else ""
+
 CAVE_NAMES = {c.cavegen: c.name for c in CAVES if getattr(c, "lang", "en") == "en"}
 
 
@@ -360,7 +369,7 @@ dialog img {{ max-width:96vw; max-height:92vh; display:block; border-radius:6px;
 {switch}
 <h1>{html.escape(title)}</h1>
 <p class="lede">Pay Off Debt{f", {html.escape(run_time)}" if run_time else ""}{f", {html.escape(run.get('date', ''))}" if run.get('date') else ""}
-{f' · <a href="{html.escape(run["weblink"])}" target="_blank" rel="noopener">speedrun.com</a>' if run.get("weblink") else ""}.
+{run_link(run)}.
 Every sublevel's layout was rebuilt from the seed read off the video and timed by a layout judge (CaveGen's judge,
 re-tuned on these runs' real times), against the median of 1000 random layouts of the same sublevel: that is the
 <b>layout luck</b>. <b>Runner</b> is what this run did against the median run, counting 2 pokos as 1 second, after taking out

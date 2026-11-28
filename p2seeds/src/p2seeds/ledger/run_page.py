@@ -468,7 +468,7 @@ def write(out_dir: Path, actual: dict | None = None) -> Path | None:
     n_low = sum(1 for r in rows if not r["trusted"])
     body = f'''<h1>{html.escape(title)} · layouts</h1>
 <p class="muted">{"All Treasures" if info["kind"] == "at" else "Pay Off Debt"}{f", {html.escape(run.get('date', ''))}" if run.get('date') else ""}
-{f' · <a href="{html.escape(run["weblink"])}" target="_blank" rel="noopener">speedrun.com</a>' if run.get("weblink") else ""}
+{judge_report.run_link(run)}
 · <a href="report.html">how the seeds were read</a></p>
 {_heads(info, rows)}
 <p class="small">Every layout was rebuilt from the seed read off the video and timed by the layout judge (CaveGen's

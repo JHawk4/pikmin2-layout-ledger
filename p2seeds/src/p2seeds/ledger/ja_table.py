@@ -55,7 +55,7 @@ many({
     "Judge": "評価", "Layout": "レイアウト", "layout": "レイアウト", "layouts": "レイアウト", "runner": "走者",
     "median": "中央値", "details": "詳細", "Table": "表", "Took": "所要", "Beats": "勝率", "Plays": "プレイ数",
     "Correlation": "相関", "Highlight": "強調", "How": "方法", "Note": "備考", "Letters": "文字数",
-    "former WR": "元WR", "detection": "検出", "{0} of {1}": "{0} / {1}", "{0} to {1}": "{0} 〜 {1}",
+    "former WR": "元WR", "not on speedrun.com": "speedrun.com 未登録", "video": "動画", "detection": "検出", "{0} of {1}": "{0} / {1}", "{0} to {1}": "{0} 〜 {1}",
     "{0} pk": "{0}ポコ", "{0} s": "{0}秒", "{0} pokos": "{0}ポコ", "{0} poko": "{0}ポコ",
     "<a>detection</a> · <a>speedrun.com</a>": "<a>検出</a> · <a>speedrun.com</a>",
     "Seeds read": "読めたシード", "Layout luck": "レイアウト運", "Luck percentile": "運のパーセンタイル",

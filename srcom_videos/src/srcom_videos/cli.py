@@ -48,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--skip", type=int, default=0, help="leave out the first N leaderboard places")
         p.add_argument("--region", default=None, help="keep runs whose region contains this text, e.g. USA")
         p.add_argument("--since", default=None, help="keep runs on or after this date (YYYY-MM-DD)")
+        p.add_argument("--only", action="append", default=[], help="keep only this speedrun.com run id (repeatable)")
         p.add_argument("--cache", default="data/cache/srcom")
     d = sub.choices["download"]
     d.add_argument("--out", default="data/videos")
@@ -67,6 +68,8 @@ def main(argv: list[str] | None = None) -> int:
         runs = [r for r in runs if args.region.lower() in (r.region or "").lower()]
     if args.since:
         runs = [r for r in runs if (r.date or "") >= args.since]
+    if args.only:
+        runs = [r for r in runs if r.id in args.only]
 
     if args.cmd == "list":
         for r in runs:

@@ -113,10 +113,19 @@ FOOTER = ('<footer class="site-footer">Layouts, pictures, treasures and the judg
 
 # The suggestion box remembers which page it was opened from (the hidden "page" field).
 NAV_JS = """<script>
-for (const a of document.querySelectorAll('a.nav-suggest')) a.addEventListener('click', () => {
-  const p = location.pathname.split('/').filter(Boolean); const here = p.slice(-2).join('/');
-  const u = new URL(a.href); u.searchParams.set('from', here); a.href = u.toString(); });
+for (const a of document.querySelectorAll('a.nav-suggest, a.suggest-link')) a.addEventListener('click', () => {
+  // the page's path from the site root (where suggest.html is), e.g. "accuracy.html" or "at/index.html"
+  const u = new URL(a.href), base = new URL('.', u).pathname, path = location.pathname;
+  const here = (path.startsWith(base) ? path.slice(base.length) : path.split('/').pop()) || 'index.html';
+  u.searchParams.set('from', here); a.href = u.toString(); });
 </script>"""
+
+
+def fix_nav_js(page: str) -> str:
+    """A page built with an older copy of NAV_JS (it sent "pikmin2-layout-ledger/" twice in the
+    suggestion box's page field) with the current one."""
+    return re.sub(r"<script>\s*for \(const a of document\.querySelectorAll\('a\.nav-suggest.*?</script>",
+                  lambda m: NAV_JS, page, count=1, flags=re.S)
 
 
 def apply(page: str, prefix: str = "", run: str | None = None, active: str = "runs", category: str = "pod") -> str:

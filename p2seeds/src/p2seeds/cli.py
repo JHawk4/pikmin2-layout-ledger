@@ -342,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.only and args.only not in run_id and args.only not in slug:
             continue
         players = ",".join(p["name"] for p in run["players"])
-        title = f"#{run['place']} {players} — {run['weblink']}"
+        title = f"{'#' + str(run['place']) + ' ' if run.get('place') else ''}{players} — {run.get('weblink') or entry.get('video')}"
         log(f"== {title}")
         run_video(entry["download"]["path"], Path(args.out) / slug, entry.get("video"), title,
                   meta={"run": run}, render=not args.no_render,
